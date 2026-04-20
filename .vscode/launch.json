@@ -1,0 +1,53 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "skills (banner)",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}/skills-go",
+            "args": []
+        },
+        {
+            "name": "skills add",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}/skills-go",
+            "args": ["add", "vercel-labs/agent-skills"]
+        },
+        {
+            "name": "skills list",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}/skills-go",
+            "args": ["list"]
+        },
+        {
+            "name": "skills find",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}/skills-go",
+            "args": ["find"]
+        },
+        {
+            "name": "skills remove",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}/skills-go",
+            "args": ["remove"]
+        },
+        {
+            "name": "skills update",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}/skills-go",
+            "args": ["update"]
+        }
+    ]
+}
