@@ -151,8 +151,19 @@ func TestAuditHelp(t *testing.T) {
 	}
 }
 
+func TestDoctorHelp(t *testing.T) {
+	stdout, _, code := runMdm(t, "doctor", "--help")
+	if code != 0 {
+		t.Fatalf("mdm doctor --help exited %d", code)
+	}
+	for _, expected := range []string{"--global", "--project", "hash mismatch"} {
+		if !strings.Contains(stdout, expected) {
+			t.Errorf("expected doctor --help output to contain %q, got: %q", expected, stdout)
+		}
+	}
+}
+
 func TestNormalizeMultiFlags(t *testing.T) {
-	// Run: mdm skills add owner/repo -a claude cursor --list
 	// This should NOT produce "unknown flag" or "flag needs an argument" in stderr.
 	// It will fail on network, but flag parsing should succeed.
 	_, stderr, _ := runMdm(t, "skills", "add", "owner/repo", "-a", "claude", "cursor", "--list")

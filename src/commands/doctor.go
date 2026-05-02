@@ -64,7 +64,7 @@ func buildDoctorCmd() *cobra.Command {
 Checks performed:
   • Missing skill directories or SKILL.md files
   • Broken symlinks in agent skill directories
-  • Skills modified since install (hash mismatch)
+  • Skills modified since install (hash mismatch; global installs with a recorded hash only)
   • Markdown files inside skill directories that are too large
   • Oversized agent instruction files (CLAUDE.md, AGENTS.md, .cursorrules, etc.)
   • All other .md files in the project that may strain agent context windows
@@ -128,13 +128,19 @@ func runDoctor(opts DoctorOptions) {
 			results = append(results, r)
 		}
 
-		// All agent skill directories
-		skipDirs[filepath.Clean(canonicalBase)] = true
+		// Only skip agent skill directories that actually exist on disk, to avoid
+		// accidentally suppressing real project folders from the markdown scan.
+		if _, err := os.Stat(canonicalBase); err == nil {
+			skipDirs[filepath.Clean(canonicalBase)] = true
+		}
 		for _, agentCfg := range agent.AllAgents {
 			if agentCfg == nil {
 				continue
 			}
-			skipDirs[filepath.Clean(filepath.Join(cwd, agentCfg.SkillsDir))] = true
+			agentSkillsDir := filepath.Clean(filepath.Join(cwd, agentCfg.SkillsDir))
+			if _, err := os.Stat(agentSkillsDir); err == nil {
+				skipDirs[agentSkillsDir] = true
+			}
 			if agentCfg.InstructionsFile != "" {
 				skipFiles[filepath.Clean(filepath.Join(cwd, agentCfg.InstructionsFile))] = true
 			}
@@ -181,7 +187,12 @@ func diagnoseSkill(r *doctorResult, storedHash string, global bool, cwd string) 
 		})
 	} else {
 		sk, err := skill.ParseSkillMd(skillMdPath, true)
-		if err != nil || sk == nil {
+		if err != nil {
+			r.Issues = append(r.Issues, doctorIssue{
+				Level:   "error",
+				Message: fmt.Sprintf("SKILL.md could not be read: %s", err),
+			})
+		} else if sk == nil {
 			r.Issues = append(r.Issues, doctorIssue{
 				Level:   "warn",
 				Message: "SKILL.md is missing required name or description fields",
@@ -195,7 +206,12 @@ func diagnoseSkill(r *doctorResult, storedHash string, global bool, cwd string) 
 	// 4. Skill content must match the installed hash (global skills only)
 	if storedHash != "" {
 		current, err := lock.ComputeSkillFolderHash(r.Path)
-		if err == nil && current != storedHash {
+		if err != nil {
+			r.Issues = append(r.Issues, doctorIssue{
+				Level:   "warn",
+				Message: fmt.Sprintf("could not compute skill content hash — integrity check skipped: %s", err),
+			})
+		} else if current != storedHash {
 			r.Issues = append(r.Issues, doctorIssue{
 				Level:   "warn",
 				Message: "skill content differs from installed version — run `mdm skills update` to sync",
@@ -250,10 +266,17 @@ func checkAgentLinks(r *doctorResult, global bool, cwd string) {
 }
 
 // checkLargeMarkdown walks the skill directory and flags .md files that are
-// large enough to threaten agent context windows.
+// large enough to threaten agent context windows. Common dependency/build
+// directories (e.g. .git, node_modules, vendor) are skipped.
 func checkLargeMarkdown(r *doctorResult) {
 	_ = filepath.WalkDir(r.Path, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			if markdownSkipDirNames[d.Name()] {
+				return fs.SkipDir
+			}
 			return nil
 		}
 		if !strings.HasSuffix(strings.ToLower(d.Name()), ".md") {
