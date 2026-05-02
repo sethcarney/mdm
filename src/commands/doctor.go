@@ -18,7 +18,19 @@ import (
 const (
 	fileSizeWarnBytes  = 20 * 1024  // 20 KB — may strain context windows
 	fileSizeErrorBytes = 100 * 1024 // 100 KB — likely too large
+
+	// Maximum filesystem entries walked before the project-wide markdown
+	// scan gives up, to avoid hangs on very large repositories.
+	markdownWalkLimit = 10_000
 )
+
+// Directories always skipped by name during the project-wide markdown walk.
+var markdownSkipDirNames = map[string]bool{
+	".git": true, "node_modules": true, "vendor": true,
+	"dist": true, "build": true, ".next": true, ".nuxt": true,
+	"__pycache__": true, ".cache": true, "target": true,
+	"coverage": true, ".nyc_output": true, ".venv": true, "venv": true,
+}
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -53,8 +65,9 @@ Checks performed:
   • Missing skill directories or SKILL.md files
   • Broken symlinks in agent skill directories
   • Skills modified since install (hash mismatch)
-  • Markdown files large enough to strain agent context windows
-  • Oversized project instruction files (CLAUDE.md, AGENTS.md, etc.)
+  • Markdown files inside skill directories that are too large
+  • Oversized agent instruction files (CLAUDE.md, AGENTS.md, .cursorrules, etc.)
+  • All other .md files in the project that may strain agent context windows
 
 %sExamples:%s
   mdm skills doctor
@@ -97,6 +110,11 @@ func runDoctor(opts DoctorOptions) {
 		}
 	}
 
+	// Directories and files already covered by skill/instruction checks; the
+	// project-wide markdown walk skips these to avoid double-reporting.
+	skipDirs := map[string]bool{}
+	skipFiles := map[string]bool{}
+
 	if checkProject {
 		localLock := lock.ReadLocalLock(cwd)
 		canonicalBase := getCanonicalSkillsDir(false, cwd)
@@ -109,15 +127,30 @@ func runDoctor(opts DoctorOptions) {
 			diagnoseSkill(&r, "", false, cwd)
 			results = append(results, r)
 		}
+
+		// All agent skill directories
+		skipDirs[filepath.Clean(canonicalBase)] = true
+		for _, agentCfg := range agent.AllAgents {
+			if agentCfg == nil {
+				continue
+			}
+			skipDirs[filepath.Clean(filepath.Join(cwd, agentCfg.SkillsDir))] = true
+			if agentCfg.InstructionsFile != "" {
+				skipFiles[filepath.Clean(filepath.Join(cwd, agentCfg.InstructionsFile))] = true
+			}
+		}
 	}
 
-	// Instruction-file check is project-level only; skip if --global
 	var instrIssues []doctorIssue
+	var mdIssues []doctorIssue
+	var mdTruncated bool
+
 	if checkProject {
 		instrIssues = checkInstructionFiles(cwd)
+		mdIssues, mdTruncated = checkProjectMarkdown(cwd, skipDirs, skipFiles)
 	}
 
-	if len(results) == 0 && len(instrIssues) == 0 {
+	if len(results) == 0 && len(instrIssues) == 0 && len(mdIssues) == 0 {
 		fmt.Printf("%sNo skills found.%s\n", ansiDim, ansiReset)
 		return
 	}
@@ -129,7 +162,7 @@ func runDoctor(opts DoctorOptions) {
 		return results[i].Name < results[j].Name
 	})
 
-	printDoctorResults(results, instrIssues, cwd)
+	printDoctorResults(results, instrIssues, mdIssues, mdTruncated, cwd)
 }
 
 // ── Checks ─────────────────────────────────────────────────────────────────────
@@ -254,7 +287,8 @@ func checkLargeMarkdown(r *doctorResult) {
 }
 
 // checkInstructionFiles scans the project root for known agent instruction
-// files (CLAUDE.md, AGENTS.md, etc.) and flags oversized ones.
+// files (CLAUDE.md, AGENTS.md, .cursorrules, .github/copilot-instructions.md,
+// etc.) and flags oversized ones.
 func checkInstructionFiles(cwd string) []doctorIssue {
 	seen := map[string]bool{}
 	var issues []doctorIssue
@@ -295,9 +329,69 @@ func checkInstructionFiles(cwd string) []doctorIssue {
 	return issues
 }
 
+// checkProjectMarkdown walks the project tree and flags .md files that are
+// large enough to strain agent context windows. It skips directories and files
+// already covered by the skill and instruction-file checks, as well as common
+// build/dependency directories. The walk stops after markdownWalkLimit
+// filesystem entries to prevent hangs on very large repositories.
+func checkProjectMarkdown(cwd string, skipDirs map[string]bool, skipFiles map[string]bool) (issues []doctorIssue, truncated bool) {
+	walked := 0
+
+	_ = filepath.WalkDir(cwd, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if walked >= markdownWalkLimit {
+			truncated = true
+			return fs.SkipAll
+		}
+		walked++
+
+		if d.IsDir() {
+			if markdownSkipDirNames[d.Name()] || skipDirs[filepath.Clean(path)] {
+				return fs.SkipDir
+			}
+			return nil
+		}
+
+		if skipFiles[filepath.Clean(path)] {
+			return nil
+		}
+		if !strings.HasSuffix(strings.ToLower(d.Name()), ".md") {
+			return nil
+		}
+
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		size := info.Size()
+		rel, _ := filepath.Rel(cwd, path)
+
+		switch {
+		case size >= fileSizeErrorBytes:
+			issues = append(issues, doctorIssue{
+				Level:   "error",
+				Message: fmt.Sprintf("%s is %s — likely too large for agent context windows", rel, formatFileSize(size)),
+			})
+		case size >= fileSizeWarnBytes:
+			issues = append(issues, doctorIssue{
+				Level:   "warn",
+				Message: fmt.Sprintf("%s is %s — may strain agent context windows", rel, formatFileSize(size)),
+			})
+		}
+		return nil
+	})
+
+	sort.Slice(issues, func(i, j int) bool {
+		return issues[i].Message < issues[j].Message
+	})
+	return issues, truncated
+}
+
 // ── Output ─────────────────────────────────────────────────────────────────────
 
-func printDoctorResults(results []doctorResult, instrIssues []doctorIssue, cwd string) {
+func printDoctorResults(results []doctorResult, instrIssues, mdIssues []doctorIssue, mdTruncated bool, cwd string) {
 	fmt.Println()
 
 	byScope := map[string][]doctorResult{}
@@ -345,7 +439,7 @@ func printDoctorResults(results []doctorResult, instrIssues []doctorIssue, cwd s
 
 	// Instruction files section
 	if len(instrIssues) > 0 {
-		fmt.Printf("%sProject files:%s\n\n", ansiText, ansiReset)
+		fmt.Printf("%sInstruction files:%s\n\n", ansiText, ansiReset)
 		for _, issue := range instrIssues {
 			icon, color := doctorIssueIcon(issue.Level)
 			fmt.Printf("  %s%s%s %s%s%s\n", color, icon, ansiReset, ansiDim, issue.Message, ansiReset)
@@ -354,6 +448,25 @@ func printDoctorResults(results []doctorResult, instrIssues []doctorIssue, cwd s
 			} else {
 				totalWarnings++
 			}
+		}
+		fmt.Println()
+	}
+
+	// General project markdown section
+	if len(mdIssues) > 0 || mdTruncated {
+		fmt.Printf("%sProject markdown:%s\n\n", ansiText, ansiReset)
+		for _, issue := range mdIssues {
+			icon, color := doctorIssueIcon(issue.Level)
+			fmt.Printf("  %s%s%s %s%s%s\n", color, icon, ansiReset, ansiDim, issue.Message, ansiReset)
+			if issue.Level == "error" {
+				totalErrors++
+			} else {
+				totalWarnings++
+			}
+		}
+		if mdTruncated {
+			fmt.Printf("  %s▲%s %sscan stopped after %d entries — run from a subdirectory to check further%s\n",
+				ansiYellow, ansiReset, ansiDim, markdownWalkLimit, ansiReset)
 		}
 		fmt.Println()
 	}
