@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
+	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
 
 	"github.com/sethcarney/mdm/internal/agent"
@@ -120,6 +122,58 @@ func runListWithOpts(globalFlag *bool, agentFilter []string, jsonMode bool) {
 			}
 			shortPath := shortenPath(s.Path, cwd)
 			fmt.Printf("    %s%s%s\n", ansiDim, shortPath, ansiReset)
+		}
+		fmt.Println()
+	}
+
+	if !jsonMode && term.IsTerminal(os.Stdin.Fd()) {
+		fmt.Printf("%s[s]%s show skill details  %s[any key]%s exit  ", ansiText, ansiReset, ansiDim, ansiReset)
+		if pressedS() {
+			fmt.Println()
+			printSkillSummaries(skills, cwd)
+		} else {
+			fmt.Println()
+		}
+	}
+}
+
+func printSkillSummaries(skills []*InstalledSkill, cwd string) {
+	fmt.Printf("\n%sSkill details:%s\n\n", ansiBold, ansiReset)
+	for _, s := range skills {
+		fmt.Printf("  %s%s%s\n", ansiBold, s.Name, ansiReset)
+		if s.Description != "" {
+			fmt.Printf("  %s%s%s\n", ansiDim, s.Description, ansiReset)
+		}
+		shortPath := shortenPath(s.Path, cwd)
+		fmt.Printf("  %spath: %s%s\n", ansiDim, shortPath, ansiReset)
+		// Read SKILL.md for a preview
+		skillMd := filepath.Join(s.Path, "SKILL.md")
+		data, err := os.ReadFile(skillMd)
+		if err == nil {
+			lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+			// Skip frontmatter block
+			start := 0
+			if len(lines) > 0 && lines[0] == "---" {
+				for i := 1; i < len(lines); i++ {
+					if lines[i] == "---" {
+						start = i + 1
+						break
+					}
+				}
+			}
+			// Print up to 8 non-empty lines of content
+			printed := 0
+			for _, line := range lines[start:] {
+				if printed >= 8 {
+					fmt.Printf("  %s...%s\n", ansiDim, ansiReset)
+					break
+				}
+				if strings.TrimSpace(line) == "" {
+					continue
+				}
+				fmt.Printf("  %s%s%s\n", ansiDim, line, ansiReset)
+				printed++
+			}
 		}
 		fmt.Println()
 	}

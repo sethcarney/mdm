@@ -21,16 +21,17 @@ import (
 // ─── Options ───────────────────────────────────────────────────────────────────
 
 type AddOptions struct {
-	Global     bool
-	Project    bool
-	Agents     []string // empty = prompt
-	Skills     []string // empty = prompt; "*" = all
-	ListOnly   bool
-	Yes        bool // skip prompts
-	Copy       bool
-	All        bool // --all: skill '*', agent '*', -y
-	FullDepth  bool
-	SkipAudit  bool
+	Global            bool
+	Project           bool
+	Agents            []string // empty = prompt
+	Skills            []string // empty = prompt; "*" = all
+	PreselectedSkills []string // pre-ticked in the skill picker, but others still shown
+	ListOnly          bool
+	Yes               bool // skip prompts
+	Copy              bool
+	All               bool // --all: skill '*', agent '*', -y
+	FullDepth         bool
+	SkipAudit         bool
 }
 
 func buildAddCmd(ver string) *cobra.Command {
@@ -156,20 +157,37 @@ func runAddWellKnown(parsed source.ParsedSource, opts AddOptions, cwd string) {
 		return
 	}
 
-	// Skill selection
+	// Skill selection (well-known path)
 	var selectedSkills []*registry.WellKnownSkill
 	if len(opts.Skills) > 0 && opts.Skills[0] == "*" {
 		selectedSkills = filtered
 	} else if len(filtered) == 1 || opts.Yes {
 		selectedSkills = filtered
 	} else {
+		// Move preselected to front
+		var front, rest []*registry.WellKnownSkill
+		for _, s := range filtered {
+			pre := false
+			for _, p := range opts.PreselectedSkills {
+				if strings.EqualFold(s.Name, p) || strings.EqualFold(sanitizeName(s.Name), sanitizeName(p)) {
+					pre = true
+					break
+				}
+			}
+			if pre {
+				front = append(front, s)
+			} else {
+				rest = append(rest, s)
+			}
+		}
+		filtered = append(front, rest...)
+		initSel := make([]int, len(front))
+		for i := range front {
+			initSel[i] = i
+		}
 		options := make([]ui.UIOption, len(filtered))
 		for i, s := range filtered {
 			options[i] = ui.UIOption{Label: s.Name, Value: s.InstallName, Hint: s.Description}
-		}
-		var initSel []int
-		for i := range filtered {
-			initSel = append(initSel, i)
 		}
 		indices, ok := ui.UiMultiselect("Which skills would you like to install?", options, true, initSel, nil)
 		if !ok {
@@ -400,7 +418,7 @@ func runAddBlob(result *blob.BlobInstallResult, parsed source.ParsedSource, opts
 		return
 	}
 
-	// Skill selection
+	// Skill selection (blob/GitHub path)
 	var selectedBlob []*blob.BlobSkill
 	if (len(opts.Skills) > 0 && opts.Skills[0] == "*") || opts.Yes || len(skills) == 1 {
 		selectedBlob = skills
@@ -410,8 +428,13 @@ func runAddBlob(result *blob.BlobInstallResult, parsed source.ParsedSource, opts
 			options[i] = ui.UIOption{Label: s.Name, Value: blob.ToSkillSlug(s.Name), Hint: s.Description}
 		}
 		var initSel []int
-		for i := range skills {
-			initSel = append(initSel, i)
+		for _, pre := range opts.PreselectedSkills {
+			for i, s := range skills {
+				if strings.EqualFold(s.Name, pre) || strings.EqualFold(blob.ToSkillSlug(s.Name), sanitizeName(pre)) {
+					initSel = append(initSel, i)
+					break
+				}
+			}
 		}
 		indices, ok := ui.UiMultiselect("Which skills would you like to install?", options, true, initSel, nil)
 		if !ok {
@@ -606,13 +629,10 @@ func selectSkills(skills []*skill.Skill, opts AddOptions) []*skill.Skill {
 		return filtered
 	}
 
+	skills, initSel := reorderSkillsPreselectedFirst(skills, opts.PreselectedSkills)
 	options := make([]ui.UIOption, len(skills))
 	for i, s := range skills {
 		options[i] = ui.UIOption{Label: s.Name, Value: sanitizeName(s.Name), Hint: s.Description}
-	}
-	var initSel []int
-	for i := range skills {
-		initSel = append(initSel, i)
 	}
 	indices, ok := ui.UiMultiselect("Which skills would you like to install?", options, true, initSel, nil)
 	if !ok {
@@ -833,6 +853,37 @@ func promptAgents(opts AddOptions, global bool, cwd string) ([]string, bool) {
 }
 
 // ─── Post-install helpers ──────────────────────────────────────────────────────
+
+// reorderSkillsPreselectedFirst moves any skills matching preselected names to
+// the front of the slice and returns the reordered slice plus the initSel
+// indices (always 0..len(preselected)-1 after reordering).
+func reorderSkillsPreselectedFirst(skills []*skill.Skill, preselected []string) ([]*skill.Skill, []int) {
+	if len(preselected) == 0 {
+		return skills, nil
+	}
+	isPreselected := func(s *skill.Skill) bool {
+		for _, pre := range preselected {
+			if strings.EqualFold(s.Name, pre) || strings.EqualFold(sanitizeName(s.Name), sanitizeName(pre)) {
+				return true
+			}
+		}
+		return false
+	}
+	var front, rest []*skill.Skill
+	for _, s := range skills {
+		if isPreselected(s) {
+			front = append(front, s)
+		} else {
+			rest = append(rest, s)
+		}
+	}
+	reordered := append(front, rest...)
+	initSel := make([]int, len(front))
+	for i := range front {
+		initSel[i] = i
+	}
+	return reordered, initSel
+}
 
 func printInstallSummary(count int, global bool, agents []string, mode InstallMode) {
 	scope := "project"
