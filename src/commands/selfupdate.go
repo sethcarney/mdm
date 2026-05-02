@@ -158,7 +158,7 @@ func runSelfUpdate(currentVersion string) {
 	dlBody, _ := io.ReadAll(dlResp.Body)
 	tmpPath := filepath.Join(os.TempDir(), fmt.Sprintf(appName+"-update-%d", time.Now().UnixNano()))
 
-	if err := os.WriteFile(tmpPath, dlBody, 0755); err != nil {
+	if err := os.WriteFile(tmpPath, dlBody, 0700); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to write temp file: %v\n", err)
 		os.Exit(1)
 	}
@@ -184,8 +184,10 @@ func runSelfUpdate(currentVersion string) {
 			ansiDim, ansiText, appName, ansiDim, ansiReset, ansiReset)
 	} else {
 		batchPath := filepath.Join(os.TempDir(), appName+"-update.bat")
+		escapedTmp := strings.ReplaceAll(tmpPath, "%", "%%")
+		escapedExec := strings.ReplaceAll(execPath, "%", "%%")
 		batchContent := fmt.Sprintf("@echo off\r\ntimeout /t 1 /nobreak > NUL\r\nmove /y \"%s\" \"%s\" > NUL\r\ndel \"%%~f0\"\r\n",
-			tmpPath, execPath)
+			escapedTmp, escapedExec)
 		if err := os.WriteFile(batchPath, []byte(batchContent), 0644); err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to write update script: %v\n", err)
 			os.Exit(1)

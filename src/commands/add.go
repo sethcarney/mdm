@@ -254,7 +254,7 @@ func runAddWellKnown(parsed source.ParsedSource, opts AddOptions, cwd string) {
 
 func runAddLocal(parsed source.ParsedSource, opts AddOptions, cwd string) {
 	localPath := parsed.LocalPath
-	if !pathExists(localPath) {
+	if _, err := os.Stat(localPath); err != nil {
 		fmt.Fprintf(os.Stderr, "%sError:%s Path not found: %s\n", ansiText, ansiReset, localPath)
 		os.Exit(1)
 	}
@@ -334,7 +334,7 @@ func runAddGitOrHub(parsed source.ParsedSource, opts AddOptions, cwd, sourceInpu
 	searchRoot := tmpDir
 	if parsed.Subpath != "" {
 		searchRoot = filepath.Join(tmpDir, parsed.Subpath)
-		if !pathExists(searchRoot) {
+		if _, err := os.Stat(searchRoot); err != nil {
 			fmt.Fprintf(os.Stderr, "%sSubpath not found:%s %s\n", ansiText, ansiReset, parsed.Subpath)
 			os.Exit(1)
 		}

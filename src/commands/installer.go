@@ -435,11 +435,6 @@ func shortenPath(fullPath, cwd string) string {
 	return fullPath
 }
 
-func pathExists(p string) bool {
-	_, err := os.Stat(p)
-	return err == nil
-}
-
 func listInstalledSkills(global *bool, agentFilter []string) ([]*InstalledSkill, error) {
 	cwd, _ := os.Getwd()
 	skillsMap := map[string]*InstalledSkill{}
@@ -532,7 +527,7 @@ func listInstalledSkills(global *bool, agentFilter []string) ([]*InstalledSkill,
 					break
 				}
 			}
-			if !alreadyAdded && pathExists(agentDir) {
+			if _, statErr := os.Stat(agentDir); !alreadyAdded && statErr == nil {
 				scopes = append(scopes, scopeEntry{isGlobal: isGlobal, path: agentDir, agentType: agentName})
 			}
 		}

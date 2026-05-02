@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -262,7 +263,7 @@ func TryBlobInstall(ownerRepo string, opts struct {
 		slug := ToSkillSlug(name)
 		dlURL := fmt.Sprintf("%s/api/download?owner=%s&repo=%s&slug=%s&branch=%s", downloadBaseURL, parts[0], parts[1], slug, branch)
 		if opts.Subpath != "" {
-			dlURL += "&subpath=" + opts.Subpath
+			dlURL += "&subpath=" + url.QueryEscape(opts.Subpath)
 		}
 		dlBody, dlStatus, dlErr := HttpGet(ctx, dlURL, nil)
 		if dlErr != nil || dlStatus != 200 {

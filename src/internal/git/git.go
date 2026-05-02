@@ -75,8 +75,15 @@ func CleanupTempDir(dir string) error {
 	if dir == "" {
 		return nil
 	}
-	absDir, _ := filepath.Abs(dir)
-	absTmp, _ := filepath.Abs(os.TempDir())
+	resolveReal := func(p string) string {
+		if real, err := filepath.EvalSymlinks(p); err == nil {
+			return real
+		}
+		abs, _ := filepath.Abs(p)
+		return abs
+	}
+	absDir := resolveReal(dir)
+	absTmp := resolveReal(os.TempDir())
 	if absDir != absTmp && !strings.HasPrefix(absDir, absTmp+string(filepath.Separator)) {
 		return fmt.Errorf("attempted to clean up directory outside of temp directory")
 	}

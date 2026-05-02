@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -118,12 +119,12 @@ func fetchFindResults(query string) ([]FindSkillResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	url := findAPIURL
+	fetchURL := findAPIURL
 	if query != "" {
-		url += "?q=" + query
+		fetchURL += "?q=" + url.QueryEscape(query)
 	}
 
-	body, status, err := registry.HttpGetText(ctx, url)
+	body, status, err := registry.HttpGetText(ctx, fetchURL)
 	if err != nil || status != 200 {
 		return nil, fmt.Errorf("search failed: status %d", status)
 	}
@@ -134,8 +135,5 @@ func fetchFindResults(query string) ([]FindSkillResult, error) {
 	if err := json.Unmarshal([]byte(body), &wrapped); err != nil {
 		return nil, err
 	}
-	results := wrapped.Skills
-
-	_ = os.Stderr
-	return results, nil
+	return wrapped.Skills, nil
 }

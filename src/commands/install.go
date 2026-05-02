@@ -66,18 +66,10 @@ func runInstallFromLock(yes bool) {
 	for _, group := range sourceMap {
 		fmt.Printf("%sInstalling from %s...%s\n", ansiDim, group.source, ansiReset)
 
-		skillArgs := group.skills
-		if len(skillArgs) == 1 {
-			skillArgs = []string{skillArgs[0]}
-		} else {
-			// Pass skills as filter
-			skillArgs = group.skills
-		}
-
 		opts := AddOptions{
 			Project: true,
-			Yes:     yes || true,
-			Skills:  skillArgs,
+			Yes:     yes,
+			Skills:  group.skills,
 		}
 
 		src := group.source

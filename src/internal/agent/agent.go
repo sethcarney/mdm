@@ -458,19 +458,6 @@ func init() {
 	}
 }
 
-func GetAgentNames() []string {
-	names := make([]string, 0, len(AllAgents))
-	for k := range AllAgents {
-		names = append(names, k)
-	}
-	return names
-}
-
-func IsValidAgent(name string) bool {
-	_, ok := AllAgents[name]
-	return ok
-}
-
 func DetectInstalledAgents() []string {
 	var installed []string
 	for name, a := range AllAgents {

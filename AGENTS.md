@@ -36,7 +36,7 @@ src/
 │   ├── installer.go     # Core install logic: clone → discover → copy → lock
 │   └── ...              # remove, list, find, update, sync, selfupdate, init
 └── internal/
-    ├── agent/           # AllAgents registry (40+ agents); skill dir paths; detection
+    ├── agent/           # AllAgents registry (45+ agents); skill dir paths; detection
     ├── skill/           # Skill discovery (SKILL.md parsing); frontmatter; filtering
     ├── source/          # URL/path parsing into ParsedSource (GitHub, GitLab, local, well-known)
     ├── registry/        # Well-known registry fetching (.well-known/agent-skills standard)
