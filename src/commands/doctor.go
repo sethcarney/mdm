@@ -150,11 +150,6 @@ func runDoctor(opts DoctorOptions) {
 		mdIssues, mdTruncated = checkProjectMarkdown(cwd, skipDirs, skipFiles)
 	}
 
-	if len(results) == 0 && len(instrIssues) == 0 && len(mdIssues) == 0 {
-		fmt.Printf("%sNo skills found.%s\n", ansiDim, ansiReset)
-		return
-	}
-
 	sort.Slice(results, func(i, j int) bool {
 		if results[i].Scope != results[j].Scope {
 			return results[i].Scope < results[j].Scope
@@ -162,7 +157,7 @@ func runDoctor(opts DoctorOptions) {
 		return results[i].Name < results[j].Name
 	})
 
-	printDoctorResults(results, instrIssues, mdIssues, mdTruncated, cwd)
+	printDoctorResults(results, instrIssues, mdIssues, mdTruncated, checkProject, cwd)
 }
 
 // ── Checks ─────────────────────────────────────────────────────────────────────
@@ -391,7 +386,7 @@ func checkProjectMarkdown(cwd string, skipDirs map[string]bool, skipFiles map[st
 
 // ── Output ─────────────────────────────────────────────────────────────────────
 
-func printDoctorResults(results []doctorResult, instrIssues, mdIssues []doctorIssue, mdTruncated bool, cwd string) {
+func printDoctorResults(results []doctorResult, instrIssues, mdIssues []doctorIssue, mdTruncated, scannedProject bool, cwd string) {
 	fmt.Println()
 
 	byScope := map[string][]doctorResult{}
@@ -473,7 +468,14 @@ func printDoctorResults(results []doctorResult, instrIssues, mdIssues []doctorIs
 
 	// Summary
 	total := len(results)
-	fmt.Printf("%sDoctor complete:%s %d skill(s) checked", ansiText, ansiReset, total)
+	if total > 0 {
+		fmt.Printf("%sDoctor complete:%s %d skill(s) checked", ansiText, ansiReset, total)
+	} else {
+		fmt.Printf("%sDoctor complete:%s no skills installed", ansiText, ansiReset)
+	}
+	if scannedProject {
+		fmt.Printf(", project markdown scanned")
+	}
 	if totalErrors > 0 {
 		fmt.Printf(", %s%d error(s)%s", ansiRed, totalErrors, ansiReset)
 	}
