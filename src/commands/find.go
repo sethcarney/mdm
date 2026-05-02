@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -11,7 +12,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/sethcarney/mdm/internal/registry"
-	"github.com/sethcarney/mdm/internal/source"
 	"github.com/sethcarney/mdm/internal/ui"
 )
 
@@ -54,8 +54,15 @@ func runFind(args []string) {
 	}
 
 	if query == "" {
-		fmt.Printf("%sUsage:%s mdm skills find %s<query>%s\n", ansiBold, ansiReset, ansiDim, ansiReset)
-		return
+		fmt.Printf("%sSearch skills:%s ", ansiBold, ansiReset)
+		scanner := bufio.NewScanner(os.Stdin)
+		if !scanner.Scan() {
+			return
+		}
+		query = strings.TrimSpace(scanner.Text())
+		if query == "" {
+			return
+		}
 	}
 
 	spin := ui.NewSpinner("Searching skills...")
@@ -102,16 +109,8 @@ func runFind(args []string) {
 			continue
 		}
 		fmt.Printf("%sAdding %s%s%s...\n", ansiDim, ansiText, r.Name, ansiReset)
-		parsed := source.ParseSource(src)
-		skillFilter := ""
-		if r.Name != "" {
-			skillFilter = r.Name
-		}
-		_ = skillFilter
-
-		opts := AddOptions{Yes: false}
+		opts := AddOptions{Yes: false, PreselectedSkills: []string{r.Name}}
 		runAdd(src, opts)
-		_ = parsed
 	}
 }
 

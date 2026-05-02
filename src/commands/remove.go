@@ -92,6 +92,15 @@ func runRemove(positional []string, opts RemoveOptions) {
 	scopeGlobal := &global
 	installed, err := listInstalledSkills(scopeGlobal, opts.Agents)
 	if err != nil || len(installed) == 0 {
+		// Check for orphaned lock entries (in lock but missing from disk)
+		if global {
+			cleaned := cleanOrphanedLockEntries(cwd)
+			if cleaned > 0 {
+				fmt.Printf("%sCleaned up %d orphaned lock entr%s with no files on disk.%s\n",
+					ansiDim, cleaned, map[bool]string{true: "ies", false: "y"}[cleaned != 1], ansiReset)
+				return
+			}
+		}
 		fmt.Printf("%sNo skills installed.%s\n", ansiDim, ansiReset)
 		return
 	}
@@ -201,4 +210,26 @@ func runRemove(positional []string, opts RemoveOptions) {
 	}
 
 	fmt.Println()
+}
+
+// cleanOrphanedLockEntries removes global lock entries whose skill files no
+// longer exist on disk. Returns the number of entries removed.
+func cleanOrphanedLockEntries(cwd string) int {
+	globalLock := lock.ReadSkillLock()
+	if len(globalLock.Skills) == 0 {
+		return 0
+	}
+	canonicalBase := getCanonicalSkillsDir(true, cwd)
+	var removed []string
+	for name := range globalLock.Skills {
+		skillDir := filepath.Join(canonicalBase, sanitizeName(name))
+		skillMd := filepath.Join(skillDir, "SKILL.md")
+		if _, err := os.Stat(skillMd); os.IsNotExist(err) {
+			removed = append(removed, name)
+		}
+	}
+	for _, name := range removed {
+		_ = lock.RemoveSkillFromLock(sanitizeName(name))
+	}
+	return len(removed)
 }
