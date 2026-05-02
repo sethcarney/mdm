@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -34,6 +35,12 @@ var (
 	stylePrompt = lipgloss.NewStyle().Foreground(lipgloss.Color("159"))
 	styleDimmed = lipgloss.NewStyle().Foreground(lipgloss.Color("243"))
 )
+
+// minVisible is the minimum number of list rows shown before scrolling kicks in.
+const minVisible = 6
+
+// pageSize caps the number of visible list rows so menus stay compact.
+const pageSize = 8
 
 // ─── Log helpers ───────────────────────────────────────────────────────────────
 
@@ -150,27 +157,61 @@ type UIOption struct {
 // ─── selectModel ───────────────────────────────────────────────────────────────
 
 type selectModel struct {
-	message   string
-	options   []UIOption
-	cursor    int
-	choice    int
-	cancelled bool
-	done      bool
+	message    string
+	options    []UIOption
+	cursor     int
+	offset     int // scroll offset
+	height     int // visible terminal rows available for the list
+	choice     int
+	cancelled  bool
+	done       bool
+}
+
+func (m *selectModel) visibleHeight() int {
+	h := m.height - 2 // reserve header + hint rows
+	if h < minVisible {
+		h = minVisible
+	}
+	if h > pageSize {
+		h = pageSize
+	}
+	return h
+}
+
+func (m *selectModel) clampOffset() {
+	vis := m.visibleHeight()
+	if m.cursor < m.offset {
+		m.offset = m.cursor
+	}
+	if m.cursor >= m.offset+vis {
+		m.offset = m.cursor - vis + 1
+	}
+	max := len(m.options) - vis
+	if max < 0 {
+		max = 0
+	}
+	if m.offset > max {
+		m.offset = max
+	}
 }
 
 func (m *selectModel) Init() tea.Cmd { return nil }
 
 func (m *selectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.height = msg.Height
 	case tea.KeyMsg:
 		switch msg.Type {
 		case tea.KeyUp:
 			if m.cursor > 0 {
 				m.cursor--
+				m.clampOffset()
 			}
 		case tea.KeyDown:
 			if m.cursor < len(m.options)-1 {
 				m.cursor++
+				m.clampOffset()
 			}
 		case tea.KeyEnter:
 			m.choice = m.cursor
@@ -194,7 +235,18 @@ func (m *selectModel) View() string {
 	}
 	var sb strings.Builder
 	sb.WriteString(stylePrompt.Render(m.message) + "\n")
-	for i, opt := range m.options {
+
+	vis := m.visibleHeight()
+	end := m.offset + vis
+	if end > len(m.options) {
+		end = len(m.options)
+	}
+
+	if m.offset > 0 {
+		sb.WriteString("  " + styleDimmed.Render("↑ more") + "\n")
+	}
+	for i := m.offset; i < end; i++ {
+		opt := m.options[i]
 		if i == m.cursor {
 			sb.WriteString("  " + stylePrompt.Render("❯") + " " + opt.Label)
 		} else {
@@ -205,6 +257,9 @@ func (m *selectModel) View() string {
 		}
 		sb.WriteString("\n")
 	}
+	if end < len(m.options) {
+		sb.WriteString("  " + styleDimmed.Render("↓ more") + "\n")
+	}
 	return sb.String()
 }
 
@@ -214,7 +269,9 @@ func UiSelect(message string, options []UIOption) (int, bool) {
 	if len(options) == 0 {
 		return -1, false
 	}
-	result, err := tea.NewProgram(&selectModel{message: message, options: options}).Run()
+	result, err := tea.NewProgram(&selectModel{message: message, options: options},
+		tea.WithAltScreen(),
+	).Run()
 	if err != nil {
 		return -1, false
 	}
@@ -241,25 +298,60 @@ type multiModel struct {
 	selected  []bool
 	locked    map[int]bool
 	cursor    int
+	offset    int
+	height    int
 	result    []int
 	cancelled bool
 	done      bool
 	required  bool
 }
 
+func (m *multiModel) visibleHeight() int {
+	// header + hint line + footer hint
+	h := m.height - 3
+	if h < minVisible {
+		h = minVisible
+	}
+	if h > pageSize {
+		h = pageSize
+	}
+	return h
+}
+
+func (m *multiModel) clampOffset() {
+	vis := m.visibleHeight()
+	if m.cursor < m.offset {
+		m.offset = m.cursor
+	}
+	if m.cursor >= m.offset+vis {
+		m.offset = m.cursor - vis + 1
+	}
+	max := len(m.options) - vis
+	if max < 0 {
+		max = 0
+	}
+	if m.offset > max {
+		m.offset = max
+	}
+}
+
 func (m *multiModel) Init() tea.Cmd { return nil }
 
 func (m *multiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.height = msg.Height
 	case tea.KeyMsg:
 		switch msg.Type {
 		case tea.KeyUp:
 			if m.cursor > 0 {
 				m.cursor--
+				m.clampOffset()
 			}
 		case tea.KeyDown:
 			if m.cursor < len(m.options)-1 {
 				m.cursor++
+				m.clampOffset()
 			}
 		case tea.KeySpace:
 			if !m.locked[m.cursor] {
@@ -300,7 +392,18 @@ func (m *multiModel) View() string {
 	}
 	var sb strings.Builder
 	sb.WriteString(stylePrompt.Render(m.message) + "\n")
-	for i, opt := range m.options {
+
+	vis := m.visibleHeight()
+	end := m.offset + vis
+	if end > len(m.options) {
+		end = len(m.options)
+	}
+
+	if m.offset > 0 {
+		sb.WriteString("  " + styleDimmed.Render("↑ more") + "\n")
+	}
+	for i := m.offset; i < end; i++ {
+		opt := m.options[i]
 		isLocked := m.locked[i]
 		checkbox := "○"
 		if m.selected[i] {
@@ -319,7 +422,10 @@ func (m *multiModel) View() string {
 		}
 		sb.WriteString("\n")
 	}
-	sb.WriteString(styleDimmed.Render("space to toggle, enter to confirm") + "\n")
+	if end < len(m.options) {
+		sb.WriteString("  " + styleDimmed.Render("↓ more") + "\n")
+	}
+	sb.WriteString(styleDimmed.Render("space to toggle · enter to confirm") + "\n")
 	return sb.String()
 }
 
@@ -348,7 +454,7 @@ func UiMultiselect(message string, options []UIOption, required bool, initialSel
 		selected: selected,
 		locked:   lockedSet,
 		required: required,
-	}).Run()
+	}, tea.WithAltScreen()).Run()
 	if err != nil {
 		return nil, false
 	}
@@ -365,13 +471,64 @@ type searchModel struct {
 	message   string
 	options   []UIOption
 	locked    []UIOption
-	query     string
+	input     textinput.Model
 	selected  map[int]bool
 	filtered  []int
 	cursor    int
+	offset    int
+	height    int
 	result    []int
 	cancelled bool
 	done      bool
+}
+
+func newSearchModel(message string, options []UIOption, locked []UIOption, selected map[int]bool) *searchModel {
+	ti := textinput.New()
+	ti.Placeholder = "filter..."
+	ti.Focus()
+	ti.PromptStyle = styleDimmed
+	ti.TextStyle = stylePrompt
+	return &searchModel{
+		message:  message,
+		options:  options,
+		locked:   locked,
+		input:    ti,
+		selected: selected,
+		filtered: filterOptions(options, ""),
+	}
+}
+
+func (m *searchModel) visibleHeight() int {
+	// header + search box + locked section header + locked items + footer hint
+	overhead := 3 + len(m.locked)
+	if len(m.locked) > 0 {
+		overhead++ // section divider line
+	}
+	h := m.height - overhead
+	if h < minVisible {
+		h = minVisible
+	}
+	if h > pageSize {
+		h = pageSize
+	}
+	return h
+}
+
+func (m *searchModel) clampOffset() {
+	vis := m.visibleHeight()
+	if m.cursor < m.offset {
+		m.offset = m.cursor
+	}
+	if m.cursor >= m.offset+vis {
+		m.offset = m.cursor - vis + 1
+	}
+	max := len(m.filtered) - vis
+	if max < 0 {
+		max = 0
+	}
+	if m.offset > max {
+		m.offset = max
+	}
 }
 
 func filterOptions(options []UIOption, query string) []int {
@@ -385,33 +542,35 @@ func filterOptions(options []UIOption, query string) []int {
 	return indices
 }
 
-func (m *searchModel) Init() tea.Cmd { return nil }
+func (m *searchModel) Init() tea.Cmd {
+	return textinput.Blink
+}
 
 func (m *searchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.height = msg.Height
+
 	case tea.KeyMsg:
 		switch msg.Type {
 		case tea.KeyUp:
 			if m.cursor > 0 {
 				m.cursor--
+				m.clampOffset()
 			}
+			return m, nil
 		case tea.KeyDown:
 			if len(m.filtered) > 0 && m.cursor < len(m.filtered)-1 {
 				m.cursor++
+				m.clampOffset()
 			}
+			return m, nil
 		case tea.KeySpace:
 			if len(m.filtered) > 0 && m.cursor < len(m.filtered) {
 				fi := m.filtered[m.cursor]
 				m.selected[fi] = !m.selected[fi]
 			}
-		case tea.KeyBackspace, tea.KeyDelete:
-			if len(m.query) > 0 {
-				m.query = m.query[:len(m.query)-1]
-				m.filtered = filterOptions(m.options, m.query)
-				if m.cursor >= len(m.filtered) && len(m.filtered) > 0 {
-					m.cursor = len(m.filtered) - 1
-				}
-			}
+			return m, nil
 		case tea.KeyEnter:
 			var result []int
 			for i, s := range m.selected {
@@ -426,15 +585,22 @@ func (m *searchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cancelled = true
 			m.done = true
 			return m, tea.Quit
-		case tea.KeyRunes:
-			m.query += string(msg.Runes)
-			m.filtered = filterOptions(m.options, m.query)
-			if m.cursor >= len(m.filtered) && len(m.filtered) > 0 {
-				m.cursor = len(m.filtered) - 1
-			}
 		}
 	}
-	return m, nil
+
+	// Let textinput handle the keystroke, then sync filtered list.
+	var cmd tea.Cmd
+	m.input, cmd = m.input.Update(msg)
+	newQuery := m.input.Value()
+	m.filtered = filterOptions(m.options, newQuery)
+	if m.cursor >= len(m.filtered) && len(m.filtered) > 0 {
+		m.cursor = len(m.filtered) - 1
+	}
+	if len(m.filtered) == 0 {
+		m.cursor = 0
+	}
+	m.clampOffset()
+	return m, cmd
 }
 
 func (m *searchModel) View() string {
@@ -451,9 +617,11 @@ func (m *searchModel) View() string {
 		}
 		return stylePrompt.Render(m.message) + "  " + styleDimmed.Render(strings.Join(labels, ", ")) + "\n"
 	}
+
 	var sb strings.Builder
 	sb.WriteString(stylePrompt.Render(m.message) + "\n")
-	sb.WriteString("  " + styleDimmed.Render("[") + m.query + styleDimmed.Render("]") + "\n")
+	sb.WriteString("  " + m.input.View() + "\n")
+
 	if len(m.locked) > 0 {
 		sb.WriteString("  " + styleDimmed.Render("── always included ──") + "\n")
 		for _, lo := range m.locked {
@@ -464,10 +632,21 @@ func (m *searchModel) View() string {
 			sb.WriteString("\n")
 		}
 	}
+
+	vis := m.visibleHeight()
+	end := m.offset + vis
+	if end > len(m.filtered) {
+		end = len(m.filtered)
+	}
+
 	if len(m.filtered) == 0 {
 		sb.WriteString("  " + styleDimmed.Render("no matches") + "\n")
 	} else {
-		for idx, fi := range m.filtered {
+		if m.offset > 0 {
+			sb.WriteString("  " + styleDimmed.Render("↑ more") + "\n")
+		}
+		for idx := m.offset; idx < end; idx++ {
+			fi := m.filtered[idx]
 			opt := m.options[fi]
 			checkbox := "○"
 			if m.selected[fi] {
@@ -483,8 +662,11 @@ func (m *searchModel) View() string {
 			}
 			sb.WriteString("\n")
 		}
+		if end < len(m.filtered) {
+			sb.WriteString("  " + styleDimmed.Render("↓ more") + "\n")
+		}
 	}
-	sb.WriteString(styleDimmed.Render("type to filter, space to toggle, enter to confirm") + "\n")
+	sb.WriteString(styleDimmed.Render("type to filter · space to toggle · enter to confirm") + "\n")
 	return sb.String()
 }
 
@@ -497,13 +679,10 @@ func UiSearchMultiselect(message string, options []UIOption, locked []UIOption, 
 			selected[i] = true
 		}
 	}
-	result, err := tea.NewProgram(&searchModel{
-		message:  message,
-		options:  options,
-		locked:   locked,
-		selected: selected,
-		filtered: filterOptions(options, ""),
-	}).Run()
+	result, err := tea.NewProgram(
+		newSearchModel(message, options, locked, selected),
+		tea.WithAltScreen(),
+	).Run()
 	if err != nil {
 		return nil, false
 	}
