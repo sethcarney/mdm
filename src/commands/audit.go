@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
 
+	"github.com/sethcarney/mdm/internal/blob"
 	"github.com/sethcarney/mdm/internal/lock"
 	"github.com/sethcarney/mdm/internal/registry"
 	"github.com/sethcarney/mdm/internal/source"
@@ -41,14 +42,15 @@ type skillsShAudit struct {
 // ── Result types ───────────────────────────────────────────
 
 type auditSkillResult struct {
-	Name       string          `json:"name"`
-	Scope      string          `json:"scope"`
-	SourceType string          `json:"sourceType"`
-	Source     string          `json:"source"`
-	UpdatedAt  string          `json:"updatedAt,omitempty"`
-	SyncStatus string          `json:"syncStatus"` // up-to-date / outdated / unknown / local / unchecked
-	Audits     []auditProvider `json:"audits,omitempty"`
-	SkillID    string          `json:"skillId,omitempty"`
+	Name             string          `json:"name"`
+	Scope            string          `json:"scope"`
+	SourceType       string          `json:"sourceType"`
+	Source           string          `json:"source"`
+	UpdatedAt        string          `json:"updatedAt,omitempty"`
+	SyncStatus       string          `json:"syncStatus"` // up-to-date / outdated / unknown / local / unchecked
+	Audits           []auditProvider `json:"audits,omitempty"`
+	SkillID          string          `json:"skillId,omitempty"`
+	RegistryError    bool            `json:"registryError,omitempty"` // true when lookup failed (network/server error)
 }
 
 type auditProvider struct {
@@ -173,7 +175,7 @@ func runAudit(skillFilter []string, opts AuditOptions) {
 			break
 		}
 	}
-	if hasSecurity && term.IsTerminal(os.Stdin.Fd()) {
+	if hasSecurity && term.IsTerminal(os.Stdout.Fd()) {
 		fmt.Printf("%s[s]%s show audit summaries  %s[any key]%s exit  ", ansiText, ansiReset, ansiDim, ansiReset)
 		if pressedS() {
 			fmt.Println()
@@ -199,7 +201,7 @@ func auditEntryFromGlobal(name string, entry lock.SkillLockEntry) auditSkillResu
 		parsed := source.ParseSource(entry.Source)
 		ownerRepo := source.GetOwnerRepo(parsed)
 		if ownerRepo != "" {
-			r.SkillID = ownerRepo + "/" + entry.PluginName
+			r.SkillID = ownerRepo + "/" + blob.ToSkillSlug(entry.PluginName)
 		}
 	}
 	return r
@@ -227,8 +229,8 @@ func enrichResult(r *auditSkillResult) {
 		return
 	}
 
-	// Sync status: only works for global skills that have a stored hash
-	if r.Scope == "global" {
+	// Sync status: only works for global GitHub skills that have a stored hash
+	if r.Scope == "global" && r.SourceType == string(source.SourceTypeGitHub) {
 		globalLock := lock.ReadSkillLock()
 		if e, ok := globalLock.Skills[r.Name]; ok {
 			upToDate, err := checkSkillUpToDate(r.Name, e)
@@ -246,27 +248,38 @@ func enrichResult(r *auditSkillResult) {
 
 	// Security: query skills.sh audit endpoint
 	if r.SkillID != "" {
-		r.Audits = fetchSkillAudits(r.SkillID)
+		audits, registryErr := fetchSkillAudits(r.SkillID)
+		r.Audits = audits
+		r.RegistryError = registryErr
 	} else if r.Scope == "project" {
 		// Try to derive a skill ID for project skills
 		parsed := source.ParseSource(r.Source)
 		ownerRepo := source.GetOwnerRepo(parsed)
 		if ownerRepo != "" {
-			r.SkillID = ownerRepo + "/" + r.Name
-			r.Audits = fetchSkillAudits(r.SkillID)
+			r.SkillID = ownerRepo + "/" + blob.ToSkillSlug(r.Name)
+			audits, registryErr := fetchSkillAudits(r.SkillID)
+			r.Audits = audits
+			r.RegistryError = registryErr
 		}
 	}
 }
 
-func fetchSkillAudits(skillID string) []auditProvider {
+func fetchSkillAudits(skillID string) ([]auditProvider, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 
 	url := auditAPIBase + "/audit/" + skillID
 	body, status, err := registry.HttpGetText(ctx, url)
-	if err == nil && status == 200 {
+	if err != nil {
+		// Network / timeout error — not a definitive "not found"
+		return nil, true
+	}
+	if status == 200 {
 		var resp skillsShAuditResponse
-		if jsonErr := json.Unmarshal([]byte(body), &resp); jsonErr == nil && len(resp.Audits) > 0 {
+		if jsonErr := json.Unmarshal([]byte(body), &resp); jsonErr != nil {
+			return nil, true
+		}
+		if len(resp.Audits) > 0 {
 			var providers []auditProvider
 			for _, a := range resp.Audits {
 				providers = append(providers, auditProvider{
@@ -278,20 +291,26 @@ func fetchSkillAudits(skillID string) []auditProvider {
 					AuditedAt: a.AuditedAt,
 				})
 			}
-			return providers
+			return providers, false
 		}
+		// 200 but empty audits — not in registry
+		return nil, false
+	}
+	if status >= 500 {
+		// Server-side error — treat as a lookup failure, not "not in registry"
+		return nil, true
 	}
 
-	// Fallback: query OSV for GitHub advisories
+	// Fallback: query OSV for GitHub advisories (on non-200/non-5xx, e.g. 404)
 	// skillID format is "owner/repo/slug" — we need just "owner/repo"
 	parts := strings.SplitN(skillID, "/", 3)
 	if len(parts) < 2 {
-		return nil
+		return nil, false
 	}
 	ownerRepo := parts[0] + "/" + parts[1]
 	osvResult := registry.FetchOSVAdvisories(ownerRepo, 5000)
 	if osvResult == nil || osvResult.Count == 0 {
-		return nil
+		return nil, false
 	}
 
 	status2 := "pass"
@@ -309,7 +328,7 @@ func fetchSkillAudits(skillID string) []auditProvider {
 		Status:    status2,
 		RiskLevel: string(osvResult.MaxSeverity),
 		Summary:   summary,
-	}}
+	}}, false
 }
 
 // ── Output ─────────────────────────────────────────────────
@@ -334,7 +353,9 @@ func printAuditResults(results []auditSkillResult) {
 			fmt.Printf("    %ssync:%s     %s%s%s\n", ansiDim, ansiReset, syncColor, syncStr, ansiReset)
 
 			if len(r.Audits) == 0 {
-				if r.SourceType == string(source.SourceTypeGitHub) || r.SourceType == string(source.SourceTypeGitLab) {
+				if r.RegistryError {
+					fmt.Printf("    %ssecurity:%s %slookup unavailable%s\n", ansiDim, ansiReset, ansiDim, ansiReset)
+				} else if r.SourceType == string(source.SourceTypeGitHub) || r.SourceType == string(source.SourceTypeGitLab) {
 					fmt.Printf("    %ssecurity:%s %snot in registry%s\n", ansiDim, ansiReset, ansiDim, ansiReset)
 				}
 			} else {

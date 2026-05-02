@@ -926,7 +926,7 @@ type installAuditEntry struct {
 
 func startInstallAudit(ownerRepo string, srcType source.SourceType, skipAudit bool, skills []*skill.Skill) chan []installAuditEntry {
 	ch := make(chan []installAuditEntry, 1)
-	isPublic := (srcType == source.SourceTypeGitHub || srcType == source.SourceTypeGitLab) && ownerRepo != ""
+	isPublic := srcType == source.SourceTypeGitHub && ownerRepo != ""
 	if !isPublic || skipAudit {
 		ch <- nil
 		return ch
@@ -938,8 +938,9 @@ func startInstallAudit(ownerRepo string, srcType source.SourceType, skipAudit bo
 
 		var results []installAuditEntry
 		for _, s := range skills {
-			slug := sanitizeName(s.Name)
-			results = append(results, installAuditEntry{Name: s.Name, Audits: fetchSkillAudits(ownerRepo + "/" + slug)})
+			slug := blob.ToSkillSlug(s.Name)
+			audits, _ := fetchSkillAudits(ownerRepo + "/" + slug)
+			results = append(results, installAuditEntry{Name: s.Name, Audits: audits})
 		}
 		if osv := <-osvCh; osv != nil && osv.Count > 0 {
 			results = append(results, osvToInstallAuditEntry(ownerRepo, osv))
@@ -962,7 +963,8 @@ func startBlobInstallAudit(ownerRepo string, skipAudit bool, skills []*blob.Blob
 		var results []installAuditEntry
 		for _, s := range skills {
 			slug := blob.ToSkillSlug(s.Name)
-			results = append(results, installAuditEntry{Name: s.Name, Audits: fetchSkillAudits(ownerRepo + "/" + slug)})
+			audits, _ := fetchSkillAudits(ownerRepo + "/" + slug)
+			results = append(results, installAuditEntry{Name: s.Name, Audits: audits})
 		}
 		if osv := <-osvCh; osv != nil && osv.Count > 0 {
 			results = append(results, osvToInstallAuditEntry(ownerRepo, osv))

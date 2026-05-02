@@ -139,6 +139,18 @@ func TestListHelp(t *testing.T) {
 	}
 }
 
+func TestAuditHelp(t *testing.T) {
+	stdout, _, code := runMdm(t, "skills", "audit", "--help")
+	if code != 0 {
+		t.Fatalf("mdm skills audit --help exited %d", code)
+	}
+	for _, expected := range []string{"--global", "--project", "--json"} {
+		if !strings.Contains(stdout, expected) {
+			t.Errorf("expected skills audit --help output to contain %q, got: %q", expected, stdout)
+		}
+	}
+}
+
 func TestNormalizeMultiFlags(t *testing.T) {
 	// Run: mdm skills add owner/repo -a claude cursor --list
 	// This should NOT produce "unknown flag" or "flag needs an argument" in stderr.
