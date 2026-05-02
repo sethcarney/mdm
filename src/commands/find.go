@@ -1,4 +1,4 @@
-package main
+package commands
 
 import (
 	"context"
@@ -7,6 +7,12 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/spf13/cobra"
+
+	"github.com/sethcarney/mdm/internal/registry"
+	"github.com/sethcarney/mdm/internal/source"
+	"github.com/sethcarney/mdm/internal/ui"
 )
 
 const findAPIURL = "https://skills.sh/api/search"
@@ -20,6 +26,24 @@ type FindSkillResult struct {
 	Repo        string `json:"repo,omitempty"`
 }
 
+func buildFindCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:     "find [query]",
+		Short:   "Search the skills registry",
+		Aliases: []string{"search", "f", "s"},
+		Long: fmt.Sprintf(`Search the skills registry and install interactively.
+
+%sExamples:%s
+  mdm find typescript
+  mdm search git`, ansiBold, ansiReset),
+		Args: cobra.MaximumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Println()
+			runFind(args)
+		},
+	}
+}
+
 func runFind(args []string) {
 	query := ""
 	for _, a := range args {
@@ -30,11 +54,11 @@ func runFind(args []string) {
 	}
 
 	if query == "" {
-		fmt.Printf("%sUsage:%s skl find %s<query>%s\n", ansiBold, ansiReset, ansiDim, ansiReset)
+		fmt.Printf("%sUsage:%s mdm find %s<query>%s\n", ansiBold, ansiReset, ansiDim, ansiReset)
 		return
 	}
 
-	spin := NewSpinner("Searching skills...")
+	spin := ui.NewSpinner("Searching skills...")
 	results, err := fetchFindResults(query)
 	spin.Stop("")
 
@@ -48,7 +72,7 @@ func runFind(args []string) {
 	}
 
 	// Build options
-	options := make([]UIOption, len(results))
+	options := make([]ui.UIOption, len(results))
 	for i, r := range results {
 		hint := r.Source
 		if r.Description != "" {
@@ -57,10 +81,10 @@ func runFind(args []string) {
 		if r.Stars > 0 {
 			hint = fmt.Sprintf("%s ★%d", hint, r.Stars)
 		}
-		options[i] = UIOption{Label: r.Name, Value: r.Source, Hint: hint}
+		options[i] = ui.UIOption{Label: r.Name, Value: r.Source, Hint: hint}
 	}
 
-	indices, ok := uiMultiselect("Select skills to install", options, false, nil, nil)
+	indices, ok := ui.UiMultiselect("Select skills to install", options, false, nil, nil)
 	if !ok || len(indices) == 0 {
 		return
 	}
@@ -78,7 +102,7 @@ func runFind(args []string) {
 			continue
 		}
 		fmt.Printf("%sAdding %s%s%s...\n", ansiDim, ansiText, r.Name, ansiReset)
-		parsed := parseSource(src)
+		parsed := source.ParseSource(src)
 		skillFilter := ""
 		if r.Name != "" {
 			skillFilter = r.Name
@@ -100,7 +124,7 @@ func fetchFindResults(query string) ([]FindSkillResult, error) {
 		url += "?q=" + query
 	}
 
-	body, status, err := httpGetText(ctx, url)
+	body, status, err := registry.HttpGetText(ctx, url)
 	if err != nil || status != 200 {
 		return nil, fmt.Errorf("search failed: status %d", status)
 	}

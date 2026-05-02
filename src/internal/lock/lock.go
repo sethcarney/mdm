@@ -1,4 +1,4 @@
-package main
+package lock
 
 import (
 	"crypto/sha256"
@@ -12,6 +12,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/sethcarney/mdm/internal/agent"
 )
 
 // ──────────────────────────────────────────────────────────
@@ -43,32 +45,32 @@ type SkillLockFile struct {
 	LastSelectedAgents []string                  `json:"lastSelectedAgents,omitempty"`
 }
 
-func getSkillLockPath() string {
+func GetSkillLockPath() string {
 	if xdgState := os.Getenv("XDG_STATE_HOME"); xdgState != "" {
 		return filepath.Join(xdgState, "skills", ".skill-lock.json")
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, agentsDir, ".skill-lock.json")
+	return filepath.Join(home, agent.AgentsDir, ".skill-lock.json")
 }
 
-func readSkillLock() SkillLockFile {
-	lockPath := getSkillLockPath()
+func ReadSkillLock() SkillLockFile {
+	lockPath := GetSkillLockPath()
 	data, err := os.ReadFile(lockPath)
 	if err != nil {
-		return emptySkillLock()
+		return EmptySkillLock()
 	}
 	var lock SkillLockFile
 	if err := json.Unmarshal(data, &lock); err != nil {
-		return emptySkillLock()
+		return EmptySkillLock()
 	}
 	if lock.Skills == nil || lock.Version < globalLockVersion {
-		return emptySkillLock()
+		return EmptySkillLock()
 	}
 	return lock
 }
 
-func writeSkillLock(lock SkillLockFile) error {
-	lockPath := getSkillLockPath()
+func WriteSkillLock(lock SkillLockFile) error {
+	lockPath := GetSkillLockPath()
 	if err := os.MkdirAll(filepath.Dir(lockPath), 0755); err != nil {
 		return err
 	}
@@ -79,15 +81,15 @@ func writeSkillLock(lock SkillLockFile) error {
 	return os.WriteFile(lockPath, data, 0644)
 }
 
-func emptySkillLock() SkillLockFile {
+func EmptySkillLock() SkillLockFile {
 	return SkillLockFile{
-		Version:  globalLockVersion,
-		Skills:   map[string]SkillLockEntry{},
+		Version: globalLockVersion,
+		Skills:  map[string]SkillLockEntry{},
 	}
 }
 
-func addSkillToLock(skillName string, entry SkillLockEntry) error {
-	lock := readSkillLock()
+func AddSkillToLock(skillName string, entry SkillLockEntry) error {
+	lock := ReadSkillLock()
 	now := time.Now().UTC().Format(time.RFC3339)
 	if existing, ok := lock.Skills[skillName]; ok {
 		entry.InstalledAt = existing.InstalledAt
@@ -96,46 +98,46 @@ func addSkillToLock(skillName string, entry SkillLockEntry) error {
 	}
 	entry.UpdatedAt = now
 	lock.Skills[skillName] = entry
-	return writeSkillLock(lock)
+	return WriteSkillLock(lock)
 }
 
-func removeSkillFromLock(skillName string) error {
-	lock := readSkillLock()
+func RemoveSkillFromLock(skillName string) error {
+	lock := ReadSkillLock()
 	if _, ok := lock.Skills[skillName]; !ok {
 		return nil
 	}
 	delete(lock.Skills, skillName)
-	return writeSkillLock(lock)
+	return WriteSkillLock(lock)
 }
 
-func isPromptDismissed(key string) bool {
-	lock := readSkillLock()
+func IsPromptDismissed(key string) bool {
+	lock := ReadSkillLock()
 	if key == "findSkillsPrompt" {
 		return lock.Dismissed.FindSkillsPrompt
 	}
 	return false
 }
 
-func dismissPrompt(key string) error {
-	lock := readSkillLock()
+func DismissPrompt(key string) error {
+	lock := ReadSkillLock()
 	if key == "findSkillsPrompt" {
 		lock.Dismissed.FindSkillsPrompt = true
 	}
-	return writeSkillLock(lock)
+	return WriteSkillLock(lock)
 }
 
-func getLastSelectedAgents() []string {
-	lock := readSkillLock()
+func GetLastSelectedAgents() []string {
+	lock := ReadSkillLock()
 	return lock.LastSelectedAgents
 }
 
-func saveSelectedAgents(agents []string) error {
-	lock := readSkillLock()
+func SaveSelectedAgents(agents []string) error {
+	lock := ReadSkillLock()
 	lock.LastSelectedAgents = agents
-	return writeSkillLock(lock)
+	return WriteSkillLock(lock)
 }
 
-func getGitHubToken() string {
+func GetGitHubToken() string {
 	if tok := os.Getenv("GITHUB_TOKEN"); tok != "" {
 		return tok
 	}
@@ -152,7 +154,7 @@ func getGitHubToken() string {
 	return ""
 }
 
-func computeContentHash(content string) string {
+func ComputeContentHash(content string) string {
 	h := sha256.New()
 	h.Write([]byte(content))
 	return hex.EncodeToString(h.Sum(nil))
@@ -165,9 +167,9 @@ func computeContentHash(content string) string {
 const localLockVersion = 1
 
 type LocalSkillLockEntry struct {
-	Source      string `json:"source"`
-	Ref         string `json:"ref,omitempty"`
-	SourceType  string `json:"sourceType"`
+	Source       string `json:"source"`
+	Ref          string `json:"ref,omitempty"`
+	SourceType   string `json:"sourceType"`
 	ComputedHash string `json:"computedHash,omitempty"`
 }
 
@@ -176,29 +178,29 @@ type LocalSkillLockFile struct {
 	Skills  map[string]LocalSkillLockEntry `json:"skills"`
 }
 
-func getLocalLockPath(cwd string) string {
+func GetLocalLockPath(cwd string) string {
 	if cwd == "" {
 		cwd, _ = os.Getwd()
 	}
 	return filepath.Join(cwd, "skills-lock.json")
 }
 
-func readLocalLock(cwd string) LocalSkillLockFile {
-	data, err := os.ReadFile(getLocalLockPath(cwd))
+func ReadLocalLock(cwd string) LocalSkillLockFile {
+	data, err := os.ReadFile(GetLocalLockPath(cwd))
 	if err != nil {
-		return emptyLocalLock()
+		return EmptyLocalLock()
 	}
 	var lock LocalSkillLockFile
 	if err := json.Unmarshal(data, &lock); err != nil {
-		return emptyLocalLock()
+		return EmptyLocalLock()
 	}
 	if lock.Skills == nil || lock.Version < localLockVersion {
-		return emptyLocalLock()
+		return EmptyLocalLock()
 	}
 	return lock
 }
 
-func writeLocalLock(lock LocalSkillLockFile, cwd string) error {
+func WriteLocalLock(lock LocalSkillLockFile, cwd string) error {
 	// Sort keys for deterministic output
 	sorted := LocalSkillLockFile{Version: lock.Version, Skills: map[string]LocalSkillLockEntry{}}
 	keys := make([]string, 0, len(lock.Skills))
@@ -213,29 +215,29 @@ func writeLocalLock(lock LocalSkillLockFile, cwd string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(getLocalLockPath(cwd), append(data, '\n'), 0644)
+	return os.WriteFile(GetLocalLockPath(cwd), append(data, '\n'), 0644)
 }
 
-func emptyLocalLock() LocalSkillLockFile {
+func EmptyLocalLock() LocalSkillLockFile {
 	return LocalSkillLockFile{Version: localLockVersion, Skills: map[string]LocalSkillLockEntry{}}
 }
 
-func addSkillToLocalLock(skillName string, entry LocalSkillLockEntry, cwd string) error {
-	lock := readLocalLock(cwd)
+func AddSkillToLocalLock(skillName string, entry LocalSkillLockEntry, cwd string) error {
+	lock := ReadLocalLock(cwd)
 	lock.Skills[skillName] = entry
-	return writeLocalLock(lock, cwd)
+	return WriteLocalLock(lock, cwd)
 }
 
-func removeSkillFromLocalLock(skillName string, cwd string) error {
-	lock := readLocalLock(cwd)
+func RemoveSkillFromLocalLock(skillName string, cwd string) error {
+	lock := ReadLocalLock(cwd)
 	if _, ok := lock.Skills[skillName]; !ok {
 		return nil
 	}
 	delete(lock.Skills, skillName)
-	return writeLocalLock(lock, cwd)
+	return WriteLocalLock(lock, cwd)
 }
 
-func computeSkillFolderHash(skillDir string) (string, error) {
+func ComputeSkillFolderHash(skillDir string) (string, error) {
 	type fileEntry struct {
 		path    string
 		content []byte
@@ -281,7 +283,7 @@ func computeSkillFolderHash(skillDir string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-func hasProjectSkills(cwd string) bool {
+func HasProjectSkills(cwd string) bool {
 	if cwd == "" {
 		cwd, _ = os.Getwd()
 	}

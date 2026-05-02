@@ -1,4 +1,4 @@
-package main
+package commands
 
 import (
 	"encoding/json"
@@ -6,7 +6,51 @@ import (
 	"os"
 	"sort"
 	"strings"
+
+	"github.com/spf13/cobra"
+
+	"github.com/sethcarney/mdm/internal/agent"
 )
+
+func buildListCmd() *cobra.Command {
+	var globalFlag bool
+	var projectFlag bool
+	var agentFilter []string
+	var jsonMode bool
+
+	cmd := &cobra.Command{
+		Use:     "list",
+		Short:   "List installed skills",
+		Aliases: []string{"ls"},
+		Long: fmt.Sprintf(`List installed skills.
+
+%sExamples:%s
+  mdm list
+  mdm ls -g
+  mdm list --json`, ansiBold, ansiReset),
+		Args: cobra.NoArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			var gFlag *bool
+			if cmd.Flags().Changed("global") {
+				t := true
+				gFlag = &t
+			} else if cmd.Flags().Changed("project") || projectFlag {
+				f := false
+				gFlag = &f
+			}
+			_ = globalFlag
+			runListWithOpts(gFlag, agentFilter, jsonMode)
+		},
+	}
+
+	f := cmd.Flags()
+	f.BoolVarP(&globalFlag, "global", "g", false, "List global skills")
+	f.BoolVarP(&projectFlag, "project", "p", false, "List project skills")
+	f.StringArrayVarP(&agentFilter, "agent", "a", nil, "Filter by specific agents")
+	f.BoolVar(&jsonMode, "json", false, "Output as JSON")
+
+	return cmd
+}
 
 func runListWithOpts(globalFlag *bool, agentFilter []string, jsonMode bool) {
 	skills, err := listInstalledSkills(globalFlag, agentFilter)
@@ -20,7 +64,7 @@ func runListWithOpts(globalFlag *bool, agentFilter []string, jsonMode bool) {
 			fmt.Println("[]")
 		} else {
 			fmt.Printf("%sNo skills installed.%s\n\n", ansiDim, ansiReset)
-			fmt.Printf("Add your first skill with %sskl add <package>%s\n", ansiText, ansiReset)
+			fmt.Printf("Add your first skill with %smdm add <package>%s\n", ansiText, ansiReset)
 		}
 		return
 	}
@@ -64,7 +108,7 @@ func runListWithOpts(globalFlag *bool, agentFilter []string, jsonMode bool) {
 			if len(s.Agents) > 0 {
 				var displayNames []string
 				for _, a := range s.Agents {
-					if cfg := allAgents[a]; cfg != nil {
+					if cfg := agent.AllAgents[a]; cfg != nil {
 						displayNames = append(displayNames, cfg.DisplayName)
 					} else {
 						displayNames = append(displayNames, a)

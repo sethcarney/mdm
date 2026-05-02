@@ -1,4 +1,4 @@
-package main
+package ui
 
 import (
 	"fmt"
@@ -8,6 +8,18 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+)
+
+// ANSI color/format constants (exported)
+const (
+	Reset  = "\x1b[0m"
+	Bold   = "\x1b[1m"
+	Dim    = "\x1b[38;5;243m"
+	Text   = "\x1b[38;5;159m"
+	Cyan   = "\x1b[36m"
+	Yellow = "\x1b[33m"
+	Green  = "\x1b[32m"
+	Red    = "\x1b[31m"
 )
 
 // ANSI sequences used by the Spinner (Bubbletea does not manage spinner output).
@@ -25,33 +37,33 @@ var (
 
 // ─── Log helpers ───────────────────────────────────────────────────────────────
 
-func logInfo(msg string) {
-	fmt.Printf("  %s•%s %s\n", ansiDim, ansiReset, msg)
+func LogInfo(msg string) {
+	fmt.Printf("  %s•%s %s\n", Dim, Reset, msg)
 }
 
-func logSuccess(msg string) {
-	fmt.Printf("  %s✓%s %s\n", ansiText, ansiReset, msg)
+func LogSuccess(msg string) {
+	fmt.Printf("  %s✓%s %s\n", Text, Reset, msg)
 }
 
-func logWarn(msg string) {
-	fmt.Printf("  %s!%s %s\n", ansiText, ansiReset, msg)
+func LogWarn(msg string) {
+	fmt.Printf("  %s!%s %s\n", Text, Reset, msg)
 }
 
-func logError(msg string) {
-	fmt.Fprintf(os.Stderr, "  %s✗%s %s\n", ansiText, ansiReset, msg)
+func LogError(msg string) {
+	fmt.Fprintf(os.Stderr, "  %s✗%s %s\n", Text, Reset, msg)
 }
 
-func intro(title string) {
-	fmt.Printf("\n%s%s%s\n\n", ansiText, title, ansiReset)
+func Intro(title string) {
+	fmt.Printf("\n%s%s%s\n\n", Text, title, Reset)
 }
 
-func outro(message string) {
-	fmt.Printf("\n%s%s%s\n\n", ansiDim, message, ansiReset)
+func Outro(message string) {
+	fmt.Printf("\n%s%s%s\n\n", Dim, message, Reset)
 }
 
 // ─── Note / box ────────────────────────────────────────────────────────────────
 
-func note(content, title string) {
+func Note(content, title string) {
 	lines := strings.Split(content, "\n")
 	width := len(title) + 4
 	for _, l := range lines {
@@ -62,18 +74,18 @@ func note(content, title string) {
 
 	border := strings.Repeat("─", width-2)
 	if title != "" {
-		fmt.Printf("%s┌─ %s%s%s %s─┐%s\n", ansiDim, ansiReset, title, ansiDim, strings.Repeat("─", max(0, width-len(title)-5)), ansiReset)
+		fmt.Printf("%s┌─ %s%s%s %s─┐%s\n", Dim, Reset, title, Dim, strings.Repeat("─", max(0, width-len(title)-5)), Reset)
 	} else {
-		fmt.Printf("%s┌%s┐%s\n", ansiDim, border, ansiReset)
+		fmt.Printf("%s┌%s┐%s\n", Dim, border, Reset)
 	}
 	for _, l := range lines {
 		pad := width - len(l) - 3
 		if pad < 0 {
 			pad = 0
 		}
-		fmt.Printf("%s│%s %s%s%s\n", ansiDim, ansiReset, l, strings.Repeat(" ", pad), ansiDim+"│"+ansiReset)
+		fmt.Printf("%s│%s %s%s%s\n", Dim, Reset, l, strings.Repeat(" ", pad), Dim+"│"+Reset)
 	}
-	fmt.Printf("%s└%s┘%s\n", ansiDim, border, ansiReset)
+	fmt.Printf("%s└%s┘%s\n", Dim, border, Reset)
 }
 
 // ─── Spinner ───────────────────────────────────────────────────────────────────
@@ -98,7 +110,7 @@ func (s *Spinner) run() {
 		case <-s.done:
 			return
 		default:
-			fmt.Printf("%s%s%s %s%s", ansiCR, ansiDim, frames[i%len(frames)], s.msg, ansiReset)
+			fmt.Printf("%s%s%s %s%s", ansiCR, Dim, frames[i%len(frames)], s.msg, Reset)
 			i++
 			select {
 			case <-s.done:
@@ -112,9 +124,9 @@ func (s *Spinner) run() {
 func (s *Spinner) Stop(msg string) {
 	close(s.done)
 	fmt.Print(ansiShowCursor)
-	fmt.Printf("%s%s%s %s\n", ansiCR, ansiClearLine, ansiDim, ansiReset)
+	fmt.Printf("%s%s%s %s\n", ansiCR, ansiClearLine, Dim, Reset)
 	if msg != "" {
-		fmt.Printf("  %s%s%s\n", ansiDim, msg, ansiReset)
+		fmt.Printf("  %s%s%s\n", Dim, msg, Reset)
 	}
 }
 
@@ -198,7 +210,7 @@ func (m *selectModel) View() string {
 
 // ─── Select / Confirm ─────────────────────────────────────────────────────────
 
-func uiSelect(message string, options []UIOption) (int, bool) {
+func UiSelect(message string, options []UIOption) (int, bool) {
 	if len(options) == 0 {
 		return -1, false
 	}
@@ -213,8 +225,8 @@ func uiSelect(message string, options []UIOption) (int, bool) {
 	return final.choice, true
 }
 
-func uiConfirm(message string) (bool, bool) {
-	idx, ok := uiSelect(message, []UIOption{{Label: "Yes"}, {Label: "No"}})
+func UiConfirm(message string) (bool, bool) {
+	idx, ok := UiSelect(message, []UIOption{{Label: "Yes"}, {Label: "No"}})
 	if !ok {
 		return false, false
 	}
@@ -313,7 +325,7 @@ func (m *multiModel) View() string {
 
 // ─── Multiselect ───────────────────────────────────────────────────────────────
 
-func uiMultiselect(message string, options []UIOption, required bool, initialSelected []int, locked []int) ([]int, bool) {
+func UiMultiselect(message string, options []UIOption, required bool, initialSelected []int, locked []int) ([]int, bool) {
 	if len(options) == 0 {
 		return nil, false
 	}
@@ -478,7 +490,7 @@ func (m *searchModel) View() string {
 
 // ─── SearchMultiselect ─────────────────────────────────────────────────────────
 
-func uiSearchMultiselect(message string, options []UIOption, locked []UIOption, initialSelected []int) ([]int, bool) {
+func UiSearchMultiselect(message string, options []UIOption, locked []UIOption, initialSelected []int) ([]int, bool) {
 	selected := make(map[int]bool)
 	for _, i := range initialSelected {
 		if i >= 0 && i < len(options) {

@@ -1,4 +1,4 @@
-package main
+package skill
 
 import (
 	"fmt"
@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/sethcarney/mdm/internal/lock"
 )
 
 type Skill struct {
@@ -19,7 +21,7 @@ type Skill struct {
 	Metadata    map[string]interface{}
 }
 
-func parseFrontmatter(raw string) (data map[string]interface{}, content string) {
+func ParseFrontmatter(raw string) (data map[string]interface{}, content string) {
 	// Match ---\n...\n---\n
 	const delim = "---"
 	if !strings.HasPrefix(raw, delim) {
@@ -58,13 +60,13 @@ func parseFrontmatter(raw string) (data map[string]interface{}, content string) 
 	return d, afterDelim
 }
 
-func parseSkillMd(skillMdPath string, includeInternal bool) (*Skill, error) {
+func ParseSkillMd(skillMdPath string, includeInternal bool) (*Skill, error) {
 	content, err := os.ReadFile(skillMdPath)
 	if err != nil {
 		return nil, err
 	}
 	raw := string(content)
-	data, _ := parseFrontmatter(raw)
+	data, _ := ParseFrontmatter(raw)
 
 	nameVal, ok1 := data["name"]
 	descVal, ok2 := data["description"]
@@ -117,17 +119,17 @@ var skipDirs = map[string]bool{
 	"__pycache__":  true,
 }
 
-func hasSkillMd(dir string) bool {
+func HasSkillMd(dir string) bool {
 	info, err := os.Stat(filepath.Join(dir, "SKILL.md"))
 	return err == nil && !info.IsDir()
 }
 
-func findSkillDirs(dir string, depth, maxDepth int) []string {
+func FindSkillDirs(dir string, depth, maxDepth int) []string {
 	if depth > maxDepth {
 		return nil
 	}
 	var result []string
-	if hasSkillMd(dir) {
+	if HasSkillMd(dir) {
 		result = append(result, dir)
 	}
 	entries, err := os.ReadDir(dir)
@@ -138,7 +140,7 @@ func findSkillDirs(dir string, depth, maxDepth int) []string {
 		if !e.IsDir() || skipDirs[e.Name()] {
 			continue
 		}
-		sub := findSkillDirs(filepath.Join(dir, e.Name()), depth+1, maxDepth)
+		sub := FindSkillDirs(filepath.Join(dir, e.Name()), depth+1, maxDepth)
 		result = append(result, sub...)
 	}
 	return result
@@ -155,10 +157,9 @@ type DiscoverOptions struct {
 	FullDepth       bool
 }
 
-// getPluginGroupings returns a map of skill dir path -> plugin name, based on
+// GetPluginGroupings returns a map of skill dir path -> plugin name, based on
 // plugin-manifest files (.claude-plugin/marketplace.json) in the search path.
-// This is a simplified implementation of the TypeScript getPluginGroupings.
-func getPluginGroupings(searchPath string) map[string]string {
+func GetPluginGroupings(searchPath string) map[string]string {
 	result := map[string]string{}
 	manifestPath := filepath.Join(searchPath, ".claude-plugin", "marketplace.json")
 	data, err := os.ReadFile(manifestPath)
@@ -166,7 +167,7 @@ func getPluginGroupings(searchPath string) map[string]string {
 		return result
 	}
 	var manifest struct {
-		Name   string `yaml:"name"`
+		Name    string `yaml:"name"`
 		Plugins []struct {
 			Name     string `yaml:"name"`
 			SkillDir string `yaml:"skillDir"`
@@ -195,8 +196,8 @@ func getPluginGroupings(searchPath string) map[string]string {
 	return result
 }
 
-// getPluginSkillPaths returns extra skill search dirs from plugin manifests.
-func getPluginSkillPaths(searchPath string) []string {
+// GetPluginSkillPaths returns extra skill search dirs from plugin manifests.
+func GetPluginSkillPaths(searchPath string) []string {
 	var result []string
 	manifestPath := filepath.Join(searchPath, ".claude-plugin", "marketplace.json")
 	data, err := os.ReadFile(manifestPath)
@@ -215,7 +216,7 @@ func getPluginSkillPaths(searchPath string) []string {
 	return result
 }
 
-func discoverSkills(basePath, subpath string, opts DiscoverOptions) ([]*Skill, error) {
+func DiscoverSkills(basePath, subpath string, opts DiscoverOptions) ([]*Skill, error) {
 	var skills []*Skill
 	seenNames := map[string]bool{}
 
@@ -228,7 +229,7 @@ func discoverSkills(basePath, subpath string, opts DiscoverOptions) ([]*Skill, e
 		searchPath = filepath.Join(basePath, subpath)
 	}
 
-	pluginGroupings := getPluginGroupings(searchPath)
+	pluginGroupings := GetPluginGroupings(searchPath)
 
 	enhanceSkill := func(s *Skill) *Skill {
 		resolvedPath, _ := filepath.Abs(s.Path)
@@ -239,12 +240,12 @@ func discoverSkills(basePath, subpath string, opts DiscoverOptions) ([]*Skill, e
 	}
 
 	// If pointing directly at a skill
-	if hasSkillMd(searchPath) {
-		skill, err := parseSkillMd(filepath.Join(searchPath, "SKILL.md"), opts.IncludeInternal)
-		if err == nil && skill != nil {
-			skill = enhanceSkill(skill)
-			skills = append(skills, skill)
-			seenNames[skill.Name] = true
+	if HasSkillMd(searchPath) {
+		sk, err := ParseSkillMd(filepath.Join(searchPath, "SKILL.md"), opts.IncludeInternal)
+		if err == nil && sk != nil {
+			sk = enhanceSkill(sk)
+			skills = append(skills, sk)
+			seenNames[sk.Name] = true
 			if !opts.FullDepth {
 				return skills, nil
 			}
@@ -284,7 +285,7 @@ func discoverSkills(basePath, subpath string, opts DiscoverOptions) ([]*Skill, e
 	}
 
 	// Add plugin manifest skill dirs
-	priorityDirs = append(priorityDirs, getPluginSkillPaths(searchPath)...)
+	priorityDirs = append(priorityDirs, GetPluginSkillPaths(searchPath)...)
 
 	for _, dir := range priorityDirs {
 		entries, err := os.ReadDir(dir)
@@ -296,12 +297,12 @@ func discoverSkills(basePath, subpath string, opts DiscoverOptions) ([]*Skill, e
 				continue
 			}
 			skillDir := filepath.Join(dir, e.Name())
-			if hasSkillMd(skillDir) {
-				skill, err := parseSkillMd(filepath.Join(skillDir, "SKILL.md"), opts.IncludeInternal)
-				if err == nil && skill != nil && !seenNames[skill.Name] {
-					skill = enhanceSkill(skill)
-					skills = append(skills, skill)
-					seenNames[skill.Name] = true
+			if HasSkillMd(skillDir) {
+				sk, err := ParseSkillMd(filepath.Join(skillDir, "SKILL.md"), opts.IncludeInternal)
+				if err == nil && sk != nil && !seenNames[sk.Name] {
+					sk = enhanceSkill(sk)
+					skills = append(skills, sk)
+					seenNames[sk.Name] = true
 				}
 			}
 		}
@@ -309,13 +310,13 @@ func discoverSkills(basePath, subpath string, opts DiscoverOptions) ([]*Skill, e
 
 	// Fall back to recursive search if nothing found or fullDepth
 	if len(skills) == 0 || opts.FullDepth {
-		allSkillDirs := findSkillDirs(searchPath, 0, 5)
+		allSkillDirs := FindSkillDirs(searchPath, 0, 5)
 		for _, skillDir := range allSkillDirs {
-			skill, err := parseSkillMd(filepath.Join(skillDir, "SKILL.md"), opts.IncludeInternal)
-			if err == nil && skill != nil && !seenNames[skill.Name] {
-				skill = enhanceSkill(skill)
-				skills = append(skills, skill)
-				seenNames[skill.Name] = true
+			sk, err := ParseSkillMd(filepath.Join(skillDir, "SKILL.md"), opts.IncludeInternal)
+			if err == nil && sk != nil && !seenNames[sk.Name] {
+				sk = enhanceSkill(sk)
+				skills = append(skills, sk)
+				seenNames[sk.Name] = true
 			}
 		}
 	}
@@ -323,14 +324,14 @@ func discoverSkills(basePath, subpath string, opts DiscoverOptions) ([]*Skill, e
 	return skills, nil
 }
 
-func getSkillDisplayName(skill *Skill) string {
-	if skill.Name != "" {
-		return skill.Name
+func GetSkillDisplayName(s *Skill) string {
+	if s.Name != "" {
+		return s.Name
 	}
-	return filepath.Base(skill.Path)
+	return filepath.Base(s.Path)
 }
 
-func filterSkills(skills []*Skill, inputNames []string) []*Skill {
+func FilterSkills(skills []*Skill, inputNames []string) []*Skill {
 	var result []*Skill
 	normalized := make([]string, len(inputNames))
 	for i, n := range inputNames {
@@ -338,7 +339,7 @@ func filterSkills(skills []*Skill, inputNames []string) []*Skill {
 	}
 	for _, s := range skills {
 		name := strings.ToLower(s.Name)
-		display := strings.ToLower(getSkillDisplayName(s))
+		display := strings.ToLower(GetSkillDisplayName(s))
 		for _, input := range normalized {
 			if input == name || input == display {
 				result = append(result, s)
@@ -354,8 +355,8 @@ type NodeModuleSkill struct {
 	PackageName string
 }
 
-// discoverNodeModuleSkills scans node_modules for SKILL.md files.
-func discoverNodeModuleSkills(cwd string) []NodeModuleSkill {
+// DiscoverNodeModuleSkills scans node_modules for SKILL.md files.
+func DiscoverNodeModuleSkills(cwd string) []NodeModuleSkill {
 	var results []NodeModuleSkill
 
 	nmDir := filepath.Join(cwd, "node_modules")
@@ -366,7 +367,7 @@ func discoverNodeModuleSkills(cwd string) []NodeModuleSkill {
 
 	processPackage := func(pkgDir, packageName string) {
 		// Check root SKILL.md
-		if s, err := parseSkillMd(filepath.Join(pkgDir, "SKILL.md"), false); err == nil && s != nil {
+		if s, err := ParseSkillMd(filepath.Join(pkgDir, "SKILL.md"), false); err == nil && s != nil {
 			results = append(results, NodeModuleSkill{s, packageName})
 			return
 		}
@@ -381,7 +382,7 @@ func discoverNodeModuleSkills(cwd string) []NodeModuleSkill {
 					continue
 				}
 				skillDir := filepath.Join(dir, e.Name())
-				if s, err := parseSkillMd(filepath.Join(skillDir, "SKILL.md"), false); err == nil && s != nil {
+				if s, err := ParseSkillMd(filepath.Join(skillDir, "SKILL.md"), false); err == nil && s != nil {
 					results = append(results, NodeModuleSkill{s, packageName})
 				}
 			}
@@ -416,5 +417,8 @@ func discoverNodeModuleSkills(cwd string) []NodeModuleSkill {
 	return results
 }
 
-// Needed for the discoverNodeModuleSkills return
+// Needed for the DiscoverNodeModuleSkills return
 var _ fs.DirEntry // suppress unused import warning
+
+// Re-export ComputeSkillFolderHash from lock package for convenience
+var ComputeSkillFolderHash = lock.ComputeSkillFolderHash

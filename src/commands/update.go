@@ -1,9 +1,16 @@
-package main
+package commands
 
 import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/spf13/cobra"
+
+	"github.com/sethcarney/mdm/internal/blob"
+	"github.com/sethcarney/mdm/internal/lock"
+	"github.com/sethcarney/mdm/internal/source"
+	"github.com/sethcarney/mdm/internal/ui"
 )
 
 type UpdateOptions struct {
@@ -12,12 +19,39 @@ type UpdateOptions struct {
 	Yes     bool
 }
 
+func buildUpdateCmd() *cobra.Command {
+	var opts UpdateOptions
+
+	cmd := &cobra.Command{
+		Use:     "update [skills...]",
+		Short:   "Update installed skills",
+		Aliases: []string{"check"},
+		Long: fmt.Sprintf(`Update installed skills to their latest versions.
+
+%sExamples:%s
+  mdm update
+  mdm update my-skill
+  mdm update -g`, ansiBold, ansiReset),
+		Args: cobra.ArbitraryArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			runUpdateWithOpts(args, opts)
+		},
+	}
+
+	f := cmd.Flags()
+	f.BoolVarP(&opts.Global, "global", "g", false, "Update global skills only")
+	f.BoolVarP(&opts.Project, "project", "p", false, "Update project skills only")
+	f.BoolVarP(&opts.Yes, "yes", "y", false, "Skip scope prompt")
+
+	return cmd
+}
+
 func runUpdateWithOpts(skillFilter []string, opts UpdateOptions) {
 	// Determine scope
 	global := opts.Global
 	project := opts.Project
 	if !global && !project && !opts.Yes {
-		idx, ok := uiSelect("Update which scope?", []UIOption{
+		idx, ok := ui.UiSelect("Update which scope?", []ui.UIOption{
 			{Label: "Both", Hint: "project and global"},
 			{Label: "Project"},
 			{Label: "Global"},
@@ -45,8 +79,8 @@ func runUpdateWithOpts(skillFilter []string, opts UpdateOptions) {
 
 	// Check global skills from lock
 	if global {
-		lock := readSkillLock()
-		for sName, entry := range lock.Skills {
+		l := lock.ReadSkillLock()
+		for sName, entry := range l.Skills {
 			if len(skillFilter) > 0 {
 				found := false
 				for _, f := range skillFilter {
@@ -59,7 +93,7 @@ func runUpdateWithOpts(skillFilter []string, opts UpdateOptions) {
 					continue
 				}
 			}
-			if entry.SourceType != string(SourceTypeGitHub) && entry.SourceType != string(SourceTypeGitLab) && entry.SourceType != string(SourceTypeGit) {
+			if entry.SourceType != string(source.SourceTypeGitHub) && entry.SourceType != string(source.SourceTypeGitLab) && entry.SourceType != string(source.SourceTypeGit) {
 				skipped++
 				continue
 			}
@@ -67,12 +101,12 @@ func runUpdateWithOpts(skillFilter []string, opts UpdateOptions) {
 			fmt.Printf("%sChecking %s...%s\n", ansiDim, sName, ansiReset)
 			isUpToDate, err := checkSkillUpToDate(sName, entry)
 			if err != nil {
-				logWarn(fmt.Sprintf("Could not check %s: %v", sName, err))
+				ui.LogWarn(fmt.Sprintf("Could not check %s: %v", sName, err))
 				skipped++
 				continue
 			}
 			if isUpToDate {
-				logInfo(sName + " is up to date")
+				ui.LogInfo(sName + " is up to date")
 				skipped++
 				continue
 			}
@@ -91,7 +125,7 @@ func runUpdateWithOpts(skillFilter []string, opts UpdateOptions) {
 	// Check project skills from local lock
 	if project {
 		cwd, _ := os.Getwd()
-		localLock := readLocalLock(cwd)
+		localLock := lock.ReadLocalLock(cwd)
 		for sName, entry := range localLock.Skills {
 			if len(skillFilter) > 0 {
 				found := false
@@ -105,7 +139,7 @@ func runUpdateWithOpts(skillFilter []string, opts UpdateOptions) {
 					continue
 				}
 			}
-			if entry.SourceType != string(SourceTypeGitHub) && entry.SourceType != string(SourceTypeGitLab) && entry.SourceType != string(SourceTypeGit) {
+			if entry.SourceType != string(source.SourceTypeGitHub) && entry.SourceType != string(source.SourceTypeGitLab) && entry.SourceType != string(source.SourceTypeGit) {
 				skipped++
 				continue
 			}
@@ -139,20 +173,20 @@ func runUpdateWithOpts(skillFilter []string, opts UpdateOptions) {
 	fmt.Println()
 }
 
-func checkSkillUpToDate(skillName string, entry SkillLockEntry) (bool, error) {
+func checkSkillUpToDate(skillName string, entry lock.SkillLockEntry) (bool, error) {
 	if entry.SkillFolderHash == "" || entry.SkillPath == "" {
 		return false, nil
 	}
 	ownerRepo := ""
-	parsed := parseSource(entry.Source)
-	ownerRepo = getOwnerRepo(parsed)
+	parsed := source.ParseSource(entry.Source)
+	ownerRepo = source.GetOwnerRepo(parsed)
 	if ownerRepo == "" {
 		return false, nil
 	}
 
-	token := getGitHubToken()
+	token := lock.GetGitHubToken()
 	ref := entry.Ref
-	latestHash, err := fetchSkillFolderHash(ownerRepo, entry.SkillPath, token, &ref)
+	latestHash, err := blob.FetchSkillFolderHash(ownerRepo, entry.SkillPath, token, &ref)
 	if err != nil {
 		return false, err
 	}

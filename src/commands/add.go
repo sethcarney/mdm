@@ -1,4 +1,4 @@
-package main
+package commands
 
 import (
 	"fmt"
@@ -6,6 +6,16 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/spf13/cobra"
+	"github.com/sethcarney/mdm/internal/agent"
+	"github.com/sethcarney/mdm/internal/blob"
+	"github.com/sethcarney/mdm/internal/git"
+	"github.com/sethcarney/mdm/internal/lock"
+	"github.com/sethcarney/mdm/internal/registry"
+	"github.com/sethcarney/mdm/internal/skill"
+	"github.com/sethcarney/mdm/internal/source"
+	"github.com/sethcarney/mdm/internal/ui"
 )
 
 // ─── Options ───────────────────────────────────────────────────────────────────
@@ -22,6 +32,58 @@ type AddOptions struct {
 	FullDepth bool
 }
 
+func buildAddCmd(ver string) *cobra.Command {
+	var opts AddOptions
+
+	cmd := &cobra.Command{
+		Use:     "add <package>",
+		Short:   "Add a skill from GitHub or URL",
+		Aliases: []string{"a", "install", "i"},
+		Long: fmt.Sprintf(`Add a skill package from GitHub, a URL, or a local path.
+
+The --agent (-a) and --skill (-s) flags accept multiple values. You can
+pass them space-separated after the flag or repeat the flag for each value
+— both styles are equivalent:
+
+  mdm add owner/repo -a claude-code cursor
+  mdm add owner/repo -a claude-code -a cursor
+
+%sExamples:%s
+  mdm add vercel-labs/agent-skills
+  mdm add vercel-labs/agent-skills -g
+  mdm add vercel-labs/agent-skills -a claude-code cursor
+  mdm add vercel-labs/agent-skills --agent claude-code --agent cursor
+  mdm add https://github.com/owner/repo
+  mdm add ./my-local-skill`, ansiBold, ansiReset),
+		Args: cobra.MaximumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			showLogo(ver)
+			src := ""
+			if len(args) > 0 {
+				src = args[0]
+			}
+			if opts.All {
+				opts.Skills = []string{"*"}
+				opts.Agents = []string{"*"}
+				opts.Yes = true
+			}
+			runAdd(src, opts)
+		},
+	}
+
+	f := cmd.Flags()
+	f.BoolVarP(&opts.Global, "global", "g", false, "Install skill globally (user-level)")
+	f.BoolVarP(&opts.Project, "project", "p", false, "Force project-scope install")
+	f.StringArrayVarP(&opts.Agents, "agent", "a", nil, "Agents to install to (repeatable, use '*' for all)")
+	f.StringArrayVarP(&opts.Skills, "skill", "s", nil, "Skill names to install (repeatable, use '*' for all)")
+	f.BoolVarP(&opts.ListOnly, "list", "l", false, "List available skills without installing")
+	f.BoolVarP(&opts.Yes, "yes", "y", false, "Skip confirmation prompts")
+	f.BoolVar(&opts.Copy, "copy", false, "Copy files instead of symlinking")
+	f.BoolVar(&opts.All, "all", false, "Shorthand for --skill '*' --agent '*' -y")
+	f.BoolVar(&opts.FullDepth, "full-depth", false, "Search all subdirectories")
+
+	return cmd
+}
 
 // ─── Main add command ──────────────────────────────────────────────────────────
 
@@ -30,21 +92,21 @@ func runAdd(sourceInput string, opts AddOptions) {
 
 	if sourceInput == "" {
 		fmt.Fprintf(os.Stderr, "%sError:%s Please provide a package source.\n\n", ansiText, ansiReset)
-		fmt.Printf("  %s$%s skl add <package>\n\n", ansiDim, ansiReset)
+		fmt.Printf("  %s$%s mdm add <package>\n\n", ansiDim, ansiReset)
 		fmt.Printf("  %sExamples:%s\n", ansiDim, ansiReset)
-		fmt.Printf("    skl add vercel-labs/agent-skills\n")
-		fmt.Printf("    skl add https://github.com/owner/repo\n")
+		fmt.Printf("    mdm add vercel-labs/agent-skills\n")
+		fmt.Printf("    mdm add https://github.com/owner/repo\n")
 		os.Exit(1)
 	}
 
-	parsed := parseSource(sourceInput)
+	parsed := source.ParseSource(sourceInput)
 
 	fmt.Println()
 
 	switch parsed.Type {
-	case SourceTypeWellKnown:
+	case source.SourceTypeWellKnown:
 		runAddWellKnown(parsed, opts, cwd)
-	case SourceTypeLocal:
+	case source.SourceTypeLocal:
 		runAddLocal(parsed, opts, cwd)
 	default:
 		runAddGitOrHub(parsed, opts, cwd, sourceInput)
@@ -53,9 +115,9 @@ func runAdd(sourceInput string, opts AddOptions) {
 
 // ─── Well-known provider ───────────────────────────────────────────────────────
 
-func runAddWellKnown(parsed ParsedSource, opts AddOptions, cwd string) {
-	spin := NewSpinner("Fetching skills from " + parsed.URL + "...")
-	skills, err := fetchAllWellKnownSkills(parsed.URL)
+func runAddWellKnown(parsed source.ParsedSource, opts AddOptions, cwd string) {
+	spin := ui.NewSpinner("Fetching skills from " + parsed.URL + "...")
+	skills, err := registry.FetchAllWellKnownSkills(parsed.URL)
 	spin.Stop("")
 	if err != nil || len(skills) == 0 {
 		fmt.Fprintf(os.Stderr, "%sNo skills found at %s%s\n", ansiText, parsed.URL, ansiReset)
@@ -65,7 +127,7 @@ func runAddWellKnown(parsed ParsedSource, opts AddOptions, cwd string) {
 	// Apply skill filter
 	filtered := skills
 	if len(opts.Skills) > 0 && opts.Skills[0] != "*" {
-		var keep []*WellKnownSkill
+		var keep []*registry.WellKnownSkill
 		for _, s := range skills {
 			for _, f := range opts.Skills {
 				if strings.EqualFold(s.Name, f) || strings.EqualFold(s.InstallName, f) {
@@ -91,21 +153,21 @@ func runAddWellKnown(parsed ParsedSource, opts AddOptions, cwd string) {
 	}
 
 	// Skill selection
-	var selectedSkills []*WellKnownSkill
+	var selectedSkills []*registry.WellKnownSkill
 	if len(opts.Skills) > 0 && opts.Skills[0] == "*" {
 		selectedSkills = filtered
 	} else if len(filtered) == 1 || opts.Yes {
 		selectedSkills = filtered
 	} else {
-		options := make([]UIOption, len(filtered))
+		options := make([]ui.UIOption, len(filtered))
 		for i, s := range filtered {
-			options[i] = UIOption{Label: s.Name, Value: s.InstallName, Hint: s.Description}
+			options[i] = ui.UIOption{Label: s.Name, Value: s.InstallName, Hint: s.Description}
 		}
 		var initSel []int
 		for i := range filtered {
 			initSel = append(initSel, i)
 		}
-		indices, ok := uiMultiselect("Which skills would you like to install?", options, true, initSel, nil)
+		indices, ok := ui.UiMultiselect("Which skills would you like to install?", options, true, initSel, nil)
 		if !ok {
 			fmt.Println("Cancelled.")
 			return
@@ -120,41 +182,41 @@ func runAddWellKnown(parsed ParsedSource, opts AddOptions, cwd string) {
 		return
 	}
 
-	sourceID := getWellKnownSourceIdentifier(parsed.URL)
+	sourceID := registry.GetWellKnownSourceIdentifier(parsed.URL)
 	fmt.Println()
 
-	for _, skill := range selectedSkills {
-		sName := sanitizeName(skill.InstallName)
-		fmt.Printf("%sInstalling %s%s%s...\n", ansiDim, ansiText, skill.Name, ansiReset)
+	for _, s := range selectedSkills {
+		sName := sanitizeName(s.InstallName)
+		fmt.Printf("%sInstalling %s%s%s...\n", ansiDim, ansiText, s.Name, ansiReset)
 
 		var failedAgents []string
 		for _, agentName := range agents {
-			result := installWellKnownSkillForAgent(skill, agentName, global, mode)
+			result := installWellKnownSkillForAgent(s, agentName, global, mode)
 			if !result.Success {
 				failedAgents = append(failedAgents, agentName)
 			}
 		}
 
 		if len(failedAgents) == 0 {
-			logSuccess(skill.Name)
+			ui.LogSuccess(s.Name)
 		} else {
-			logWarn(fmt.Sprintf("%s (failed for: %s)", skill.Name, strings.Join(failedAgents, ", ")))
+			ui.LogWarn(fmt.Sprintf("%s (failed for: %s)", s.Name, strings.Join(failedAgents, ", ")))
 		}
 
 		// Update global lock
 		ownerRepo := ""
-		_ = addSkillToLock(sName, SkillLockEntry{
+		_ = lock.AddSkillToLock(sName, lock.SkillLockEntry{
 			Source:     sourceID,
-			SourceType: string(SourceTypeWellKnown),
+			SourceType: string(source.SourceTypeWellKnown),
 			SourceURL:  parsed.URL,
-			PluginName: skill.InstallName,
+			PluginName: s.InstallName,
 		})
 
 		// Update local lock if project scope
 		if !global {
-			_ = addSkillToLocalLock(sName, LocalSkillLockEntry{
+			_ = lock.AddSkillToLocalLock(sName, lock.LocalSkillLockEntry{
 				Source:     parsed.URL,
-				SourceType: string(SourceTypeWellKnown),
+				SourceType: string(source.SourceTypeWellKnown),
 			}, cwd)
 		}
 
@@ -168,7 +230,7 @@ func runAddWellKnown(parsed ParsedSource, opts AddOptions, cwd string) {
 
 // ─── Local path ────────────────────────────────────────────────────────────────
 
-func runAddLocal(parsed ParsedSource, opts AddOptions, cwd string) {
+func runAddLocal(parsed source.ParsedSource, opts AddOptions, cwd string) {
 	localPath := parsed.LocalPath
 	if !pathExists(localPath) {
 		fmt.Fprintf(os.Stderr, "%sError:%s Path not found: %s\n", ansiText, ansiReset, localPath)
@@ -197,9 +259,9 @@ func runAddLocal(parsed ParsedSource, opts AddOptions, cwd string) {
 	}
 
 	fmt.Println()
-	installSkillsForAgents(selectedSkills, agents, global, mode, SkillLockEntry{
+	installSkillsForAgents(selectedSkills, agents, global, mode, lock.SkillLockEntry{
 		Source:     localPath,
-		SourceType: string(SourceTypeLocal),
+		SourceType: string(source.SourceTypeLocal),
 		SourceURL:  localPath,
 	}, cwd, false)
 	maybeShowFindPrompt(cwd)
@@ -207,12 +269,12 @@ func runAddLocal(parsed ParsedSource, opts AddOptions, cwd string) {
 
 // ─── GitHub / GitLab / git ─────────────────────────────────────────────────────
 
-func runAddGitOrHub(parsed ParsedSource, opts AddOptions, cwd, sourceInput string) {
-	ownerRepo := getOwnerRepo(parsed)
-	token := getGitHubToken()
+func runAddGitOrHub(parsed source.ParsedSource, opts AddOptions, cwd, sourceInput string) {
+	ownerRepo := source.GetOwnerRepo(parsed)
+	token := lock.GetGitHubToken()
 
 	// Try blob fast-install (vercel/vercel-labs only)
-	if parsed.Type == SourceTypeGitHub && ownerRepo != "" {
+	if parsed.Type == source.SourceTypeGitHub && ownerRepo != "" {
 		blobOpts := struct {
 			Subpath         string
 			SkillFilter     string
@@ -226,8 +288,8 @@ func runAddGitOrHub(parsed ParsedSource, opts AddOptions, cwd, sourceInput strin
 			Token:       token,
 		}
 
-		spin := NewSpinner("Fetching skills...")
-		blobResult, _ := tryBlobInstall(ownerRepo, blobOpts)
+		spin := ui.NewSpinner("Fetching skills...")
+		blobResult, _ := blob.TryBlobInstall(ownerRepo, blobOpts)
 		spin.Stop("")
 
 		if blobResult != nil && len(blobResult.Skills) > 0 {
@@ -237,10 +299,10 @@ func runAddGitOrHub(parsed ParsedSource, opts AddOptions, cwd, sourceInput strin
 	}
 
 	// OSV advisory check (async, don't block)
-	osvCh := make(chan *OSVResult, 1)
-	if ownerRepo != "" && parsed.Type == SourceTypeGitHub {
+	osvCh := make(chan *registry.OSVResult, 1)
+	if ownerRepo != "" && parsed.Type == source.SourceTypeGitHub {
 		go func() {
-			osvCh <- fetchOSVAdvisories(ownerRepo, 5000)
+			osvCh <- registry.FetchOSVAdvisories(ownerRepo, 5000)
 		}()
 	} else {
 		osvCh <- nil
@@ -248,14 +310,14 @@ func runAddGitOrHub(parsed ParsedSource, opts AddOptions, cwd, sourceInput strin
 
 	// Clone repo
 	ref := parsed.Ref
-	spin := NewSpinner("Cloning " + parsed.URL + "...")
-	tmpDir, err := cloneRepo(parsed.URL, ref)
+	spin := ui.NewSpinner("Cloning " + parsed.URL + "...")
+	tmpDir, err := git.CloneRepo(parsed.URL, ref)
 	spin.Stop("")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%sError:%s %s\n", ansiText, ansiReset, err.Error())
 		os.Exit(1)
 	}
-	defer cleanupTempDir(tmpDir)
+	defer git.CleanupTempDir(tmpDir)
 
 	searchRoot := tmpDir
 	if parsed.Subpath != "" {
@@ -301,29 +363,29 @@ func runAddGitOrHub(parsed ParsedSource, opts AddOptions, cwd, sourceInput strin
 	if lockRef == "" {
 		lockRef = "main"
 	}
-	baseLockEntry := SkillLockEntry{
+	baseLockEntry := lock.SkillLockEntry{
 		Source:     sourceInput,
 		SourceType: string(parsed.Type),
 		SourceURL:  parsed.URL,
 		Ref:        lockRef,
 	}
 
-	installSkillsForAgents(selectedSkills, agents, global, mode, baseLockEntry, cwd, ownerRepo != "" && parsed.Type == SourceTypeGitHub)
+	installSkillsForAgents(selectedSkills, agents, global, mode, baseLockEntry, cwd, ownerRepo != "" && parsed.Type == source.SourceTypeGitHub)
 
 	maybeShowFindPrompt(cwd)
 }
 
 // ─── Blob fast install ─────────────────────────────────────────────────────────
 
-func runAddBlob(result *BlobInstallResult, parsed ParsedSource, opts AddOptions, cwd, ownerRepo, sourceInput string) {
+func runAddBlob(result *blob.BlobInstallResult, parsed source.ParsedSource, opts AddOptions, cwd, ownerRepo, sourceInput string) {
 	skills := result.Skills
 
 	// Apply skill filter
 	skillFilter := skillFilterFromOpts(opts, parsed)
 	if skillFilter != "" && skillFilter != "*" {
-		var keep []*BlobSkill
+		var keep []*blob.BlobSkill
 		for _, s := range skills {
-			if strings.EqualFold(s.Name, skillFilter) || strings.EqualFold(toSkillSlug(s.Name), skillFilter) {
+			if strings.EqualFold(s.Name, skillFilter) || strings.EqualFold(blob.ToSkillSlug(s.Name), skillFilter) {
 				keep = append(keep, s)
 			}
 		}
@@ -344,19 +406,19 @@ func runAddBlob(result *BlobInstallResult, parsed ParsedSource, opts AddOptions,
 	}
 
 	// Skill selection
-	var selectedBlob []*BlobSkill
+	var selectedBlob []*blob.BlobSkill
 	if (len(opts.Skills) > 0 && opts.Skills[0] == "*") || opts.Yes || len(skills) == 1 {
 		selectedBlob = skills
 	} else {
-		options := make([]UIOption, len(skills))
+		options := make([]ui.UIOption, len(skills))
 		for i, s := range skills {
-			options[i] = UIOption{Label: s.Name, Value: toSkillSlug(s.Name), Hint: s.Description}
+			options[i] = ui.UIOption{Label: s.Name, Value: blob.ToSkillSlug(s.Name), Hint: s.Description}
 		}
 		var initSel []int
 		for i := range skills {
 			initSel = append(initSel, i)
 		}
-		indices, ok := uiMultiselect("Which skills would you like to install?", options, true, initSel, nil)
+		indices, ok := ui.UiMultiselect("Which skills would you like to install?", options, true, initSel, nil)
 		if !ok {
 			fmt.Println("Cancelled.")
 			return
@@ -372,9 +434,9 @@ func runAddBlob(result *BlobInstallResult, parsed ParsedSource, opts AddOptions,
 	}
 
 	// OSV check (non-blocking)
-	osv := <-func() chan *OSVResult {
-		ch := make(chan *OSVResult, 1)
-		go func() { ch <- fetchOSVAdvisories(ownerRepo, 5000) }()
+	osv := <-func() chan *registry.OSVResult {
+		ch := make(chan *registry.OSVResult, 1)
+		go func() { ch <- registry.FetchOSVAdvisories(ownerRepo, 5000) }()
 		return ch
 	}()
 	if osv != nil && osv.Count > 0 {
@@ -398,27 +460,27 @@ func runAddBlob(result *BlobInstallResult, parsed ParsedSource, opts AddOptions,
 
 		var failedAgents []string
 		for _, agentName := range agents {
-			result := installSkillFilesForAgent(sName, files, agentName, global, mode)
-			if !result.Success {
+			r := installSkillFilesForAgent(sName, files, agentName, global, mode)
+			if !r.Success {
 				failedAgents = append(failedAgents, agentName)
 			}
 		}
 
 		if len(failedAgents) == 0 {
-			logSuccess(bSkill.Name)
+			ui.LogSuccess(bSkill.Name)
 		} else {
-			logWarn(fmt.Sprintf("%s (failed for: %s)", bSkill.Name, strings.Join(failedAgents, ", ")))
+			ui.LogWarn(fmt.Sprintf("%s (failed for: %s)", bSkill.Name, strings.Join(failedAgents, ", ")))
 		}
 
 		// Compute folder hash from tree
 		folderHash := ""
 		if result.Tree != nil {
-			folderHash = getSkillFolderHashFromTree(result.Tree, bSkill.RepoPath)
+			folderHash = blob.GetSkillFolderHashFromTree(result.Tree, bSkill.RepoPath)
 		}
 
-		_ = addSkillToLock(sName, SkillLockEntry{
+		_ = lock.AddSkillToLock(sName, lock.SkillLockEntry{
 			Source:          sourceInput,
-			SourceType:      string(SourceTypeGitHub),
+			SourceType:      string(source.SourceTypeGitHub),
 			SourceURL:       parsed.URL,
 			Ref:             ref,
 			SkillPath:       bSkill.RepoPath,
@@ -426,10 +488,10 @@ func runAddBlob(result *BlobInstallResult, parsed ParsedSource, opts AddOptions,
 			PluginName:      sName,
 		})
 		if !global {
-			_ = addSkillToLocalLock(sName, LocalSkillLockEntry{
+			_ = lock.AddSkillToLocalLock(sName, lock.LocalSkillLockEntry{
 				Source:     sourceInput,
 				Ref:        ref,
-				SourceType: string(SourceTypeGitHub),
+				SourceType: string(source.SourceTypeGitHub),
 			}, cwd)
 		}
 	}
@@ -441,36 +503,36 @@ func runAddBlob(result *BlobInstallResult, parsed ParsedSource, opts AddOptions,
 
 // ─── Shared install logic ──────────────────────────────────────────────────────
 
-func installSkillsForAgents(skills []*Skill, agents []string, global bool, mode InstallMode, baseLockEntry SkillLockEntry, cwd string, computeHash bool) {
-	for _, skill := range skills {
-		sName := sanitizeName(skill.Name)
-		fmt.Printf("%sInstalling %s%s%s...\n", ansiDim, ansiText, skill.Name, ansiReset)
+func installSkillsForAgents(skills []*skill.Skill, agents []string, global bool, mode InstallMode, baseLockEntry lock.SkillLockEntry, cwd string, computeHash bool) {
+	for _, s := range skills {
+		sName := sanitizeName(s.Name)
+		fmt.Printf("%sInstalling %s%s%s...\n", ansiDim, ansiText, s.Name, ansiReset)
 
 		var failedAgents []string
 		for _, agentName := range agents {
-			result := installSkillForAgent(skill, agentName, global, mode)
+			result := installSkillForAgent(s, agentName, global, mode)
 			if !result.Success {
 				failedAgents = append(failedAgents, agentName)
 			}
 		}
 
 		if len(failedAgents) == 0 {
-			logSuccess(skill.Name)
+			ui.LogSuccess(s.Name)
 		} else {
-			logWarn(fmt.Sprintf("%s (failed for: %s)", skill.Name, strings.Join(failedAgents, ", ")))
+			ui.LogWarn(fmt.Sprintf("%s (failed for: %s)", s.Name, strings.Join(failedAgents, ", ")))
 		}
 
 		lockEntry := baseLockEntry
 		lockEntry.PluginName = sName
-		if computeHash && skill.Path != "" {
-			if hash, err := computeSkillFolderHash(skill.Path); err == nil {
+		if computeHash && s.Path != "" {
+			if hash, err := lock.ComputeSkillFolderHash(s.Path); err == nil {
 				lockEntry.SkillFolderHash = hash
 			}
 		}
 
-		_ = addSkillToLock(sName, lockEntry)
+		_ = lock.AddSkillToLock(sName, lockEntry)
 		if !global {
-			_ = addSkillToLocalLock(sName, LocalSkillLockEntry{
+			_ = lock.AddSkillToLocalLock(sName, lock.LocalSkillLockEntry{
 				Source:     baseLockEntry.Source,
 				Ref:        baseLockEntry.Ref,
 				SourceType: baseLockEntry.SourceType,
@@ -484,18 +546,18 @@ func installSkillsForAgents(skills []*Skill, agents []string, global bool, mode 
 
 // ─── Skill discovery ───────────────────────────────────────────────────────────
 
-func discoverSkillsInDir(dir string, fullDepth bool, skillFilter string) []*Skill {
+func discoverSkillsInDir(dir string, fullDepth bool, skillFilter string) []*skill.Skill {
 	maxDepth := 5
 	if fullDepth {
 		maxDepth = 20
 	}
 
-	allFound := findSkillDirs(dir, 0, maxDepth)
+	allFound := skill.FindSkillDirs(dir, 0, maxDepth)
 
-	var skills []*Skill
+	var skills []*skill.Skill
 	seen := map[string]bool{}
 	for _, skillMd := range allFound {
-		s, err := parseSkillMd(filepath.Join(skillMd, "SKILL.md"), false)
+		s, err := skill.ParseSkillMd(filepath.Join(skillMd, "SKILL.md"), false)
 		if err != nil || s == nil {
 			continue
 		}
@@ -507,7 +569,7 @@ func discoverSkillsInDir(dir string, fullDepth bool, skillFilter string) []*Skil
 	}
 
 	if skillFilter != "" && skillFilter != "*" {
-		var filtered []*Skill
+		var filtered []*skill.Skill
 		for _, s := range skills {
 			if strings.EqualFold(s.Name, skillFilter) || strings.EqualFold(sanitizeName(s.Name), sanitizeName(skillFilter)) {
 				filtered = append(filtered, s)
@@ -521,11 +583,11 @@ func discoverSkillsInDir(dir string, fullDepth bool, skillFilter string) []*Skil
 
 // ─── Prompt helpers ────────────────────────────────────────────────────────────
 
-func selectSkills(skills []*Skill, opts AddOptions) []*Skill {
+func selectSkills(skills []*skill.Skill, opts AddOptions) []*skill.Skill {
 	if (len(opts.Skills) > 0 && opts.Skills[0] == "*") || opts.Yes || len(skills) == 1 {
 		if len(opts.Skills) > 0 && opts.Skills[0] != "*" {
 			// Filter to only named skills
-			var filtered []*Skill
+			var filtered []*skill.Skill
 			for _, s := range skills {
 				for _, f := range opts.Skills {
 					if strings.EqualFold(s.Name, f) || strings.EqualFold(sanitizeName(s.Name), sanitizeName(f)) {
@@ -540,7 +602,7 @@ func selectSkills(skills []*Skill, opts AddOptions) []*Skill {
 	}
 
 	if len(opts.Skills) > 0 {
-		var filtered []*Skill
+		var filtered []*skill.Skill
 		for _, s := range skills {
 			for _, f := range opts.Skills {
 				if strings.EqualFold(s.Name, f) || strings.EqualFold(sanitizeName(s.Name), sanitizeName(f)) {
@@ -552,20 +614,20 @@ func selectSkills(skills []*Skill, opts AddOptions) []*Skill {
 		return filtered
 	}
 
-	options := make([]UIOption, len(skills))
+	options := make([]ui.UIOption, len(skills))
 	for i, s := range skills {
-		options[i] = UIOption{Label: s.Name, Value: sanitizeName(s.Name), Hint: s.Description}
+		options[i] = ui.UIOption{Label: s.Name, Value: sanitizeName(s.Name), Hint: s.Description}
 	}
 	var initSel []int
 	for i := range skills {
 		initSel = append(initSel, i)
 	}
-	indices, ok := uiMultiselect("Which skills would you like to install?", options, true, initSel, nil)
+	indices, ok := ui.UiMultiselect("Which skills would you like to install?", options, true, initSel, nil)
 	if !ok {
 		fmt.Println("Cancelled.")
 		os.Exit(0)
 	}
-	var selected []*Skill
+	var selected []*skill.Skill
 	for _, i := range indices {
 		selected = append(selected, skills[i])
 	}
@@ -578,7 +640,7 @@ func promptScopeAndAgents(opts AddOptions, cwd string) (bool, InstallMode, []str
 	// Determine scope
 	global := opts.Global
 	if !global && !opts.Project && !opts.Yes {
-		idx, ok := uiSelect("Install scope?", []UIOption{
+		idx, ok := ui.UiSelect("Install scope?", []ui.UIOption{
 			{Label: "Project", Hint: "installs for this project only"},
 			{Label: "Global", Hint: "installs for your user account"},
 		})
@@ -607,8 +669,8 @@ func promptScopeAndAgents(opts AddOptions, cwd string) (bool, InstallMode, []str
 func promptAgents(opts AddOptions, global bool, cwd string) ([]string, bool) {
 	if len(opts.Agents) > 0 && opts.Agents[0] == "*" {
 		var all []string
-		for name := range allAgents {
-			if global && allAgents[name].GlobalSkillsDir == "" {
+		for name := range agent.AllAgents {
+			if global && agent.AllAgents[name].GlobalSkillsDir == "" {
 				continue
 			}
 			all = append(all, name)
@@ -620,10 +682,10 @@ func promptAgents(opts AddOptions, global bool, cwd string) ([]string, bool) {
 	if len(opts.Agents) > 0 {
 		var validated []string
 		for _, a := range opts.Agents {
-			if allAgents[a] != nil {
+			if agent.AllAgents[a] != nil {
 				validated = append(validated, a)
 			} else {
-				logWarn("Unknown agent: " + a)
+				ui.LogWarn("Unknown agent: " + a)
 			}
 		}
 		if len(validated) == 0 {
@@ -634,11 +696,11 @@ func promptAgents(opts AddOptions, global bool, cwd string) ([]string, bool) {
 	}
 
 	// Detect installed agents
-	detected := detectInstalledAgents()
+	detected := agent.DetectInstalledAgents()
 
 	// Universal agents (always shown as locked in UI)
-	universalAgents := getUniversalAgents()
-	nonUniversal := getNonUniversalAgents()
+	universalAgents := agent.GetUniversalAgents()
+	nonUniversal := agent.GetNonUniversalAgents()
 
 	// Filter to installed non-universal agents
 	var installedNonUniversal []string
@@ -652,21 +714,21 @@ func promptAgents(opts AddOptions, global bool, cwd string) ([]string, bool) {
 	}
 
 	// Build UI options from non-universal installed agents
-	var options []UIOption
+	var options []ui.UIOption
 	for _, a := range installedNonUniversal {
-		cfg := allAgents[a]
+		cfg := agent.AllAgents[a]
 		if cfg == nil {
 			continue
 		}
 		if global && cfg.GlobalSkillsDir == "" {
 			continue
 		}
-		options = append(options, UIOption{Label: cfg.DisplayName, Value: a})
+		options = append(options, ui.UIOption{Label: cfg.DisplayName, Value: a})
 	}
 
 	// Add non-installed agents at the bottom
-	for name, cfg := range allAgents {
-		if isUniversalAgent(name) {
+	for name, cfg := range agent.AllAgents {
+		if agent.IsUniversalAgent(name) {
 			continue
 		}
 		if global && cfg.GlobalSkillsDir == "" {
@@ -680,25 +742,25 @@ func promptAgents(opts AddOptions, global bool, cwd string) ([]string, bool) {
 			}
 		}
 		if !alreadyIn {
-			options = append(options, UIOption{Label: cfg.DisplayName, Value: name, Hint: "not detected"})
+			options = append(options, ui.UIOption{Label: cfg.DisplayName, Value: name, Hint: "not detected"})
 		}
 	}
 
 	// Build locked options for universal agents
-	var lockedOptions []UIOption
+	var lockedOptions []ui.UIOption
 	for _, a := range universalAgents {
-		cfg := allAgents[a]
+		cfg := agent.AllAgents[a]
 		if cfg == nil {
 			continue
 		}
 		if global && cfg.GlobalSkillsDir == "" {
 			continue
 		}
-		lockedOptions = append(lockedOptions, UIOption{Label: cfg.DisplayName, Value: a})
+		lockedOptions = append(lockedOptions, ui.UIOption{Label: cfg.DisplayName, Value: a})
 	}
 
 	// Load last selected agents as initial selection
-	lastSelected := getLastSelectedAgents()
+	lastSelected := lock.GetLastSelectedAgents()
 	lastSelectedSet := map[string]bool{}
 	for _, a := range lastSelected {
 		lastSelectedSet[a] = true
@@ -759,7 +821,7 @@ func promptAgents(opts AddOptions, global bool, cwd string) ([]string, bool) {
 		return result, true
 	}
 
-	selectedIndices, ok := uiSearchMultiselect(message, options, lockedOptions, initSel)
+	selectedIndices, ok := ui.UiSearchMultiselect(message, options, lockedOptions, initSel)
 	if !ok {
 		return nil, false
 	}
@@ -773,7 +835,7 @@ func promptAgents(opts AddOptions, global bool, cwd string) ([]string, bool) {
 	}
 
 	// Save selection for next time
-	_ = saveSelectedAgents(result)
+	_ = lock.SaveSelectedAgents(result)
 
 	return result, true
 }
@@ -793,7 +855,7 @@ func printInstallSummary(count int, global bool, agents []string, mode InstallMo
 	if len(agents) > 0 {
 		var displayNames []string
 		for _, a := range agents {
-			if cfg := allAgents[a]; cfg != nil {
+			if cfg := agent.AllAgents[a]; cfg != nil {
 				displayNames = append(displayNames, cfg.DisplayName)
 			} else {
 				displayNames = append(displayNames, a)
@@ -805,14 +867,14 @@ func printInstallSummary(count int, global bool, agents []string, mode InstallMo
 }
 
 func maybeShowFindPrompt(cwd string) {
-	if isPromptDismissed("findSkillsPrompt") {
+	if lock.IsPromptDismissed("findSkillsPrompt") {
 		return
 	}
-	fmt.Printf("%sTip:%s Run %sskl find%s to discover more skills.\n", ansiDim, ansiReset, ansiText, ansiReset)
-	_ = dismissPrompt("findSkillsPrompt")
+	fmt.Printf("%sTip:%s Run %smdm find%s to discover more skills.\n", ansiDim, ansiReset, ansiText, ansiReset)
+	_ = lock.DismissPrompt("findSkillsPrompt")
 }
 
-func showOSVAdvisories(osv *OSVResult, ownerRepo string) {
+func showOSVAdvisories(osv *registry.OSVResult, ownerRepo string) {
 	if osv == nil || osv.Count == 0 {
 		return
 	}
@@ -826,9 +888,10 @@ func showOSVAdvisories(osv *OSVResult, ownerRepo string) {
 	fmt.Println()
 }
 
-func skillFilterFromOpts(opts AddOptions, parsed ParsedSource) string {
+func skillFilterFromOpts(opts AddOptions, parsed source.ParsedSource) string {
 	if len(opts.Skills) > 0 {
 		return opts.Skills[0]
 	}
 	return parsed.SkillFilter
 }
+

@@ -1,4 +1,4 @@
-package main
+package source
 
 import (
 	"fmt"
@@ -31,7 +31,7 @@ var sourceAliases = map[string]string{
 	"coinbase/agentWallet": "coinbase/agentic-wallet-skills",
 }
 
-func isLocalPath(input string) bool {
+func IsLocalPath(input string) bool {
 	if filepath.IsAbs(input) {
 		return true
 	}
@@ -47,7 +47,7 @@ func isLocalPath(input string) bool {
 	return false
 }
 
-func sanitizeSubpath(subpath string) (string, error) {
+func SanitizeSubpath(subpath string) (string, error) {
 	normalized := strings.ReplaceAll(subpath, "\\", "/")
 	segments := strings.Split(normalized, "/")
 	for _, seg := range segments {
@@ -124,7 +124,7 @@ func decodeFragment(s string) string {
 	return decoded
 }
 
-func appendFragmentRef(input, ref, skillFilter string) string {
+func AppendFragmentRef(input, ref, skillFilter string) string {
 	if ref == "" {
 		return input
 	}
@@ -134,7 +134,7 @@ func appendFragmentRef(input, ref, skillFilter string) string {
 	return input + "#" + ref
 }
 
-func isWellKnownURL(input string) bool {
+func IsWellKnownURL(input string) bool {
 	if !strings.HasPrefix(input, "http://") && !strings.HasPrefix(input, "https://") {
 		return false
 	}
@@ -143,8 +143,8 @@ func isWellKnownURL(input string) bool {
 		return false
 	}
 	excluded := map[string]bool{
-		"github.com":            true,
-		"gitlab.com":            true,
+		"github.com":                true,
+		"gitlab.com":                true,
 		"raw.githubusercontent.com": true,
 	}
 	if excluded[u.Hostname()] {
@@ -156,8 +156,8 @@ func isWellKnownURL(input string) bool {
 	return true
 }
 
-func parseSource(input string) ParsedSource {
-	if isLocalPath(input) {
+func ParseSource(input string) ParsedSource {
+	if IsLocalPath(input) {
 		resolved, _ := filepath.Abs(input)
 		return ParsedSource{
 			Type:      SourceTypeLocal,
@@ -177,12 +177,12 @@ func parseSource(input string) ParsedSource {
 
 	// github: prefix
 	if m := regexp.MustCompile(`^github:(.+)$`).FindStringSubmatch(input); m != nil {
-		return parseSource(appendFragmentRef(m[1], fragmentRef, fragmentSkillFilter))
+		return ParseSource(AppendFragmentRef(m[1], fragmentRef, fragmentSkillFilter))
 	}
 
 	// gitlab: prefix
 	if m := regexp.MustCompile(`^gitlab:(.+)$`).FindStringSubmatch(input); m != nil {
-		return parseSource(appendFragmentRef("https://gitlab.com/"+m[1], fragmentRef, fragmentSkillFilter))
+		return ParseSource(AppendFragmentRef("https://gitlab.com/"+m[1], fragmentRef, fragmentSkillFilter))
 	}
 
 	// GitHub URL with tree + path
@@ -191,7 +191,7 @@ func parseSource(input string) ParsedSource {
 		if fragmentRef != "" {
 			ref = fragmentRef
 		}
-		sub, _ := sanitizeSubpath(m[4])
+		sub, _ := SanitizeSubpath(m[4])
 		return ParsedSource{
 			Type:    SourceTypeGitHub,
 			URL:     "https://github.com/" + m[1] + "/" + m[2] + ".git",
@@ -230,7 +230,7 @@ func parseSource(input string) ParsedSource {
 			if fragmentRef != "" {
 				ref = fragmentRef
 			}
-			sub, _ := sanitizeSubpath(m[5])
+			sub, _ := SanitizeSubpath(m[5])
 			repoPath := strings.TrimSuffix(m[3], ".git")
 			return ParsedSource{
 				Type:    SourceTypeGitLab,
@@ -290,7 +290,7 @@ func parseSource(input string) ParsedSource {
 		if !strings.Contains(input, ":") && !strings.HasPrefix(input, ".") && !strings.HasPrefix(input, "/") {
 			sub := ""
 			if m[3] != "" {
-				sub, _ = sanitizeSubpath(m[3])
+				sub, _ = SanitizeSubpath(m[3])
 			}
 			sf := fragmentSkillFilter
 			return ParsedSource{
@@ -304,7 +304,7 @@ func parseSource(input string) ParsedSource {
 	}
 
 	// Well-known URL
-	if isWellKnownURL(input) {
+	if IsWellKnownURL(input) {
 		return ParsedSource{
 			Type: SourceTypeWellKnown,
 			URL:  input,
@@ -319,7 +319,7 @@ func parseSource(input string) ParsedSource {
 	}
 }
 
-func getOwnerRepo(parsed ParsedSource) string {
+func GetOwnerRepo(parsed ParsedSource) string {
 	if parsed.Type == SourceTypeLocal {
 		return ""
 	}
@@ -346,7 +346,7 @@ func getOwnerRepo(parsed ParsedSource) string {
 	return ""
 }
 
-func formatSourceInput(sourceURL, ref string) string {
+func FormatSourceInput(sourceURL, ref string) string {
 	if ref == "" {
 		return sourceURL
 	}

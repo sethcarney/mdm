@@ -1,20 +1,68 @@
-package main
+package commands
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/spf13/cobra"
+
+	"github.com/sethcarney/mdm/internal/lock"
+	"github.com/sethcarney/mdm/internal/ui"
 )
 
 type RemoveOptions struct {
-	Global  bool
-	Agents  []string
-	Skills  []string
-	Yes     bool
-	All     bool
+	Global bool
+	Agents []string
+	Skills []string
+	Yes    bool
+	All    bool
 }
 
+func buildRemoveCmd() *cobra.Command {
+	var opts RemoveOptions
+
+	cmd := &cobra.Command{
+		Use:     "remove [skills...]",
+		Short:   "Remove installed skills",
+		Aliases: []string{"rm", "r"},
+		Long: fmt.Sprintf(`Remove installed skills from agents.
+
+If no skill names are provided an interactive selection menu is shown.
+
+The --agent (-a) and --skill (-s) flags accept multiple values — space-
+separated after the flag or repeated:
+
+  mdm remove -a claude-code cursor
+  mdm remove -a claude-code -a cursor
+
+%sExamples:%s
+  mdm remove
+  mdm remove my-skill
+  mdm remove skill1 skill2 -y
+  mdm remove --global my-skill
+  mdm remove --all`, ansiBold, ansiReset),
+		Args: cobra.ArbitraryArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			if opts.All {
+				opts.Skills = []string{"*"}
+				opts.Agents = []string{"*"}
+				opts.Yes = true
+			}
+			runRemove(args, opts)
+		},
+	}
+
+	f := cmd.Flags()
+	f.BoolVarP(&opts.Global, "global", "g", false, "Remove from global scope")
+	f.StringArrayVarP(&opts.Agents, "agent", "a", nil, "Remove from specific agents (repeatable)")
+	f.StringArrayVarP(&opts.Skills, "skill", "s", nil, "Skill names to remove (repeatable)")
+	f.BoolVarP(&opts.Yes, "yes", "y", false, "Skip confirmation prompts")
+	f.BoolVar(&opts.All, "all", false, "Shorthand for --skill '*' --agent '*' -y")
+
+	return cmd
+}
 
 func runRemove(positional []string, opts RemoveOptions) {
 	cwd, _ := os.Getwd()
@@ -28,7 +76,7 @@ func runRemove(positional []string, opts RemoveOptions) {
 
 	// Determine scope if not specified
 	if !opts.Global && !opts.Yes {
-		idx, ok := uiSelect("Which scope?", []UIOption{
+		idx, ok := ui.UiSelect("Which scope?", []ui.UIOption{
 			{Label: "Project", Hint: "remove from this project"},
 			{Label: "Global", Hint: "remove from your user account"},
 		})
@@ -67,15 +115,15 @@ func runRemove(positional []string, opts RemoveOptions) {
 		toRemove = installed
 	} else {
 		// Interactive selection
-		options := make([]UIOption, len(installed))
+		options := make([]ui.UIOption, len(installed))
 		for i, s := range installed {
 			hint := s.Description
 			if len(s.Agents) > 0 {
 				hint = strings.Join(s.Agents, ", ")
 			}
-			options[i] = UIOption{Label: s.Name, Value: sanitizeName(s.Name), Hint: hint}
+			options[i] = ui.UIOption{Label: s.Name, Value: sanitizeName(s.Name), Hint: hint}
 		}
-		indices, ok := uiMultiselect("Which skills would you like to remove?", options, true, nil, nil)
+		indices, ok := ui.UiMultiselect("Which skills would you like to remove?", options, true, nil, nil)
 		if !ok {
 			fmt.Println("Cancelled.")
 			return
@@ -95,7 +143,7 @@ func runRemove(positional []string, opts RemoveOptions) {
 		for _, s := range toRemove {
 			names = append(names, s.Name)
 		}
-		confirmed, ok := uiConfirm(fmt.Sprintf("Remove %d skill(s): %s?", len(toRemove), strings.Join(names, ", ")))
+		confirmed, ok := ui.UiConfirm(fmt.Sprintf("Remove %d skill(s): %s?", len(toRemove), strings.Join(names, ", ")))
 		if !ok || !confirmed {
 			fmt.Println("Cancelled.")
 			return
@@ -105,11 +153,11 @@ func runRemove(positional []string, opts RemoveOptions) {
 	fmt.Println()
 
 	// Remove each skill
-	for _, skill := range toRemove {
-		sName := sanitizeName(skill.Name)
+	for _, sk := range toRemove {
+		sName := sanitizeName(sk.Name)
 
 		// Remove from each agent's skills directory
-		agentsToRemove := skill.Agents
+		agentsToRemove := sk.Agents
 		if len(opts.Agents) > 0 {
 			agentsToRemove = opts.Agents
 		}
@@ -120,7 +168,7 @@ func runRemove(positional []string, opts RemoveOptions) {
 				continue
 			}
 			// Try both the sanitized name and the directory name
-			for _, name := range []string{sName, filepath.Base(skill.Path)} {
+			for _, name := range []string{sName, filepath.Base(sk.Path)} {
 				agentSkillDir := filepath.Join(agentBase, name)
 				if !isPathSafe(agentBase, agentSkillDir) {
 					continue
@@ -136,18 +184,18 @@ func runRemove(positional []string, opts RemoveOptions) {
 		}
 
 		// Remove canonical directory
-		canonicalDir := getCanonicalPath(skill.Name, global)
+		canonicalDir := getCanonicalPath(sk.Name, global)
 		if canonicalDir != "" && isPathSafe(getCanonicalSkillsDir(global, cwd), canonicalDir) {
 			os.RemoveAll(canonicalDir)
 		}
 
 		// Update lock files
-		_ = removeSkillFromLock(sName)
+		_ = lock.RemoveSkillFromLock(sName)
 		if !global {
-			_ = removeSkillFromLocalLock(sName, cwd)
+			_ = lock.RemoveSkillFromLocalLock(sName, cwd)
 		}
 
-		logSuccess("Removed " + skill.Name)
+		ui.LogSuccess("Removed " + sk.Name)
 	}
 
 	fmt.Println()

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-REPO="sethcarney/skl"
+REPO="sethcarney/mdm"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -27,29 +27,29 @@ case "$OS" in
     echo "For Windows, run the PowerShell installer:"
     echo "  irm https://raw.githubusercontent.com/${REPO}/main/install.ps1 | iex"
     echo ""
-    echo "Or download skl-windows-x64.exe directly from:"
+    echo "Or download mdm-windows-x64.exe directly from:"
     echo "  https://github.com/${REPO}/releases/latest"
     exit 1
     ;;
 esac
 
-DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/skl-${TARGET}"
+DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/mdm-${TARGET}"
 
-echo "Downloading skl (${TARGET})..."
-curl -fsSL "$DOWNLOAD_URL" -o /tmp/skl-install
-chmod +x /tmp/skl-install
+echo "Downloading mdm (${TARGET})..."
+curl -fsSL "$DOWNLOAD_URL" -o /tmp/mdm-install
+chmod +x /tmp/mdm-install
 
 mkdir -p "$INSTALL_DIR"
 
-echo "Installing to ${INSTALL_DIR}/skl..."
+echo "Installing to ${INSTALL_DIR}/mdm..."
 if [ -w "$INSTALL_DIR" ]; then
-  mv /tmp/skl-install "${INSTALL_DIR}/skl"
+  mv /tmp/mdm-install "${INSTALL_DIR}/mdm"
 else
-  sudo mv /tmp/skl-install "${INSTALL_DIR}/skl"
+  sudo mv /tmp/mdm-install "${INSTALL_DIR}/mdm"
 fi
 
 echo ""
-echo "skl installed successfully!"
+echo "mdm installed successfully!"
 
 case ":$PATH:" in
   *":${INSTALL_DIR}:"*) ;;
@@ -63,4 +63,4 @@ case ":$PATH:" in
     ;;
 esac
 
-echo "Verify with: skl --version"
+echo "Verify with: mdm --version"

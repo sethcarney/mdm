@@ -1,4 +1,4 @@
-package main
+package agent
 
 import (
 	"os"
@@ -7,16 +7,16 @@ import (
 )
 
 type AgentConfig struct {
-	Name             string
-	DisplayName      string
-	SkillsDir        string // relative, project-level
-	GlobalSkillsDir  string // absolute, user-level (empty = not supported)
-	ShowInUniversal  bool   // default true; false to hide from universal list
-	DetectInstalled  func() bool
+	Name            string
+	DisplayName     string
+	SkillsDir       string // relative, project-level
+	GlobalSkillsDir string // absolute, user-level (empty = not supported)
+	ShowInUniversal bool   // default true; false to hide from universal list
+	DetectInstalled func() bool
 }
 
-const agentsDir = ".agents"
-const skillsSubdir = "skills"
+const AgentsDir = ".agents"
+const SkillsSubdir = "skills"
 
 func getXDGConfigHome() string {
 	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
@@ -61,7 +61,7 @@ func pathExists(p string) bool {
 	return err == nil
 }
 
-var allAgents map[string]*AgentConfig
+var AllAgents map[string]*AgentConfig
 
 func init() {
 	home, _ := os.UserHomeDir()
@@ -69,7 +69,7 @@ func init() {
 	codexHome := getCodexHome()
 	claudeHome := getClaudeHome()
 
-	allAgents = map[string]*AgentConfig{
+	AllAgents = map[string]*AgentConfig{
 		"amp": {
 			Name:            "amp",
 			DisplayName:     "Amp",
@@ -446,40 +446,40 @@ func init() {
 	}
 }
 
-func getAgentNames() []string {
-	names := make([]string, 0, len(allAgents))
-	for k := range allAgents {
+func GetAgentNames() []string {
+	names := make([]string, 0, len(AllAgents))
+	for k := range AllAgents {
 		names = append(names, k)
 	}
 	return names
 }
 
-func isValidAgent(name string) bool {
-	_, ok := allAgents[name]
+func IsValidAgent(name string) bool {
+	_, ok := AllAgents[name]
 	return ok
 }
 
-func detectInstalledAgents() []string {
+func DetectInstalledAgents() []string {
 	var installed []string
-	for name, agent := range allAgents {
-		if agent.DetectInstalled() {
+	for name, a := range AllAgents {
+		if a.DetectInstalled() {
 			installed = append(installed, name)
 		}
 	}
 	return installed
 }
 
-func isUniversalAgent(name string) bool {
-	a, ok := allAgents[name]
+func IsUniversalAgent(name string) bool {
+	a, ok := AllAgents[name]
 	if !ok {
 		return false
 	}
 	return a.SkillsDir == ".agents/skills"
 }
 
-func getUniversalAgents() []string {
+func GetUniversalAgents() []string {
 	var result []string
-	for name, a := range allAgents {
+	for name, a := range AllAgents {
 		if a.SkillsDir == ".agents/skills" && a.ShowInUniversal {
 			result = append(result, name)
 		}
@@ -487,9 +487,9 @@ func getUniversalAgents() []string {
 	return result
 }
 
-func getNonUniversalAgents() []string {
+func GetNonUniversalAgents() []string {
 	var result []string
-	for name, a := range allAgents {
+	for name, a := range AllAgents {
 		if a.SkillsDir != ".agents/skills" {
 			result = append(result, name)
 		}
@@ -497,8 +497,8 @@ func getNonUniversalAgents() []string {
 	return result
 }
 
-func ensureUniversalAgents(targetAgents []string) []string {
-	universal := getUniversalAgents()
+func EnsureUniversalAgents(targetAgents []string) []string {
+	universal := GetUniversalAgents()
 	result := make([]string, len(targetAgents))
 	copy(result, targetAgents)
 	for _, ua := range universal {

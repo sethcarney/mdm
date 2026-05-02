@@ -1,25 +1,45 @@
-package main
+package commands
 
 import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/spf13/cobra"
+
+	"github.com/sethcarney/mdm/internal/lock"
 )
 
 // experimental_install: restore skills from skills-lock.json
 
+func buildInstallFromLockCmd(ver string) *cobra.Command {
+	var yes bool
+
+	cmd := &cobra.Command{
+		Use:   "experimental_install",
+		Short: "Restore skills from skills-lock.json",
+		Args:  cobra.NoArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			showLogo(ver)
+			runInstallFromLock(yes)
+		},
+	}
+
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Skip confirmation prompts")
+	return cmd
+}
+
 func runInstallFromLock(yes bool) {
-
 	cwd, _ := os.Getwd()
-	lock := readLocalLock(cwd)
+	l := lock.ReadLocalLock(cwd)
 
-	if len(lock.Skills) == 0 {
+	if len(l.Skills) == 0 {
 		fmt.Printf("\n%sNo skills in skills-lock.json.%s\n\n", ansiDim, ansiReset)
-		fmt.Printf("Add skills with %sskl add <package>%s\n\n", ansiText, ansiReset)
+		fmt.Printf("Add skills with %smdm add <package>%s\n\n", ansiText, ansiReset)
 		return
 	}
 
-	fmt.Printf("\n%sRestoring %d skill(s) from skills-lock.json...%s\n\n", ansiText, len(lock.Skills), ansiReset)
+	fmt.Printf("\n%sRestoring %d skill(s) from skills-lock.json...%s\n\n", ansiText, len(l.Skills), ansiReset)
 
 	// Group by source to batch installations
 	type sourceGroup struct {
@@ -29,7 +49,7 @@ func runInstallFromLock(yes bool) {
 		skills     []string
 	}
 	sourceMap := map[string]*sourceGroup{}
-	for sName, entry := range lock.Skills {
+	for sName, entry := range l.Skills {
 		key := entry.Source + "|" + entry.Ref
 		if g, ok := sourceMap[key]; ok {
 			g.skills = append(g.skills, sName)

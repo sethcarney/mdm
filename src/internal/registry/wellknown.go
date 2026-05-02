@@ -1,4 +1,4 @@
-package main
+package registry
 
 import (
 	"context"
@@ -8,6 +8,9 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/sethcarney/mdm/internal/skill"
+	"github.com/sethcarney/mdm/internal/version"
 )
 
 type WellKnownSkillEntry struct {
@@ -32,12 +35,12 @@ type WellKnownSkill struct {
 
 var wellKnownPaths = []string{".well-known/agent-skills", ".well-known/skills"}
 
-func httpGetText(ctx context.Context, rawURL string) (string, int, error) {
+func HttpGetText(ctx context.Context, rawURL string) (string, int, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", rawURL, nil)
 	if err != nil {
 		return "", 0, err
 	}
-	req.Header.Set("User-Agent", "skills-cli/"+Version)
+	req.Header.Set("User-Agent", version.AppName+"-cli/"+version.Version)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return "", 0, err
@@ -47,7 +50,7 @@ func httpGetText(ctx context.Context, rawURL string) (string, int, error) {
 	return string(body), resp.StatusCode, err
 }
 
-func fetchWellKnownIndex(baseURL string) (*WellKnownIndex, string, string, error) {
+func FetchWellKnownIndex(baseURL string) (*WellKnownIndex, string, string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -58,8 +61,8 @@ func fetchWellKnownIndex(baseURL string) (*WellKnownIndex, string, string, error
 	basePath := strings.TrimSuffix(u.Path, "/")
 
 	type urlEntry struct {
-		indexURL    string
-		resolvedBase string
+		indexURL      string
+		resolvedBase  string
 		wellKnownPath string
 	}
 
@@ -67,22 +70,22 @@ func fetchWellKnownIndex(baseURL string) (*WellKnownIndex, string, string, error
 	for _, wkPath := range wellKnownPaths {
 		// Path-relative
 		urlsToTry = append(urlsToTry, urlEntry{
-			indexURL:     u.Scheme + "://" + u.Host + basePath + "/" + wkPath + "/index.json",
-			resolvedBase: u.Scheme + "://" + u.Host + basePath,
+			indexURL:      u.Scheme + "://" + u.Host + basePath + "/" + wkPath + "/index.json",
+			resolvedBase:  u.Scheme + "://" + u.Host + basePath,
 			wellKnownPath: wkPath,
 		})
 		// Root if there's a sub-path
 		if basePath != "" {
 			urlsToTry = append(urlsToTry, urlEntry{
-				indexURL:     u.Scheme + "://" + u.Host + "/" + wkPath + "/index.json",
-				resolvedBase: u.Scheme + "://" + u.Host,
+				indexURL:      u.Scheme + "://" + u.Host + "/" + wkPath + "/index.json",
+				resolvedBase:  u.Scheme + "://" + u.Host,
 				wellKnownPath: wkPath,
 			})
 		}
 	}
 
 	for _, entry := range urlsToTry {
-		body, status, err := httpGetText(ctx, entry.indexURL)
+		body, status, err := HttpGetText(ctx, entry.indexURL)
 		if err != nil || status != 200 {
 			continue
 		}
@@ -95,7 +98,7 @@ func fetchWellKnownIndex(baseURL string) (*WellKnownIndex, string, string, error
 		}
 		valid := true
 		for _, s := range idx.Skills {
-			if !isValidWellKnownEntry(s) {
+			if !IsValidWellKnownEntry(s) {
 				valid = false
 				break
 			}
@@ -107,7 +110,7 @@ func fetchWellKnownIndex(baseURL string) (*WellKnownIndex, string, string, error
 	return nil, "", "", nil
 }
 
-func isValidWellKnownEntry(e WellKnownSkillEntry) bool {
+func IsValidWellKnownEntry(e WellKnownSkillEntry) bool {
 	if e.Name == "" || e.Description == "" || len(e.Files) == 0 {
 		return false
 	}
@@ -123,19 +126,19 @@ func isValidWellKnownEntry(e WellKnownSkillEntry) bool {
 	return hasSkillMdFile
 }
 
-func fetchWellKnownSkillByEntry(resolvedBase string, entry WellKnownSkillEntry, wellKnownPath string) (*WellKnownSkill, error) {
+func FetchWellKnownSkillByEntry(resolvedBase string, entry WellKnownSkillEntry, wellKnownPath string) (*WellKnownSkill, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	skillBaseURL := strings.TrimSuffix(resolvedBase, "/") + "/" + wellKnownPath + "/" + entry.Name
 	skillMdURL := skillBaseURL + "/SKILL.md"
 
-	body, status, err := httpGetText(ctx, skillMdURL)
+	body, status, err := HttpGetText(ctx, skillMdURL)
 	if err != nil || status != 200 {
 		return nil, nil
 	}
 
-	data, _ := parseFrontmatter(body)
+	data, _ := skill.ParseFrontmatter(body)
 	nameVal, _ := data["name"].(string)
 	descVal, _ := data["description"].(string)
 	if nameVal == "" || descVal == "" {
@@ -150,7 +153,7 @@ func fetchWellKnownSkillByEntry(resolvedBase string, entry WellKnownSkillEntry, 
 			continue
 		}
 		fileURL := skillBaseURL + "/" + filePath
-		fileBody, fileStatus, fileErr := httpGetText(ctx, fileURL)
+		fileBody, fileStatus, fileErr := HttpGetText(ctx, fileURL)
 		if fileErr == nil && fileStatus == 200 {
 			files[filePath] = fileBody
 		}
@@ -167,23 +170,23 @@ func fetchWellKnownSkillByEntry(resolvedBase string, entry WellKnownSkillEntry, 
 	}, nil
 }
 
-func fetchAllWellKnownSkills(baseURL string) ([]*WellKnownSkill, error) {
-	idx, resolvedBase, wkPath, err := fetchWellKnownIndex(baseURL)
+func FetchAllWellKnownSkills(baseURL string) ([]*WellKnownSkill, error) {
+	idx, resolvedBase, wkPath, err := FetchWellKnownIndex(baseURL)
 	if err != nil || idx == nil {
 		return nil, err
 	}
 
 	var skills []*WellKnownSkill
 	for _, entry := range idx.Skills {
-		skill, err := fetchWellKnownSkillByEntry(resolvedBase, entry, wkPath)
-		if err == nil && skill != nil {
-			skills = append(skills, skill)
+		sk, err := FetchWellKnownSkillByEntry(resolvedBase, entry, wkPath)
+		if err == nil && sk != nil {
+			skills = append(skills, sk)
 		}
 	}
 	return skills, nil
 }
 
-func getWellKnownSourceIdentifier(rawURL string) string {
+func GetWellKnownSourceIdentifier(rawURL string) string {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return "unknown"
@@ -191,12 +194,4 @@ func getWellKnownSourceIdentifier(rawURL string) string {
 	hostname := u.Hostname()
 	hostname = strings.TrimPrefix(hostname, "www.")
 	return hostname
-}
-
-func installWellKnownSkillForAgent(skill *WellKnownSkill, agentName string, global bool, mode InstallMode) InstallResult {
-	var files []struct{ Path, Contents string }
-	for path, content := range skill.Files {
-		files = append(files, struct{ Path, Contents string }{path, content})
-	}
-	return installSkillFilesForAgent(skill.InstallName, files, agentName, global, mode)
 }

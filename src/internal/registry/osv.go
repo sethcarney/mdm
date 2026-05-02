@@ -1,4 +1,4 @@
-package main
+package registry
 
 import (
 	"bytes"
@@ -43,7 +43,7 @@ var severityRank = map[OSVSeverity]int{
 	OSVUnknown:  0,
 }
 
-func maxOSVSeverity(sevs []OSVSeverity) OSVSeverity {
+func MaxOSVSeverity(sevs []OSVSeverity) OSVSeverity {
 	if len(sevs) == 0 {
 		return OSVUnknown
 	}
@@ -111,7 +111,7 @@ func parseOSVSeverity(vuln map[string]interface{}) OSVSeverity {
 	return OSVUnknown
 }
 
-func fetchOSVAdvisories(ownerRepo string, timeoutMs int) *OSVResult {
+func FetchOSVAdvisories(ownerRepo string, timeoutMs int) *OSVResult {
 	if timeoutMs <= 0 {
 		timeoutMs = 3000
 	}
@@ -172,10 +172,7 @@ func fetchOSVAdvisories(ownerRepo string, timeoutMs int) *OSVResult {
 
 	return &OSVResult{
 		Count:       len(advisories),
-		MaxSeverity: maxOSVSeverity(sevs),
+		MaxSeverity: MaxOSVSeverity(sevs),
 		Advisories:  advisories,
 	}
 }
-
-// Silence unused imports
-var _ = fmt.Sprintf

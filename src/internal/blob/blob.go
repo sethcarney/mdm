@@ -1,4 +1,4 @@
-package main
+package blob
 
 import (
 	"context"
@@ -8,6 +8,9 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/sethcarney/mdm/internal/skill"
+	"github.com/sethcarney/mdm/internal/version"
 )
 
 type TreeEntry struct {
@@ -18,7 +21,7 @@ type TreeEntry struct {
 }
 
 type RepoTree struct {
-	SHA    string      `json:"sha"`
+	SHA    string `json:"sha"`
 	Branch string
 	Tree   []TreeEntry `json:"tree"`
 }
@@ -34,7 +37,7 @@ type SkillDownloadResponse struct {
 }
 
 type BlobSkill struct {
-	Skill
+	skill.Skill
 	Files        []SkillSnapshotFile
 	SnapshotHash string
 	RepoPath     string
@@ -48,7 +51,7 @@ type BlobInstallResult struct {
 const downloadBaseURL = "https://skills.sh"
 const fetchTimeout = 10 * time.Second
 
-func httpGet(ctx context.Context, url string, headers map[string]string) ([]byte, int, error) {
+func HttpGet(ctx context.Context, url string, headers map[string]string) ([]byte, int, error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, 0, err
@@ -56,7 +59,7 @@ func httpGet(ctx context.Context, url string, headers map[string]string) ([]byte
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
-	req.Header.Set("User-Agent", "skills-cli/"+Version)
+	req.Header.Set("User-Agent", version.AppName+"-cli/"+version.Version)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, 0, err
@@ -66,7 +69,7 @@ func httpGet(ctx context.Context, url string, headers map[string]string) ([]byte
 	return body, resp.StatusCode, err
 }
 
-func fetchRepoTree(ownerRepo string, ref *string, token string) (*RepoTree, error) {
+func FetchRepoTree(ownerRepo string, ref *string, token string) (*RepoTree, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -77,7 +80,7 @@ func fetchRepoTree(ownerRepo string, ref *string, token string) (*RepoTree, erro
 
 	tryBranch := func(branch string) (*RepoTree, error) {
 		url := fmt.Sprintf("https://api.github.com/repos/%s/git/trees/%s?recursive=1", ownerRepo, branch)
-		body, status, err := httpGet(ctx, url, headers)
+		body, status, err := HttpGet(ctx, url, headers)
 		if err != nil || status != 200 {
 			return nil, fmt.Errorf("status %d", status)
 		}
@@ -105,7 +108,7 @@ func fetchRepoTree(ownerRepo string, ref *string, token string) (*RepoTree, erro
 	return nil, fmt.Errorf("could not fetch repo tree for %s", ownerRepo)
 }
 
-func getSkillFolderHashFromTree(tree *RepoTree, skillPath string) string {
+func GetSkillFolderHashFromTree(tree *RepoTree, skillPath string) string {
 	// skillPath is like "skills/react-best-practices/SKILL.md"
 	// We want the SHA of the folder (tree entry for the parent dir)
 	folder := skillPath
@@ -130,16 +133,16 @@ func getSkillFolderHashFromTree(tree *RepoTree, skillPath string) string {
 	return ""
 }
 
-func fetchSkillFolderHash(ownerRepo, skillPath, token string, ref *string) (string, error) {
-	tree, err := fetchRepoTree(ownerRepo, ref, token)
+func FetchSkillFolderHash(ownerRepo, skillPath, token string, ref *string) (string, error) {
+	tree, err := FetchRepoTree(ownerRepo, ref, token)
 	if err != nil {
 		return "", err
 	}
-	hash := getSkillFolderHashFromTree(tree, skillPath)
+	hash := GetSkillFolderHashFromTree(tree, skillPath)
 	return hash, nil
 }
 
-func toSkillSlug(name string) string {
+func ToSkillSlug(name string) string {
 	s := strings.ToLower(name)
 	s = strings.ReplaceAll(s, " ", "-")
 	s = strings.ReplaceAll(s, "_", "-")
@@ -164,11 +167,11 @@ var blobAllowedOwners = map[string]bool{
 	"vercel-labs": true,
 }
 
-func tryBlobInstall(ownerRepo string, opts struct {
-	Subpath     string
-	SkillFilter string
-	Ref         string
-	Token       string
+func TryBlobInstall(ownerRepo string, opts struct {
+	Subpath         string
+	SkillFilter     string
+	Ref             string
+	Token           string
 	IncludeInternal bool
 }) (*BlobInstallResult, error) {
 	parts := strings.SplitN(ownerRepo, "/", 2)
@@ -185,7 +188,7 @@ func tryBlobInstall(ownerRepo string, opts struct {
 		refPtr = &opts.Ref
 	}
 
-	tree, err := fetchRepoTree(ownerRepo, refPtr, opts.Token)
+	tree, err := FetchRepoTree(ownerRepo, refPtr, opts.Token)
 	if err != nil {
 		return nil, nil
 	}
@@ -222,11 +225,11 @@ func tryBlobInstall(ownerRepo string, opts struct {
 		if opts.Token != "" {
 			headers["Authorization"] = "Bearer " + opts.Token
 		}
-		body, status, err := httpGet(ctx, rawURL, headers)
+		body, status, err := HttpGet(ctx, rawURL, headers)
 		if err != nil || status != 200 {
 			continue
 		}
-		data, _ := parseFrontmatter(string(body))
+		data, _ := skill.ParseFrontmatter(string(body))
 		nameVal, _ := data["name"]
 		descVal, _ := data["description"]
 		name, _ := nameVal.(string)
@@ -237,7 +240,7 @@ func tryBlobInstall(ownerRepo string, opts struct {
 
 		// Apply skill filter
 		if opts.SkillFilter != "" {
-			if !strings.EqualFold(name, opts.SkillFilter) && !strings.EqualFold(toSkillSlug(name), opts.SkillFilter) {
+			if !strings.EqualFold(name, opts.SkillFilter) && !strings.EqualFold(ToSkillSlug(name), opts.SkillFilter) {
 				continue
 			}
 		}
@@ -256,18 +259,18 @@ func tryBlobInstall(ownerRepo string, opts struct {
 		}
 
 		// Download full skill via skills.sh API
-		slug := toSkillSlug(name)
+		slug := ToSkillSlug(name)
 		dlURL := fmt.Sprintf("%s/api/download?owner=%s&repo=%s&slug=%s&branch=%s", downloadBaseURL, parts[0], parts[1], slug, branch)
 		if opts.Subpath != "" {
 			dlURL += "&subpath=" + opts.Subpath
 		}
-		dlBody, dlStatus, dlErr := httpGet(ctx, dlURL, nil)
+		dlBody, dlStatus, dlErr := HttpGet(ctx, dlURL, nil)
 		if dlErr != nil || dlStatus != 200 {
 			// Fall back to constructing files from tree
 			var files []SkillSnapshotFile
 			files = append(files, SkillSnapshotFile{Path: "SKILL.md", Contents: string(body)})
 			blobSkills = append(blobSkills, &BlobSkill{
-				Skill:        Skill{Name: name, Description: desc},
+				Skill:        skill.Skill{Name: name, Description: desc},
 				Files:        files,
 				SnapshotHash: "",
 				RepoPath:     skillMdPath,
@@ -281,7 +284,7 @@ func tryBlobInstall(ownerRepo string, opts struct {
 		}
 
 		blobSkills = append(blobSkills, &BlobSkill{
-			Skill:        Skill{Name: name, Description: desc},
+			Skill:        skill.Skill{Name: name, Description: desc},
 			Files:        dlResp.Files,
 			SnapshotHash: dlResp.Hash,
 			RepoPath:     skillMdPath,

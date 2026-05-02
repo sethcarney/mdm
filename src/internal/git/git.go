@@ -1,4 +1,4 @@
-package main
+package git
 
 import (
 	"fmt"
@@ -19,7 +19,7 @@ func (e *GitCloneError) Error() string {
 	return e.Message
 }
 
-func cloneRepo(gitURL, ref string) (string, error) {
+func CloneRepo(gitURL, ref string) (string, error) {
 	tmpDir, err := os.MkdirTemp("", "skills-")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp dir: %w", err)
@@ -71,7 +71,7 @@ func cloneRepo(gitURL, ref string) (string, error) {
 	return tmpDir, nil
 }
 
-func cleanupTempDir(dir string) error {
+func CleanupTempDir(dir string) error {
 	if dir == "" {
 		return nil
 	}

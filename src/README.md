@@ -1,6 +1,6 @@
-# skills-go
+# mdm
 
-Go rewrite of the `skills` CLI.
+Go source for the `mdm` CLI.
 
 ## Run without building
 
@@ -16,17 +16,29 @@ go run . add vercel-labs/agent-skills
 
 ```bash
 # Build into the current directory
-go build -o skills .
+make build
+# or directly:
+go build -o mdm .
 
 # Run it
-./skills --help
+./mdm --help
 ```
 
-## Install to $GOPATH/bin (makes `skills` available system-wide)
+## Run tests
 
 ```bash
+make test
+# or directly:
+go test ./...
+```
+
+## Install to $GOPATH/bin (makes `mdm` available system-wide)
+
+```bash
+make install
+# or directly:
 go install .
-skills --help
+mdm --help
 ```
 
 ## Debug with Delve (CLI)

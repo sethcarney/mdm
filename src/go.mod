@@ -1,4 +1,4 @@
-module github.com/sethcarney/skl
+module github.com/sethcarney/mdm
 
 go 1.24.0
 

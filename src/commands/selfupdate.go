@@ -1,4 +1,4 @@
-package main
+package commands
 
 import (
 	"encoding/json"
@@ -12,9 +12,11 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/spf13/cobra"
 )
 
-const updateRepo = "sethcarney/skl"
+const updateRepo = "sethcarney/mdm"
 const releasesAPI = "https://api.github.com/repos/" + updateRepo + "/releases/latest"
 
 type githubAsset struct {
@@ -27,25 +29,37 @@ type githubRelease struct {
 	Assets  []githubAsset `json:"assets"`
 }
 
+func buildUpgradeCmd(ver string) *cobra.Command {
+	return &cobra.Command{
+		Use:     "upgrade",
+		Short:   "Upgrade the " + appName + " CLI binary",
+		Aliases: []string{"update-cli", "self-update"},
+		Args:    cobra.NoArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			runSelfUpdate(ver)
+		},
+	}
+}
+
 func getBinaryAssetName() string {
 	switch runtime.GOOS {
 	case "linux":
 		switch runtime.GOARCH {
 		case "amd64":
-			return "skl-linux-x64"
+			return "mdm-linux-x64"
 		case "arm64":
-			return "skl-linux-arm64"
+			return "mdm-linux-arm64"
 		}
 	case "darwin":
 		switch runtime.GOARCH {
 		case "amd64":
-			return "skl-macos-x64"
+			return "mdm-macos-x64"
 		case "arm64":
-			return "skl-macos-arm64"
+			return "mdm-macos-arm64"
 		}
 	case "windows":
 		if runtime.GOARCH == "amd64" {
-			return "skl-windows-x64.exe"
+			return "mdm-windows-x64.exe"
 		}
 	}
 	return ""
@@ -78,7 +92,7 @@ func runSelfUpdate(currentVersion string) {
 	fmt.Printf("%sChecking for updates...%s\n", ansiDim, ansiReset)
 
 	req, _ := http.NewRequest("GET", releasesAPI, nil)
-	req.Header.Set("User-Agent", "skl-cli/"+currentVersion)
+	req.Header.Set("User-Agent", appName+"-cli/"+currentVersion)
 	resp, err := client.Do(req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to check for updates: %v\n", err)
@@ -142,7 +156,7 @@ func runSelfUpdate(currentVersion string) {
 	}
 
 	dlBody, _ := io.ReadAll(dlResp.Body)
-	tmpPath := filepath.Join(os.TempDir(), fmt.Sprintf("skl-update-%d", time.Now().UnixNano()))
+	tmpPath := filepath.Join(os.TempDir(), fmt.Sprintf(appName+"-update-%d", time.Now().UnixNano()))
 
 	if err := os.WriteFile(tmpPath, dlBody, 0755); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to write temp file: %v\n", err)
@@ -166,10 +180,10 @@ func runSelfUpdate(currentVersion string) {
 			os.Remove(tmpPath)
 		}
 		fmt.Printf("%sUpdated to %s successfully.%s\n", ansiText, latestVersion, ansiReset)
-		fmt.Printf("%sRestart your shell or run %sskl --version%s%s to confirm.%s\n",
-			ansiDim, ansiText, ansiDim, ansiReset, ansiReset)
+		fmt.Printf("%sRestart your shell or run %s%s --version%s%s to confirm.%s\n",
+			ansiDim, ansiText, appName, ansiDim, ansiReset, ansiReset)
 	} else {
-		batchPath := filepath.Join(os.TempDir(), "skl-update.bat")
+		batchPath := filepath.Join(os.TempDir(), appName+"-update.bat")
 		batchContent := fmt.Sprintf("@echo off\r\ntimeout /t 1 /nobreak > NUL\r\nmove /y \"%s\" \"%s\" > NUL\r\ndel \"%%~f0\"\r\n",
 			tmpPath, execPath)
 		if err := os.WriteFile(batchPath, []byte(batchContent), 0644); err != nil {
