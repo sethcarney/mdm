@@ -111,6 +111,7 @@ func BuildRootCmd(ver string) *cobra.Command {
 	root.AddCommand(
 		buildSkillsCmd(ver),
 		buildRulesCmd(),
+		buildDoctorCmd(),
 		buildUpgradeCmd(ver),
 		buildCompletionCmd(root),
 	)
