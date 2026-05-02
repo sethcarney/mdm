@@ -22,7 +22,7 @@ func buildSyncCmd(ver string) *cobra.Command {
 	var opts SyncOptions
 
 	cmd := &cobra.Command{
-		Use:   "experimental_sync",
+		Use:   "sync",
 		Short: "Sync skills from node_modules into agent directories",
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
@@ -43,7 +43,7 @@ func runSync(opts SyncOptions) {
 	found := skill.DiscoverNodeModuleSkills(cwd)
 	if len(found) == 0 {
 		fmt.Printf("%sNo skills found in node_modules.%s\n\n", ansiDim, ansiReset)
-		fmt.Printf("Install skills packages with npm/yarn/pnpm first, then run %sskills experimental_sync%s\n\n", ansiText, ansiReset)
+		fmt.Printf("Install skills packages with npm/yarn/pnpm first, then run %smdm skills sync%s\n\n", ansiText, ansiReset)
 		return
 	}
 

@@ -29,9 +29,9 @@ func buildUpdateCmd() *cobra.Command {
 		Long: fmt.Sprintf(`Update installed skills to their latest versions.
 
 %sExamples:%s
-  mdm update
-  mdm update my-skill
-  mdm update -g`, ansiBold, ansiReset),
+  mdm skills update
+  mdm skills update my-skill
+  mdm skills update -g`, ansiBold, ansiReset),
 		Args: cobra.ArbitraryArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			runUpdateWithOpts(args, opts)

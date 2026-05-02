@@ -45,16 +45,16 @@ The --agent (-a) and --skill (-s) flags accept multiple values. You can
 pass them space-separated after the flag or repeat the flag for each value
 — both styles are equivalent:
 
-  mdm add owner/repo -a claude-code cursor
-  mdm add owner/repo -a claude-code -a cursor
+  mdm skills add owner/repo -a claude-code cursor
+  mdm skills add owner/repo -a claude-code -a cursor
 
 %sExamples:%s
-  mdm add vercel-labs/agent-skills
-  mdm add vercel-labs/agent-skills -g
-  mdm add vercel-labs/agent-skills -a claude-code cursor
-  mdm add vercel-labs/agent-skills --agent claude-code --agent cursor
-  mdm add https://github.com/owner/repo
-  mdm add ./my-local-skill`, ansiBold, ansiReset),
+  mdm skills add vercel-labs/agent-skills
+  mdm skills add vercel-labs/agent-skills -g
+  mdm skills add vercel-labs/agent-skills -a claude-code cursor
+  mdm skills add vercel-labs/agent-skills --agent claude-code --agent cursor
+  mdm skills add https://github.com/owner/repo
+  mdm skills add ./my-local-skill`, ansiBold, ansiReset),
 		Args: cobra.MaximumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			showLogo(ver)
@@ -82,6 +82,8 @@ pass them space-separated after the flag or repeat the flag for each value
 	f.BoolVar(&opts.All, "all", false, "Shorthand for --skill '*' --agent '*' -y")
 	f.BoolVar(&opts.FullDepth, "full-depth", false, "Search all subdirectories")
 
+	_ = cmd.RegisterFlagCompletionFunc("agent", agentFlagCompletion)
+
 	return cmd
 }
 
@@ -92,10 +94,10 @@ func runAdd(sourceInput string, opts AddOptions) {
 
 	if sourceInput == "" {
 		fmt.Fprintf(os.Stderr, "%sError:%s Please provide a package source.\n\n", ansiText, ansiReset)
-		fmt.Printf("  %s$%s mdm add <package>\n\n", ansiDim, ansiReset)
+		fmt.Printf("  %s$%s mdm skills add <package>\n\n", ansiDim, ansiReset)
 		fmt.Printf("  %sExamples:%s\n", ansiDim, ansiReset)
-		fmt.Printf("    mdm add vercel-labs/agent-skills\n")
-		fmt.Printf("    mdm add https://github.com/owner/repo\n")
+		fmt.Printf("    mdm skills add vercel-labs/agent-skills\n")
+		fmt.Printf("    mdm skills add https://github.com/owner/repo\n")
 		os.Exit(1)
 	}
 
@@ -870,7 +872,7 @@ func maybeShowFindPrompt(cwd string) {
 	if lock.IsPromptDismissed("findSkillsPrompt") {
 		return
 	}
-	fmt.Printf("%sTip:%s Run %smdm find%s to discover more skills.\n", ansiDim, ansiReset, ansiText, ansiReset)
+	fmt.Printf("%sTip:%s Run %smdm skills find%s to discover more skills.\n", ansiDim, ansiReset, ansiText, ansiReset)
 	_ = lock.DismissPrompt("findSkillsPrompt")
 }
 

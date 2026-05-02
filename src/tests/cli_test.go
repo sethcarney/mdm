@@ -94,44 +94,56 @@ func TestHelp(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("mdm --help exited %d", code)
 	}
-	for _, expected := range []string{"add", "remove", "list"} {
+	for _, expected := range []string{"skills", "upgrade", "completion"} {
 		if !strings.Contains(stdout, expected) {
 			t.Errorf("expected --help output to contain %q, got: %q", expected, stdout)
 		}
 	}
 }
 
-func TestAddHelp(t *testing.T) {
-	stdout, _, code := runMdm(t, "add", "--help")
+func TestSkillsHelp(t *testing.T) {
+	stdout, _, code := runMdm(t, "skills", "--help")
 	if code != 0 {
-		t.Fatalf("mdm add --help exited %d", code)
+		t.Fatalf("mdm skills --help exited %d", code)
+	}
+	for _, expected := range []string{"add", "remove", "list", "find", "update", "init"} {
+		if !strings.Contains(stdout, expected) {
+			t.Errorf("expected skills --help output to contain %q, got: %q", expected, stdout)
+		}
+	}
+}
+
+func TestAddHelp(t *testing.T) {
+	stdout, _, code := runMdm(t, "skills", "add", "--help")
+	if code != 0 {
+		t.Fatalf("mdm skills add --help exited %d", code)
 	}
 	for _, expected := range []string{"--agent", "--skill"} {
 		if !strings.Contains(stdout, expected) {
-			t.Errorf("expected add --help output to contain %q, got: %q", expected, stdout)
+			t.Errorf("expected skills add --help output to contain %q, got: %q", expected, stdout)
 		}
 	}
 }
 
 func TestRemoveHelp(t *testing.T) {
-	_, _, code := runMdm(t, "remove", "--help")
+	_, _, code := runMdm(t, "skills", "remove", "--help")
 	if code != 0 {
-		t.Fatalf("mdm remove --help exited %d", code)
+		t.Fatalf("mdm skills remove --help exited %d", code)
 	}
 }
 
 func TestListHelp(t *testing.T) {
-	_, _, code := runMdm(t, "list", "--help")
+	_, _, code := runMdm(t, "skills", "list", "--help")
 	if code != 0 {
-		t.Fatalf("mdm list --help exited %d", code)
+		t.Fatalf("mdm skills list --help exited %d", code)
 	}
 }
 
 func TestNormalizeMultiFlags(t *testing.T) {
-	// Run: mdm add owner/repo -a claude cursor --list
+	// Run: mdm skills add owner/repo -a claude cursor --list
 	// This should NOT produce "unknown flag" or "flag needs an argument" in stderr.
 	// It will fail on network, but flag parsing should succeed.
-	_, stderr, _ := runMdm(t, "add", "owner/repo", "-a", "claude", "cursor", "--list")
+	_, stderr, _ := runMdm(t, "skills", "add", "owner/repo", "-a", "claude", "cursor", "--list")
 	if strings.Contains(stderr, "unknown flag") {
 		t.Errorf("unexpected 'unknown flag' in stderr: %q", stderr)
 	}

@@ -17,8 +17,8 @@ func buildInitCmd(ver string) *cobra.Command {
 Creates <name>/SKILL.md or ./SKILL.md if no name is given.
 
 %sExamples:%s
-  mdm init
-  mdm init my-skill`, ansiBold, ansiReset),
+  mdm skills init
+  mdm skills init my-skill`, ansiBold, ansiReset),
 		Args: cobra.MaximumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			showLogo(ver)
@@ -100,7 +100,7 @@ Describe when this skill should be used.
 	fmt.Printf("  2. Update the %sname%s and %sdescription%s in the frontmatter\n", ansiText, ansiReset, ansiText, ansiReset)
 	fmt.Println()
 	fmt.Printf("%sPublishing:%s\n", ansiDim, ansiReset)
-	fmt.Printf("  %sGitHub:%s  Push to a repo, then %smdm add <owner>/<repo>%s\n", ansiDim, ansiReset, ansiText, ansiReset)
+	fmt.Printf("  %sGitHub:%s  Push to a repo, then %smdm skills add <owner>/<repo>%s\n", ansiDim, ansiReset, ansiText, ansiReset)
 	fmt.Println()
 	fmt.Printf("Browse existing skills for inspiration at %shttps://skills.sh/%s\n", ansiText, ansiReset)
 	fmt.Println()

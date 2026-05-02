@@ -104,15 +104,8 @@ func BuildRootCmd(ver string) *cobra.Command {
 	root.SetVersionTemplate(fmt.Sprintf("%s%s%s%s %s\n", ansiBold, ansiText, appName, ansiReset, ver))
 
 	root.AddCommand(
-		buildAddCmd(ver),
-		buildRemoveCmd(),
-		buildListCmd(),
-		buildFindCmd(),
-		buildUpdateCmd(),
+		buildSkillsCmd(ver),
 		buildUpgradeCmd(ver),
-		buildInitCmd(ver),
-		buildInstallFromLockCmd(ver),
-		buildSyncCmd(ver),
 		buildCompletionCmd(root),
 	)
 
