@@ -24,17 +24,49 @@ cd src && go test ./internal/skill/ -run TestFindSkills
 
 Run with the debugger via `.vscode/launch.json` (Delve is configured).
 
+## CLI reference
+
+```
+mdm
+├── upgrade                          # Self-update the mdm binary from GitHub releases (aliases: update-cli, self-update)
+├── completion [bash|zsh|fish|ps1]   # Generate shell completion script
+│   └── install                      # Write completion into shell rc file
+├── skills                           # Manage skills for AI agents
+│   ├── add <package>                # Install a skill from GitHub, GitLab, URL, or local path (aliases: a, install, i)
+│   ├── remove [skills...]           # Uninstall skills (aliases: rm, r)
+│   ├── list                         # List installed skills (aliases: ls)
+│   ├── find [query]                 # Search the skills.sh registry and install interactively (aliases: search, f, s)
+│   ├── update [skills...]           # Re-fetch skills from their recorded source+ref (aliases: check)
+│   ├── audit [skills...]            # Check installed skills for updates and security advisories
+│   ├── init [name]                  # Scaffold a new SKILL.md in the current directory
+│   ├── install                      # Restore all skills from skills-lock.json (CI/onboarding)
+│   └── sync                         # Sync skills from node_modules into agent skill directories
+└── rules                            # Manage agent instruction files (CLAUDE.md, AGENTS.md, .cursorrules, etc.)
+    ├── link                         # Symlink all agent instruction files to a single AGENTS.md source of truth
+    ├── status                       # Show which instruction files exist, are symlinked, or are missing
+    └── unlink                       # Remove symlinks and restore per-agent instruction files
+```
+
 ## Architecture
 
 ```
 src/
 ├── main.go              # Entry: builds root Cobra command, calls Execute()
 ├── commands/            # One file per CLI command
-│   ├── root.go          # Cobra root; flag normalization; ANSI logo/styles
-│   ├── skills.go        # `mdm skills` subcommand; registers add/remove/list/find/update/init/install/sync
-│   ├── add.go           # Install flow: multi-agent/skill prompts, scope selection
-│   ├── installer.go     # Core install logic: clone → discover → copy → lock
-│   └── ...              # remove, list, find, update, sync, selfupdate, init
+│   ├── root.go          # Cobra root; flag normalization; ANSI logo/styles; completion command
+│   ├── skills.go        # `mdm skills` group; registers all skills subcommands
+│   ├── add.go           # `mdm skills add`: install flow; multi-agent/skill prompts, scope selection
+│   ├── installer.go     # Shared install logic: clone → discover → copy → lock; sanitizeName, isPathSafe, skillNameMatches
+│   ├── remove.go        # `mdm skills remove`
+│   ├── list.go          # `mdm skills list`
+│   ├── find.go          # `mdm skills find`: queries skills.sh search API
+│   ├── update.go        # `mdm skills update`: re-installs from recorded source+ref in lock file
+│   ├── audit.go         # `mdm skills audit`: checks skills.sh API for updates and OSV security advisories
+│   ├── init.go          # `mdm skills init`: scaffolds a new SKILL.md
+│   ├── install.go       # `mdm skills install`: restores skills from skills-lock.json
+│   ├── sync.go          # `mdm skills sync`: syncs from node_modules
+│   ├── rules.go         # `mdm rules` group: link/status/unlink agent instruction files
+│   └── selfupdate.go    # `mdm upgrade`: downloads and replaces the mdm binary from GitHub releases
 └── internal/
     ├── agent/           # AllAgents registry (45+ agents); skill dir paths; detection
     ├── skill/           # Skill discovery (SKILL.md parsing); frontmatter; filtering
