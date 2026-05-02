@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/spf13/cobra"
 	"github.com/sethcarney/mdm/internal/agent"
 	"github.com/sethcarney/mdm/internal/blob"
 	"github.com/sethcarney/mdm/internal/git"
@@ -16,6 +15,7 @@ import (
 	"github.com/sethcarney/mdm/internal/skill"
 	"github.com/sethcarney/mdm/internal/source"
 	"github.com/sethcarney/mdm/internal/ui"
+	"github.com/spf13/cobra"
 )
 
 // ─── Options ───────────────────────────────────────────────────────────────────
@@ -1068,4 +1068,3 @@ func skillFilterFromOpts(opts AddOptions, parsed source.ParsedSource) string {
 	}
 	return parsed.SkillFilter
 }
-
