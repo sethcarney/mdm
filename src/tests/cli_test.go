@@ -156,7 +156,7 @@ func TestDoctorHelp(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("mdm doctor --help exited %d", code)
 	}
-	for _, expected := range []string{"--global", "--project", "hash mismatch"} {
+	for _, expected := range []string{"--global", "--project", "hash mismatch; global installs"} {
 		if !strings.Contains(stdout, expected) {
 			t.Errorf("expected doctor --help output to contain %q, got: %q", expected, stdout)
 		}

@@ -1,7 +1,6 @@
 package commands
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -525,6 +524,3 @@ func TestDiagnoseSkillHealthySkill(t *testing.T) {
 		t.Errorf("expected no issues for a healthy skill, got: %v", r.Issues)
 	}
 }
-
-// Silence compiler warning about fmt import.
-var _ = fmt.Sprintf
