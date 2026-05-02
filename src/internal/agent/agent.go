@@ -7,12 +7,13 @@ import (
 )
 
 type AgentConfig struct {
-	Name            string
-	DisplayName     string
-	SkillsDir       string // relative, project-level
-	GlobalSkillsDir string // absolute, user-level (empty = not supported)
-	ShowInUniversal bool   // default true; false to hide from universal list
-	DetectInstalled func() bool
+	Name             string
+	DisplayName      string
+	SkillsDir        string // relative, project-level
+	GlobalSkillsDir  string // absolute, user-level (empty = not supported)
+	ShowInUniversal  bool   // default true; false to hide from universal list
+	InstructionsFile string // project-root path to this agent's instructions file (empty = unknown)
+	DetectInstalled  func() bool
 }
 
 const AgentsDir = ".agents"
@@ -71,12 +72,13 @@ func init() {
 
 	AllAgents = map[string]*AgentConfig{
 		"amp": {
-			Name:            "amp",
-			DisplayName:     "Amp",
-			SkillsDir:       ".agents/skills",
-			GlobalSkillsDir: filepath.Join(configHome, "agents/skills"),
-			ShowInUniversal: true,
-			DetectInstalled: func() bool { return pathExists(filepath.Join(configHome, "amp")) },
+			Name:             "amp",
+			DisplayName:      "Amp",
+			SkillsDir:        ".agents/skills",
+			GlobalSkillsDir:  filepath.Join(configHome, "agents/skills"),
+			ShowInUniversal:  true,
+			InstructionsFile: "AMP.md",
+			DetectInstalled:  func() bool { return pathExists(filepath.Join(configHome, "amp")) },
 		},
 		"antigravity": {
 			Name:            "antigravity",
@@ -103,12 +105,13 @@ func init() {
 			DetectInstalled: func() bool { return pathExists(filepath.Join(home, ".bob")) },
 		},
 		"claude-code": {
-			Name:            "claude-code",
-			DisplayName:     "Claude Code",
-			SkillsDir:       ".claude/skills",
-			GlobalSkillsDir: filepath.Join(claudeHome, "skills"),
-			ShowInUniversal: true,
-			DetectInstalled: func() bool { return pathExists(claudeHome) },
+			Name:             "claude-code",
+			DisplayName:      "Claude Code",
+			SkillsDir:        ".claude/skills",
+			GlobalSkillsDir:  filepath.Join(claudeHome, "skills"),
+			ShowInUniversal:  true,
+			InstructionsFile: "CLAUDE.md",
+			DetectInstalled:  func() bool { return pathExists(claudeHome) },
 		},
 		"openclaw": {
 			Name:            "openclaw",
@@ -123,12 +126,13 @@ func init() {
 			},
 		},
 		"cline": {
-			Name:            "cline",
-			DisplayName:     "Cline",
-			SkillsDir:       ".agents/skills",
-			GlobalSkillsDir: filepath.Join(home, ".agents/skills"),
-			ShowInUniversal: true,
-			DetectInstalled: func() bool { return pathExists(filepath.Join(home, ".cline")) },
+			Name:             "cline",
+			DisplayName:      "Cline",
+			SkillsDir:        ".agents/skills",
+			GlobalSkillsDir:  filepath.Join(home, ".agents/skills"),
+			ShowInUniversal:  true,
+			InstructionsFile: ".clinerules",
+			DetectInstalled:  func() bool { return pathExists(filepath.Join(home, ".cline")) },
 		},
 		"codebuddy": {
 			Name:            "codebuddy",
@@ -142,12 +146,13 @@ func init() {
 			},
 		},
 		"codex": {
-			Name:            "codex",
-			DisplayName:     "Codex",
-			SkillsDir:       ".agents/skills",
-			GlobalSkillsDir: filepath.Join(codexHome, "skills"),
-			ShowInUniversal: true,
-			DetectInstalled: func() bool { return pathExists(codexHome) || pathExists("/etc/codex") },
+			Name:             "codex",
+			DisplayName:      "Codex",
+			SkillsDir:        ".agents/skills",
+			GlobalSkillsDir:  filepath.Join(codexHome, "skills"),
+			ShowInUniversal:  true,
+			InstructionsFile: "AGENTS.md",
+			DetectInstalled:  func() bool { return pathExists(codexHome) || pathExists("/etc/codex") },
 		},
 		"command-code": {
 			Name:            "command-code",
@@ -185,12 +190,13 @@ func init() {
 			DetectInstalled: func() bool { return pathExists(filepath.Join(home, ".config/crush")) },
 		},
 		"cursor": {
-			Name:            "cursor",
-			DisplayName:     "Cursor",
-			SkillsDir:       ".agents/skills",
-			GlobalSkillsDir: filepath.Join(home, ".cursor/skills"),
-			ShowInUniversal: true,
-			DetectInstalled: func() bool { return pathExists(filepath.Join(home, ".cursor")) },
+			Name:             "cursor",
+			DisplayName:      "Cursor",
+			SkillsDir:        ".agents/skills",
+			GlobalSkillsDir:  filepath.Join(home, ".cursor/skills"),
+			ShowInUniversal:  true,
+			InstructionsFile: ".cursorrules",
+			DetectInstalled:  func() bool { return pathExists(filepath.Join(home, ".cursor")) },
 		},
 		"deepagents": {
 			Name:            "deepagents",
@@ -217,20 +223,22 @@ func init() {
 			DetectInstalled: func() bool { return pathExists(filepath.Join(home, ".firebender")) },
 		},
 		"gemini-cli": {
-			Name:            "gemini-cli",
-			DisplayName:     "Gemini CLI",
-			SkillsDir:       ".agents/skills",
-			GlobalSkillsDir: filepath.Join(home, ".gemini/skills"),
-			ShowInUniversal: true,
-			DetectInstalled: func() bool { return pathExists(filepath.Join(home, ".gemini")) },
+			Name:             "gemini-cli",
+			DisplayName:      "Gemini CLI",
+			SkillsDir:        ".agents/skills",
+			GlobalSkillsDir:  filepath.Join(home, ".gemini/skills"),
+			ShowInUniversal:  true,
+			InstructionsFile: "GEMINI.md",
+			DetectInstalled:  func() bool { return pathExists(filepath.Join(home, ".gemini")) },
 		},
 		"github-copilot": {
-			Name:            "github-copilot",
-			DisplayName:     "GitHub Copilot",
-			SkillsDir:       ".agents/skills",
-			GlobalSkillsDir: filepath.Join(home, ".copilot/skills"),
-			ShowInUniversal: true,
-			DetectInstalled: func() bool { return pathExists(filepath.Join(home, ".copilot")) },
+			Name:             "github-copilot",
+			DisplayName:      "GitHub Copilot",
+			SkillsDir:        ".agents/skills",
+			GlobalSkillsDir:  filepath.Join(home, ".copilot/skills"),
+			ShowInUniversal:  true,
+			InstructionsFile: ".github/copilot-instructions.md",
+			DetectInstalled:  func() bool { return pathExists(filepath.Join(home, ".copilot")) },
 		},
 		"goose": {
 			Name:            "goose",
@@ -321,12 +329,13 @@ func init() {
 			DetectInstalled: func() bool { return pathExists(filepath.Join(home, ".neovate")) },
 		},
 		"opencode": {
-			Name:            "opencode",
-			DisplayName:     "OpenCode",
-			SkillsDir:       ".agents/skills",
-			GlobalSkillsDir: filepath.Join(configHome, "opencode/skills"),
-			ShowInUniversal: true,
-			DetectInstalled: func() bool { return pathExists(filepath.Join(configHome, "opencode")) },
+			Name:             "opencode",
+			DisplayName:      "OpenCode",
+			SkillsDir:        ".agents/skills",
+			GlobalSkillsDir:  filepath.Join(configHome, "opencode/skills"),
+			ShowInUniversal:  true,
+			InstructionsFile: "AGENTS.md",
+			DetectInstalled:  func() bool { return pathExists(filepath.Join(configHome, "opencode")) },
 		},
 		"openhands": {
 			Name:            "openhands",
@@ -377,23 +386,25 @@ func init() {
 			DetectInstalled: func() bool { return pathExists(filepath.Join(home, ".qwen")) },
 		},
 		"replit": {
-			Name:            "replit",
-			DisplayName:     "Replit",
-			SkillsDir:       ".agents/skills",
-			GlobalSkillsDir: filepath.Join(configHome, "agents/skills"),
-			ShowInUniversal: false,
+			Name:             "replit",
+			DisplayName:      "Replit",
+			SkillsDir:        ".agents/skills",
+			GlobalSkillsDir:  filepath.Join(configHome, "agents/skills"),
+			ShowInUniversal:  false,
+			InstructionsFile: "AGENTS.md",
 			DetectInstalled: func() bool {
 				cwd, _ := os.Getwd()
 				return pathExists(filepath.Join(cwd, ".replit"))
 			},
 		},
 		"roo": {
-			Name:            "roo",
-			DisplayName:     "Roo Code",
-			SkillsDir:       ".roo/skills",
-			GlobalSkillsDir: filepath.Join(home, ".roo/skills"),
-			ShowInUniversal: true,
-			DetectInstalled: func() bool { return pathExists(filepath.Join(home, ".roo")) },
+			Name:             "roo",
+			DisplayName:      "Roo Code",
+			SkillsDir:        ".roo/skills",
+			GlobalSkillsDir:  filepath.Join(home, ".roo/skills"),
+			ShowInUniversal:  true,
+			InstructionsFile: ".roorules",
+			DetectInstalled:  func() bool { return pathExists(filepath.Join(home, ".roo")) },
 		},
 		"trae": {
 			Name:            "trae",
@@ -420,12 +431,13 @@ func init() {
 			DetectInstalled: func() bool { return pathExists(filepath.Join(home, ".warp")) },
 		},
 		"windsurf": {
-			Name:            "windsurf",
-			DisplayName:     "Windsurf",
-			SkillsDir:       ".windsurf/skills",
-			GlobalSkillsDir: filepath.Join(home, ".codeium/windsurf/skills"),
-			ShowInUniversal: true,
-			DetectInstalled: func() bool { return pathExists(filepath.Join(home, ".codeium/windsurf")) },
+			Name:             "windsurf",
+			DisplayName:      "Windsurf",
+			SkillsDir:        ".windsurf/skills",
+			GlobalSkillsDir:  filepath.Join(home, ".codeium/windsurf/skills"),
+			ShowInUniversal:  true,
+			InstructionsFile: ".windsurfrules",
+			DetectInstalled:  func() bool { return pathExists(filepath.Join(home, ".codeium/windsurf")) },
 		},
 		"zencoder": {
 			Name:            "zencoder",

@@ -27,6 +27,10 @@ INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/sethcarn
 ## Usage
 
 ```
+mdm rules link             Set up AGENTS.md as source of truth and symlink agent files
+mdm rules status           Show the state of all agent instruction files
+mdm rules unlink           Remove symlinks created by mdm rules link
+
 mdm skills add <package>   Add a skill from GitHub or URL
 mdm skills remove          Remove installed skills
 mdm skills list            List installed skills
@@ -38,7 +42,7 @@ mdm skills sync            Sync skills from node_modules
 mdm upgrade                Upgrade the mdm CLI binary
 ```
 
-Run `mdm --help` or `mdm skills --help` for the full command reference.
+Run `mdm --help` for the full command reference. See [docs/rules.md](docs/rules.md) for a detailed walkthrough of the `mdm rules` flow.
 
 ## Development
 
