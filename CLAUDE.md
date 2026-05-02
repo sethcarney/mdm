@@ -31,6 +31,7 @@ src/
 ├── main.go              # Entry: builds root Cobra command, calls Execute()
 ├── commands/            # One file per CLI command
 │   ├── root.go          # Cobra root; flag normalization; ANSI logo/styles
+│   ├── skills.go        # `mdm skills` subcommand; registers add/remove/list/find/update/init/install/sync
 │   ├── add.go           # Install flow: multi-agent/skill prompts, scope selection
 │   ├── installer.go     # Core install logic: clone → discover → copy → lock
 │   └── ...              # remove, list, find, update, sync, selfupdate, init
@@ -48,7 +49,7 @@ src/
 
 ### Key data flow
 
-`add` command → `installer.go` orchestrates:
+`mdm skills add` → `installer.go` orchestrates:
 1. `source/` parses the input URL/path into a `ParsedSource`
 2. `git/` clones the repo (shallow) or `blob/` queries GitHub API
 3. `skill/` discovers `SKILL.md` files and applies `--skill` filters
@@ -62,7 +63,7 @@ Add an entry to `AllAgents` in `internal/agent/` with the agent's skills dir pat
 
 ### Adding a new command
 
-Create a file in `commands/`, define a `cobra.Command`, and register it on the root command in `root.go`.
+Create a file in `commands/`, define a `cobra.Command`, and register it either on the root command in `root.go` (for top-level commands like `upgrade`) or on the `skills` subcommand in `skills.go` (for skill management commands like `add`, `list`, etc.).
 
 ## Release Process
 

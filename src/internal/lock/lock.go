@@ -7,10 +7,8 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/sethcarney/mdm/internal/agent"
@@ -143,13 +141,6 @@ func GetGitHubToken() string {
 	}
 	if tok := os.Getenv("GH_TOKEN"); tok != "" {
 		return tok
-	}
-	out, err := exec.Command("gh", "auth", "token").Output()
-	if err == nil {
-		tok := strings.TrimSpace(string(out))
-		if tok != "" {
-			return tok
-		}
 	}
 	return ""
 }

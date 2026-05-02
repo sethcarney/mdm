@@ -25,9 +25,9 @@ func buildListCmd() *cobra.Command {
 		Long: fmt.Sprintf(`List installed skills.
 
 %sExamples:%s
-  mdm list
-  mdm ls -g
-  mdm list --json`, ansiBold, ansiReset),
+  mdm skills list
+  mdm skills list -g
+  mdm skills list --json`, ansiBold, ansiReset),
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			var gFlag *bool
@@ -49,6 +49,8 @@ func buildListCmd() *cobra.Command {
 	f.StringArrayVarP(&agentFilter, "agent", "a", nil, "Filter by specific agents")
 	f.BoolVar(&jsonMode, "json", false, "Output as JSON")
 
+	_ = cmd.RegisterFlagCompletionFunc("agent", agentFlagCompletion)
+
 	return cmd
 }
 
@@ -64,7 +66,7 @@ func runListWithOpts(globalFlag *bool, agentFilter []string, jsonMode bool) {
 			fmt.Println("[]")
 		} else {
 			fmt.Printf("%sNo skills installed.%s\n\n", ansiDim, ansiReset)
-			fmt.Printf("Add your first skill with %smdm add <package>%s\n", ansiText, ansiReset)
+			fmt.Printf("Add your first skill with %smdm skills add <package>%s\n", ansiText, ansiReset)
 		}
 		return
 	}

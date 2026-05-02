@@ -16,7 +16,7 @@ func buildInstallFromLockCmd(ver string) *cobra.Command {
 	var yes bool
 
 	cmd := &cobra.Command{
-		Use:   "experimental_install",
+		Use:   "install",
 		Short: "Restore skills from skills-lock.json",
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
@@ -35,7 +35,7 @@ func runInstallFromLock(yes bool) {
 
 	if len(l.Skills) == 0 {
 		fmt.Printf("\n%sNo skills in skills-lock.json.%s\n\n", ansiDim, ansiReset)
-		fmt.Printf("Add skills with %smdm add <package>%s\n\n", ansiText, ansiReset)
+		fmt.Printf("Add skills with %smdm skills add <package>%s\n\n", ansiText, ansiReset)
 		return
 	}
 

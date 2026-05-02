@@ -3,6 +3,8 @@ package commands
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -86,16 +88,19 @@ func contains(slice []string, s string) bool {
 // BuildRootCmd builds and returns the root cobra command.
 func BuildRootCmd(ver string) *cobra.Command {
 	root := &cobra.Command{
-		Use:           appName,
-		Short:         "The markdown management CLI",
-		Long:          fmt.Sprintf("%s%s%s%s — The markdown management CLI. No telemetry · Fully open source.", ansiBold, ansiText, appName, ansiReset),
+		Use:   appName,
+		Short: "The markdown management CLI",
+		Long: fmt.Sprintf("  %s✓%s %sNo telemetry%s   %s✓%s %sOSV vulnerability scanning%s   %s✓%s %sOpen source%s",
+			ansiGreen, ansiReset, ansiDim, ansiReset,
+			ansiGreen, ansiReset, ansiDim, ansiReset,
+			ansiGreen, ansiReset, ansiDim, ansiReset),
+		Example: "  mdm skills add https://github.com/anthropics/skills --skill frontend-design\n  mdm skills add https://github.com/vercel-labs/agent-skills --skill vercel-react-best-practices",
 		Version:       ver,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Run: func(cmd *cobra.Command, args []string) {
 			fmt.Println()
-			fmt.Printf("%s%s%s%s\n", ansiBold, ansiText, appName, ansiReset)
-			fmt.Printf("%sThe markdown management CLI. No telemetry · Fully open source. (%s)%s\n", ansiDim, ver, ansiReset)
+			fmt.Printf("%s%s%s%s  %s%s%s\n", ansiBold, ansiText, appName, ansiReset, ansiDim, ver, ansiReset)
 			fmt.Println()
 			_ = cmd.Help()
 		},
@@ -104,15 +109,8 @@ func BuildRootCmd(ver string) *cobra.Command {
 	root.SetVersionTemplate(fmt.Sprintf("%s%s%s%s %s\n", ansiBold, ansiText, appName, ansiReset, ver))
 
 	root.AddCommand(
-		buildAddCmd(ver),
-		buildRemoveCmd(),
-		buildListCmd(),
-		buildFindCmd(),
-		buildUpdateCmd(),
+		buildSkillsCmd(ver),
 		buildUpgradeCmd(ver),
-		buildInitCmd(ver),
-		buildInstallFromLockCmd(ver),
-		buildSyncCmd(ver),
 		buildCompletionCmd(root),
 	)
 
@@ -139,9 +137,15 @@ func buildCompletionCmd(root *cobra.Command) *cobra.Command {
   # Fish
   `+appName+` completion fish | source`, ansiBold, ansiReset),
 		ValidArgs:             []string{"bash", "zsh", "fish", "powershell"},
-		Args:                  cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
 		DisableFlagsInUseLine: true,
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return cmd.Help()
+			}
+			valid := map[string]bool{"bash": true, "zsh": true, "fish": true, "powershell": true}
+			if !valid[args[0]] {
+				return fmt.Errorf("unknown shell %q; valid options: bash, zsh, fish, powershell", args[0])
+			}
 			switch args[0] {
 			case "bash":
 				_ = root.GenBashCompletion(os.Stdout)
@@ -152,7 +156,100 @@ func buildCompletionCmd(root *cobra.Command) *cobra.Command {
 			case "powershell":
 				_ = root.GenPowerShellCompletionWithDesc(os.Stdout)
 			}
+			return nil
 		},
 	}
+	cmd.AddCommand(buildCompletionInstallCmd())
 	return cmd
+}
+
+func buildCompletionInstallCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "install",
+		Short: "Install completion into your shell rc file",
+		Long: fmt.Sprintf(`Auto-detect your shell and append the %s completion hook to your rc file.
+
+Supports bash, zsh, fish, and PowerShell. Run once after installing %s.`, appName, appName),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			shell, rcFile, line, err := detectShellSetup()
+			if err != nil {
+				return err
+			}
+
+			rcFile = expandTilde(rcFile)
+
+			existing, readErr := os.ReadFile(rcFile)
+			if readErr != nil && !os.IsNotExist(readErr) {
+				return fmt.Errorf("reading %s: %w", rcFile, readErr)
+			}
+			if strings.Contains(string(existing), appName+" completion") {
+				fmt.Printf("%s%s completion already installed in %s%s\n", ansiGreen, appName, rcFile, ansiReset)
+				return nil
+			}
+
+			if err := os.MkdirAll(filepath.Dir(rcFile), 0755); err != nil {
+				return fmt.Errorf("creating directory: %w", err)
+			}
+
+			f, err := os.OpenFile(rcFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			if err != nil {
+				return fmt.Errorf("opening %s: %w", rcFile, err)
+			}
+			defer f.Close()
+
+			if _, err = fmt.Fprintf(f, "\n# %s shell completion\n%s\n", appName, line); err != nil {
+				return fmt.Errorf("writing to %s: %w", rcFile, err)
+			}
+
+			fmt.Printf("%s✓%s %s completion installed for %s\n", ansiGreen, ansiReset, appName, shell)
+			if shell == "powershell" {
+				fmt.Printf("  %sRestart PowerShell or run:%s . \"%s\"\n", ansiDim, ansiReset, rcFile)
+			} else {
+				fmt.Printf("  %sRestart your terminal or run:%s source %s\n", ansiDim, ansiReset, rcFile)
+			}
+			return nil
+		},
+	}
+}
+
+func detectShellSetup() (shell, rcFile, completionLine string, err error) {
+	shellPath := os.Getenv("SHELL")
+	switch {
+	case strings.Contains(shellPath, "zsh"):
+		return "zsh", "~/.zshrc", fmt.Sprintf("source <(%s completion zsh)", appName), nil
+	case strings.Contains(shellPath, "fish"):
+		return "fish", "~/.config/fish/config.fish", fmt.Sprintf("%s completion fish | source", appName), nil
+	case strings.Contains(shellPath, "bash"):
+		rc := "~/.bashrc"
+		if runtime.GOOS == "darwin" {
+			rc = "~/.bash_profile"
+		}
+		return "bash", rc, fmt.Sprintf("source <(%s completion bash)", appName), nil
+	case os.Getenv("PSModulePath") != "":
+		return "powershell", powershellProfile(), fmt.Sprintf("Invoke-Expression (& %s completion powershell | Out-String)", appName), nil
+	default:
+		if shellPath == "" {
+			return "", "", "", fmt.Errorf("could not detect shell; run `%s completion [bash|zsh|fish|powershell]` to generate the script manually", appName)
+		}
+		return "", "", "", fmt.Errorf("unsupported shell %q; run `%s completion [bash|zsh|fish|powershell]` to generate the script manually", filepath.Base(shellPath), appName)
+	}
+}
+
+func powershellProfile() string {
+	home, _ := os.UserHomeDir()
+	if runtime.GOOS == "windows" {
+		return filepath.Join(home, "Documents", "PowerShell", "Microsoft.PowerShell_profile.ps1")
+	}
+	return filepath.Join(home, ".config", "powershell", "Microsoft.PowerShell_profile.ps1")
+}
+
+func expandTilde(path string) string {
+	if !strings.HasPrefix(path, "~/") {
+		return path
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return path
+	}
+	return filepath.Join(home, path[2:])
 }

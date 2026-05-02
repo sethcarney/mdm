@@ -8,8 +8,8 @@ Go source for the `mdm` CLI.
 go run . [command] [args]
 
 go run . --help
-go run . list
-go run . add vercel-labs/agent-skills
+go run . skills list
+go run . skills add vercel-labs/agent-skills
 ```
 
 ## Build a binary

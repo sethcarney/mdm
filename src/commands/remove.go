@@ -34,15 +34,15 @@ If no skill names are provided an interactive selection menu is shown.
 The --agent (-a) and --skill (-s) flags accept multiple values — space-
 separated after the flag or repeated:
 
-  mdm remove -a claude-code cursor
-  mdm remove -a claude-code -a cursor
+  mdm skills remove -a claude-code cursor
+  mdm skills remove -a claude-code -a cursor
 
 %sExamples:%s
-  mdm remove
-  mdm remove my-skill
-  mdm remove skill1 skill2 -y
-  mdm remove --global my-skill
-  mdm remove --all`, ansiBold, ansiReset),
+  mdm skills remove
+  mdm skills remove my-skill
+  mdm skills remove skill1 skill2 -y
+  mdm skills remove --global my-skill
+  mdm skills remove --all`, ansiBold, ansiReset),
 		Args: cobra.ArbitraryArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			if opts.All {
@@ -60,6 +60,8 @@ separated after the flag or repeated:
 	f.StringArrayVarP(&opts.Skills, "skill", "s", nil, "Skill names to remove (repeatable)")
 	f.BoolVarP(&opts.Yes, "yes", "y", false, "Skip confirmation prompts")
 	f.BoolVar(&opts.All, "all", false, "Shorthand for --skill '*' --agent '*' -y")
+
+	_ = cmd.RegisterFlagCompletionFunc("agent", agentFlagCompletion)
 
 	return cmd
 }

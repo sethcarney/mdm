@@ -27,15 +27,18 @@ INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/sethcarn
 ## Usage
 
 ```
-mdm add <package>     Add a skill from GitHub or URL
-mdm remove            Remove installed skills
-mdm list              List installed skills
-mdm find [query]      Search the registry
-mdm update            Update installed skills
-mdm upgrade           Upgrade the mdm CLI binary
+mdm skills add <package>   Add a skill from GitHub or URL
+mdm skills remove          Remove installed skills
+mdm skills list            List installed skills
+mdm skills find [query]    Search the registry
+mdm skills update          Update installed skills
+mdm skills init <name>     Scaffold a new skill
+mdm skills install         Restore skills from skills-lock.json
+mdm skills sync            Sync skills from node_modules
+mdm upgrade                Upgrade the mdm CLI binary
 ```
 
-Run `mdm --help` for the full command reference.
+Run `mdm --help` or `mdm skills --help` for the full command reference.
 
 ## Development
 

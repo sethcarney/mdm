@@ -34,8 +34,8 @@ func buildFindCmd() *cobra.Command {
 		Long: fmt.Sprintf(`Search the skills registry and install interactively.
 
 %sExamples:%s
-  mdm find typescript
-  mdm search git`, ansiBold, ansiReset),
+  mdm skills find typescript
+  mdm skills find git`, ansiBold, ansiReset),
 		Args: cobra.MaximumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			fmt.Println()
@@ -54,7 +54,7 @@ func runFind(args []string) {
 	}
 
 	if query == "" {
-		fmt.Printf("%sUsage:%s mdm find %s<query>%s\n", ansiBold, ansiReset, ansiDim, ansiReset)
+		fmt.Printf("%sUsage:%s mdm skills find %s<query>%s\n", ansiBold, ansiReset, ansiDim, ansiReset)
 		return
 	}
 
