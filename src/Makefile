@@ -4,7 +4,7 @@ build:
 	go build -o mdm .
 
 test:
-	go test ./...
+	go test -v ./...
 
 clean:
 	rm -f mdm
