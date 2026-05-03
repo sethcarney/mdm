@@ -94,7 +94,7 @@ func BuildRootCmd(ver string) *cobra.Command {
 			ansiGreen, ansiReset, ansiDim, ansiReset,
 			ansiGreen, ansiReset, ansiDim, ansiReset,
 			ansiGreen, ansiReset, ansiDim, ansiReset),
-		Example: "  mdm skills add https://github.com/anthropics/skills --skill frontend-design\n  mdm skills add https://github.com/vercel-labs/agent-skills --skill vercel-react-best-practices",
+		Example:       "  mdm skills add https://github.com/anthropics/skills --skill frontend-design\n  mdm skills add https://github.com/vercel-labs/agent-skills --skill vercel-react-best-practices",
 		Version:       ver,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -111,6 +111,7 @@ func BuildRootCmd(ver string) *cobra.Command {
 	root.AddCommand(
 		buildSkillsCmd(ver),
 		buildRulesCmd(),
+		buildDoctorCmd(),
 		buildUpgradeCmd(ver),
 		buildCompletionCmd(root),
 	)
