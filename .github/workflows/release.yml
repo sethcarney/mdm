@@ -119,6 +119,11 @@ jobs:
       actions: read
       id-token: write
       contents: write
+    # Note: slsa-github-generator reusable workflows MUST be referenced by tag,
+    # not by commit SHA. The generator reads github.action_ref at runtime to
+    # determine which binary release to download; a SHA reference breaks that
+    # lookup. This is a documented upstream requirement:
+    # https://github.com/slsa-framework/slsa-github-generator#referencing-slsa-builders-and-generators
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
     with:
       base64-subjects: "${{ needs.release.outputs.hashes }}"
