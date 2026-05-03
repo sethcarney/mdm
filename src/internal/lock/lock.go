@@ -136,13 +136,7 @@ func SaveSelectedAgents(agents []string) error {
 }
 
 func GetGitHubToken() string {
-	if tok := os.Getenv("GITHUB_TOKEN"); tok != "" {
-		return tok
-	}
-	if tok := os.Getenv("GH_TOKEN"); tok != "" {
-		return tok
-	}
-	return ""
+	return os.Getenv("GITHUB_TOKEN")
 }
 
 func ComputeContentHash(content string) string {

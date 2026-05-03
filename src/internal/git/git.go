@@ -52,13 +52,13 @@ func CloneRepo(gitURL, ref string) (string, error) {
 
 		if isTimeout {
 			return "", &GitCloneError{
-				Message: fmt.Sprintf("Clone timed out. Ensure you have access and your SSH keys or credentials are configured:\n  - For SSH: ssh-add -l\n  - For HTTPS: gh auth status"),
+				Message: fmt.Sprintf("Clone timed out. Ensure you have access and your SSH keys or credentials are configured:\n  - For SSH: ssh-add -l\n  - For HTTPS: git config --global credential.helper"),
 				URL:     gitURL, IsTimeout: true,
 			}
 		}
 		if isAuth {
 			return "", &GitCloneError{
-				Message: fmt.Sprintf("Authentication failed for %s.\n  - For private repos, ensure you have access\n  - For SSH: Check your keys with 'ssh -T git@github.com'\n  - For HTTPS: Run 'gh auth login'", gitURL),
+				Message: fmt.Sprintf("Authentication failed for %s.\n  - For private repos, ensure you have access\n  - For SSH: Check your keys with 'ssh -T git@github.com'\n  - For HTTPS: Check your git credentials with 'git config --global credential.helper'", gitURL),
 				URL:     gitURL, IsAuth: true,
 			}
 		}

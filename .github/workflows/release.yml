@@ -23,7 +23,7 @@ jobs:
 
       - name: Get version
         id: version
-        run: echo "version=$(grep 'const Version' src/main.go | grep -oP '"\K[^"]+')" >> $GITHUB_OUTPUT
+        run: echo "version=$(grep 'const Version' src/internal/version/version.go | grep -oP '"\K[^"]+')" >> $GITHUB_OUTPUT
 
       - name: Check if release already exists
         id: check
