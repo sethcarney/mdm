@@ -14,12 +14,22 @@ Only the latest release receives security fixes.
 
 ## Release Verification
 
-All release binaries are accompanied by a `sha256sums.txt` file and a Sigstore cosign bundle (`.bundle`). You can verify a download using either method.
+All release binaries are signed with [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) keyless signing via Sigstore and accompanied by a `sha256sums.txt` checksum file. Each release includes `.sig`, `.pem`, and `.bundle` files for every binary.
 
-### Verify with cosign (recommended)
+### Verify with cosign
 
-Each binary is signed with [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) keyless signing via Sigstore, tied to the official GitHub Actions OIDC identity. No GPG keys or secrets are required.
+The signature is tied to the official GitHub Actions OIDC identity — no GPG keys or secrets required.
 
+**Using the `.sig` + `.pem` files:**
+```bash
+cosign verify-blob mdm-linux-x64 \
+  --signature mdm-linux-x64.sig \
+  --certificate mdm-linux-x64.pem \
+  --certificate-identity-regexp='^https://github\.com/sethcarney/mdm/\.github/workflows/release\.yml@refs/heads/main$' \
+  --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
+```
+
+**Using the `.bundle` file:**
 ```bash
 cosign verify-blob mdm-linux-x64 \
   --bundle mdm-linux-x64.bundle \
@@ -27,17 +37,17 @@ cosign verify-blob mdm-linux-x64 \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
 ```
 
-Replace `mdm-linux-x64` and `mdm-linux-x64.bundle` with the appropriate filenames for your platform:
+Replace `mdm-linux-x64` with the appropriate filename for your platform:
 
-| Platform        | Binary                  | Bundle                        |
-|-----------------|-------------------------|-------------------------------|
-| Linux x64       | `mdm-linux-x64`         | `mdm-linux-x64.bundle`        |
-| Linux ARM64     | `mdm-linux-arm64`       | `mdm-linux-arm64.bundle`      |
-| macOS x64       | `mdm-macos-x64`         | `mdm-macos-x64.bundle`        |
-| macOS ARM64     | `mdm-macos-arm64`       | `mdm-macos-arm64.bundle`      |
-| Windows x64     | `mdm-windows-x64.exe`   | `mdm-windows-x64.exe.bundle`  |
+| Platform    | Binary                | Signature                   | Certificate                 |
+|-------------|-----------------------|-----------------------------|-----------------------------|
+| Linux x64   | `mdm-linux-x64`       | `mdm-linux-x64.sig`         | `mdm-linux-x64.pem`         |
+| Linux ARM64 | `mdm-linux-arm64`     | `mdm-linux-arm64.sig`       | `mdm-linux-arm64.pem`       |
+| macOS x64   | `mdm-macos-x64`       | `mdm-macos-x64.sig`         | `mdm-macos-x64.pem`         |
+| macOS ARM64 | `mdm-macos-arm64`     | `mdm-macos-arm64.sig`       | `mdm-macos-arm64.pem`       |
+| Windows x64 | `mdm-windows-x64.exe` | `mdm-windows-x64.exe.sig`   | `mdm-windows-x64.exe.pem`   |
 
-Both the binary and its `.bundle` file are attached to each [GitHub release](https://github.com/sethcarney/mdm/releases).
+All verification files are attached to each [GitHub release](https://github.com/sethcarney/mdm/releases).
 
 ### Verify with SHA-256
 
