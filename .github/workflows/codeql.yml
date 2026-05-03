@@ -8,6 +8,8 @@ on:
   schedule:
     - cron: "0 10 * * 1" # Weekly on Monday
 
+permissions: read-all
+
 jobs:
   analyze:
     name: Analyze (Go)
