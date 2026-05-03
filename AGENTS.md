@@ -29,6 +29,7 @@ Run with the debugger via `.vscode/launch.json` (Delve is configured).
 ```
 mdm
 ├── upgrade                          # Self-update the mdm binary from GitHub releases (aliases: update-cli, self-update)
+├── doctor                           # Check installed skills and project markdown for health issues
 ├── completion [bash|zsh|fish|ps1]   # Generate shell completion script
 │   └── install                      # Write completion into shell rc file
 ├── skills                           # Manage skills for AI agents
@@ -66,7 +67,8 @@ src/
 │   ├── install.go       # `mdm skills install`: restores skills from skills-lock.json
 │   ├── sync.go          # `mdm skills sync`: syncs from node_modules
 │   ├── rules.go         # `mdm rules` group: link/status/unlink agent instruction files
-│   └── selfupdate.go    # `mdm upgrade`: downloads and replaces the mdm binary from GitHub releases
+│   ├── selfupdate.go    # `mdm upgrade`: downloads and replaces the mdm binary from GitHub releases
+│   └── doctor.go        # `mdm doctor`: checks skill health, symlinks, hashes, README presence, and markdown sizes
 └── internal/
     ├── agent/           # AllAgents registry (45+ agents); skill dir paths; detection
     ├── skill/           # Skill discovery (SKILL.md parsing); frontmatter; filtering

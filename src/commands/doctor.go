@@ -63,6 +63,7 @@ func buildDoctorCmd() *cobra.Command {
 
 Checks performed:
   • Missing skill directories or SKILL.md files
+  • Missing README in skill directory
   • Broken symlinks in agent skill directories
   • Skills modified since install (hash mismatch; global installs with a recorded hash only)
   • Markdown files inside skill directories that are too large
@@ -200,10 +201,25 @@ func diagnoseSkill(r *doctorResult, storedHash string, global bool, cwd string) 
 		}
 	}
 
-	// 3. Symlinks in agent-specific directories must resolve
+	// 3. README should exist so users understand the skill
+	hasReadme := false
+	for _, name := range []string{"README.md", "readme.md", "README", "README.txt"} {
+		if _, err := os.Stat(filepath.Join(r.Path, name)); err == nil {
+			hasReadme = true
+			break
+		}
+	}
+	if !hasReadme {
+		r.Issues = append(r.Issues, doctorIssue{
+			Level:   "warn",
+			Message: "no README found — consider adding a README.md to describe the skill",
+		})
+	}
+
+	// 4. Symlinks in agent-specific directories must resolve
 	checkAgentLinks(r, global, cwd)
 
-	// 4. Skill content must match the installed hash (global skills only)
+	// 5. Skill content must match the installed hash (global skills only)
 	if storedHash != "" {
 		current, err := lock.ComputeSkillFolderHash(r.Path)
 		if err != nil {
@@ -219,7 +235,7 @@ func diagnoseSkill(r *doctorResult, storedHash string, global bool, cwd string) 
 		}
 	}
 
-	// 5. Markdown files must not be too large for agent context windows
+	// 6. Markdown files must not be too large for agent context windows
 	checkLargeMarkdown(r)
 }
 

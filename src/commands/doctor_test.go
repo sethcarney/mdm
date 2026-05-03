@@ -58,8 +58,9 @@ func TestDiagnoseSkillMissingSkillMd(t *testing.T) {
 	r := &doctorResult{Name: "test-skill", Scope: "global", Path: dir}
 	diagnoseSkill(r, "", false, t.TempDir())
 
-	if len(r.Issues) != 1 {
-		t.Fatalf("expected 1 issue, got %d: %v", len(r.Issues), r.Issues)
+	// Expect SKILL.md error + README warning
+	if len(r.Issues) != 2 {
+		t.Fatalf("expected 2 issues, got %d: %v", len(r.Issues), r.Issues)
 	}
 	if r.Issues[0].Level != "error" {
 		t.Errorf("expected error level, got %q", r.Issues[0].Level)
@@ -509,6 +510,9 @@ func TestDiagnoseSkillHealthySkill(t *testing.T) {
 	dir := t.TempDir()
 	content := "---\nname: My Skill\ndescription: A healthy skill\n---\nDo stuff.\n"
 	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("# My Skill\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
