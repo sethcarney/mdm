@@ -2,11 +2,10 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SRC_DIR="$SCRIPT_DIR/src"
 LOCAL_BIN="${HOME}/.local/bin"
 
 echo "Building mdm..."
-cd "$SRC_DIR"
+cd "$SCRIPT_DIR"
 make build
 
 mkdir -p "$LOCAL_BIN"

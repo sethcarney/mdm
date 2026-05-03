@@ -3,6 +3,7 @@
 [![CI](https://github.com/sethcarney/mdm/actions/workflows/ci.yml/badge.svg)](https://github.com/sethcarney/mdm/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/sethcarney/mdm/actions/workflows/codeql.yml/badge.svg)](https://github.com/sethcarney/mdm/actions/workflows/codeql.yml)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/sethcarney/mdm/badge)](https://securityscorecards.dev/viewer/?uri=github.com/sethcarney/mdm)
+[![Go Report Card](https://goreportcard.com/badge/github.com/sethcarney/mdm)](https://goreportcard.com/report/github.com/sethcarney/mdm)
 
 The markdown management CLI. No telemetry · Fully open source.
 
@@ -52,4 +53,11 @@ Run `mdm --help` for the full command reference. See [docs/rules.md](docs/rules.
 
 ## Development
 
-See [src/README.md](src/README.md) for how to build, test, and debug locally.
+```bash
+make build    # compile to ./mdm
+make test     # run all tests
+make install  # install to $GOPATH/bin
+go run . --help
+```
+
+See [.vscode/launch.json](.vscode/launch.json) for VS Code debug configurations.

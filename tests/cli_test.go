@@ -22,7 +22,6 @@ func TestMain(m *testing.M) {
 
 	mdmBin = filepath.Join(tmpDir, "mdm")
 
-	// Build from the src directory (parent of tests/)
 	srcDir := filepath.Join(filepath.Dir(tmpDir), "..")
 	// Use the module root (where go.mod lives)
 	modRoot, err := findModRoot()
@@ -44,7 +43,6 @@ func TestMain(m *testing.M) {
 
 // findModRoot walks up from the tests/ directory to find the go.mod file.
 func findModRoot() (string, error) {
-	// tests/ is at src/tests/, go.mod is at src/
 	dir, err := os.Getwd()
 	if err != nil {
 		return "", err

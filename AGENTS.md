@@ -8,18 +8,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-All commands run from `src/`:
+All commands run from the repo root:
 
 ```bash
-make build    # Compile to ./src/mdm
+make build    # Compile to ./mdm
 make test     # Run all tests
 make install  # go install . (installs to $GOPATH/bin)
 ```
 
 Run a single test:
 ```bash
-cd src && go test ./tests/ -run TestVersion
-cd src && go test ./internal/skill/ -run TestFindSkills
+go test ./tests/ -run TestVersion
+go test ./internal/skill/ -run TestFindSkills
 ```
 
 Run with the debugger via `.vscode/launch.json` (Delve is configured).
@@ -51,7 +51,6 @@ mdm
 ## Architecture
 
 ```
-src/
 ├── main.go              # Entry: builds root Cobra command, calls Execute()
 ├── commands/            # One file per CLI command
 │   ├── root.go          # Cobra root; flag normalization; ANSI logo/styles; completion command
@@ -69,7 +68,7 @@ src/
 │   ├── rules.go         # `mdm rules` group: link/status/unlink agent instruction files
 │   ├── selfupdate.go    # `mdm upgrade`: downloads and replaces the mdm binary from GitHub releases
 │   └── doctor.go        # `mdm doctor`: checks skill health, symlinks, hashes, README presence, and markdown sizes
-└── internal/
+├── internal/
     ├── agent/           # AllAgents registry (45+ agents); skill dir paths; detection
     ├── skill/           # Skill discovery (SKILL.md parsing); frontmatter; filtering
     ├── source/          # URL/path parsing into ParsedSource (GitHub, GitLab, local, well-known)
