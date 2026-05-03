@@ -66,25 +66,29 @@ separated after the flag or repeated:
 	return cmd
 }
 
-func selectSkillsToRemove(installed []*InstalledSkill, skillFilter []string, opts RemoveOptions) ([]*InstalledSkill, bool) {
-	if len(skillFilter) > 0 && !(len(skillFilter) == 1 && skillFilter[0] == "*") {
-		var toRemove []*InstalledSkill
-		for _, s := range installed {
-			for _, f := range skillFilter {
-				if skillNameMatches(s.Name, f) {
-					toRemove = append(toRemove, s)
-					break
-				}
+func filterInstalledByName(installed []*InstalledSkill, names []string) ([]*InstalledSkill, bool) {
+	var result []*InstalledSkill
+	for _, s := range installed {
+		for _, f := range names {
+			if skillNameMatches(s.Name, f) {
+				result = append(result, s)
+				break
 			}
 		}
-		if len(toRemove) == 0 {
-			fmt.Printf("%sNo matching skills found.%s\n", ansiDim, ansiReset)
-			return nil, false
-		}
-		return toRemove, true
 	}
+	if len(result) == 0 {
+		fmt.Printf("%sNo matching skills found.%s\n", ansiDim, ansiReset)
+		return nil, false
+	}
+	return result, true
+}
+
+func selectSkillsToRemove(installed []*InstalledSkill, skillFilter []string, opts RemoveOptions) ([]*InstalledSkill, bool) {
 	if len(skillFilter) == 1 && skillFilter[0] == "*" {
 		return installed, true
+	}
+	if len(skillFilter) > 0 {
+		return filterInstalledByName(installed, skillFilter)
 	}
 	if opts.Yes || len(installed) == 1 {
 		return installed, true
@@ -181,16 +185,8 @@ func runRemove(positional []string, opts RemoveOptions) {
 		return
 	}
 
-	if !opts.Yes {
-		var names []string
-		for _, s := range toRemove {
-			names = append(names, s.Name)
-		}
-		confirmed, ok := ui.UiConfirm(fmt.Sprintf("Remove %d skill(s): %s?", len(toRemove), strings.Join(names, ", ")))
-		if !ok || !confirmed {
-			fmt.Println("Cancelled.")
-			return
-		}
+	if !opts.Yes && !confirmRemove(toRemove) {
+		return
 	}
 
 	fmt.Println()
@@ -202,6 +198,19 @@ func runRemove(positional []string, opts RemoveOptions) {
 		removeSkillFromDisk(sk, agentsToRemove, global, cwd)
 	}
 	fmt.Println()
+}
+
+func confirmRemove(toRemove []*InstalledSkill) bool {
+	var names []string
+	for _, s := range toRemove {
+		names = append(names, s.Name)
+	}
+	confirmed, ok := ui.UiConfirm(fmt.Sprintf("Remove %d skill(s): %s?", len(toRemove), strings.Join(names, ", ")))
+	if !ok || !confirmed {
+		fmt.Println("Cancelled.")
+		return false
+	}
+	return true
 }
 
 // cleanOrphanedLockEntries removes global lock entries whose skill files no

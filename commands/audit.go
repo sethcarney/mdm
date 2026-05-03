@@ -143,21 +143,7 @@ func runAudit(skillFilter []string, opts AuditOptions) {
 		return
 	}
 
-	if !opts.JSON {
-		fmt.Printf("\n%sAuditing %d skill(s)...%s\n\n", ansiDim, len(results), ansiReset)
-	}
-
-	for i := range results {
-		r := &results[i]
-		var spin *ui.Spinner
-		if !opts.JSON {
-			spin = ui.NewSpinner(fmt.Sprintf("Checking %s...", r.Name))
-		}
-		enrichResult(r)
-		if spin != nil {
-			spin.Stop("")
-		}
-	}
+	enrichAllResults(results, !opts.JSON)
 
 	if opts.JSON {
 		out, _ := json.MarshalIndent(results, "", "  ")
@@ -166,8 +152,27 @@ func runAudit(skillFilter []string, opts AuditOptions) {
 	}
 
 	printAuditResults(results)
+	maybeShowAuditSummaries(results)
+}
 
-	// Offer summaries if any security data exists and stdout is a TTY
+func enrichAllResults(results []auditSkillResult, showProgress bool) {
+	if showProgress {
+		fmt.Printf("\n%sAuditing %d skill(s)...%s\n\n", ansiDim, len(results), ansiReset)
+	}
+	for i := range results {
+		r := &results[i]
+		var spin *ui.Spinner
+		if showProgress {
+			spin = ui.NewSpinner(fmt.Sprintf("Checking %s...", r.Name))
+		}
+		enrichResult(r)
+		if spin != nil {
+			spin.Stop("")
+		}
+	}
+}
+
+func maybeShowAuditSummaries(results []auditSkillResult) {
 	hasSecurity := false
 	for _, r := range results {
 		if len(r.Audits) > 0 {
@@ -175,14 +180,15 @@ func runAudit(skillFilter []string, opts AuditOptions) {
 			break
 		}
 	}
-	if hasSecurity && term.IsTerminal(os.Stdout.Fd()) {
-		fmt.Printf("%s[s]%s show audit summaries  %s[any key]%s exit  ", ansiText, ansiReset, ansiDim, ansiReset)
-		if pressedS() {
-			fmt.Println()
-			printAuditSummaries(results)
-		} else {
-			fmt.Println()
-		}
+	if !hasSecurity || !term.IsTerminal(os.Stdout.Fd()) {
+		return
+	}
+	fmt.Printf("%s[s]%s show audit summaries  %s[any key]%s exit  ", ansiText, ansiReset, ansiDim, ansiReset)
+	if pressedS() {
+		fmt.Println()
+		printAuditSummaries(results)
+	} else {
+		fmt.Println()
 	}
 }
 

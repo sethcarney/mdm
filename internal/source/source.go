@@ -156,14 +156,82 @@ func IsWellKnownURL(input string) bool {
 	return true
 }
 
+func parseGitHubURL(input, fragmentRef string) (ParsedSource, bool) {
+	if m := regexp.MustCompile(`github\.com/([^/]+)/([^/]+)/tree/([^/]+)/(.+)`).FindStringSubmatch(input); m != nil {
+		ref := m[3]
+		if fragmentRef != "" {
+			ref = fragmentRef
+		}
+		sub, _ := SanitizeSubpath(m[4])
+		return ParsedSource{Type: SourceTypeGitHub, URL: "https://github.com/" + m[1] + "/" + m[2] + ".git", Ref: ref, Subpath: sub}, true
+	}
+	if m := regexp.MustCompile(`github\.com/([^/]+)/([^/]+)/tree/([^/]+)$`).FindStringSubmatch(input); m != nil {
+		ref := m[3]
+		if fragmentRef != "" {
+			ref = fragmentRef
+		}
+		return ParsedSource{Type: SourceTypeGitHub, URL: "https://github.com/" + m[1] + "/" + m[2] + ".git", Ref: ref}, true
+	}
+	if m := regexp.MustCompile(`github\.com/([^/]+)/([^/]+)`).FindStringSubmatch(input); m != nil {
+		return ParsedSource{Type: SourceTypeGitHub, URL: "https://github.com/" + m[1] + "/" + strings.TrimSuffix(m[2], ".git") + ".git", Ref: fragmentRef}, true
+	}
+	return ParsedSource{}, false
+}
+
+func parseGitLabURL(input, fragmentRef string) (ParsedSource, bool) {
+	if m := regexp.MustCompile(`^(https?):\/\/([^/]+)/(.+?)\/-\/tree/([^/]+)/(.+)`).FindStringSubmatch(input); m != nil {
+		if m[2] != "github.com" && m[3] != "" {
+			ref := m[4]
+			if fragmentRef != "" {
+				ref = fragmentRef
+			}
+			sub, _ := SanitizeSubpath(m[5])
+			return ParsedSource{Type: SourceTypeGitLab, URL: m[1] + "://" + m[2] + "/" + strings.TrimSuffix(m[3], ".git") + ".git", Ref: ref, Subpath: sub}, true
+		}
+	}
+	if m := regexp.MustCompile(`^(https?):\/\/([^/]+)/(.+?)\/-\/tree/([^/]+)$`).FindStringSubmatch(input); m != nil {
+		if m[2] != "github.com" && m[3] != "" {
+			ref := m[4]
+			if fragmentRef != "" {
+				ref = fragmentRef
+			}
+			return ParsedSource{Type: SourceTypeGitLab, URL: m[1] + "://" + m[2] + "/" + strings.TrimSuffix(m[3], ".git") + ".git", Ref: ref}, true
+		}
+	}
+	if m := regexp.MustCompile(`gitlab\.com/(.+?)(?:\.git)?/?$`).FindStringSubmatch(input); m != nil {
+		if strings.Contains(m[1], "/") {
+			return ParsedSource{Type: SourceTypeGitLab, URL: "https://gitlab.com/" + m[1] + ".git", Ref: fragmentRef}, true
+		}
+	}
+	return ParsedSource{}, false
+}
+
+func parseGitHubShorthand(input, fragmentRef, fragmentSkillFilter string) (ParsedSource, bool) {
+	if m := regexp.MustCompile(`^([^/]+)/([^/@]+)@(.+)$`).FindStringSubmatch(input); m != nil {
+		if !strings.Contains(input, ":") && !strings.HasPrefix(input, ".") && !strings.HasPrefix(input, "/") {
+			sf := fragmentSkillFilter
+			if sf == "" {
+				sf = m[3]
+			}
+			return ParsedSource{Type: SourceTypeGitHub, URL: "https://github.com/" + m[1] + "/" + m[2] + ".git", Ref: fragmentRef, SkillFilter: sf}, true
+		}
+	}
+	if m := regexp.MustCompile(`^([^/]+)/([^/]+)(?:/(.+?))?/?$`).FindStringSubmatch(input); m != nil {
+		if !strings.Contains(input, ":") && !strings.HasPrefix(input, ".") && !strings.HasPrefix(input, "/") {
+			sub := ""
+			if m[3] != "" {
+				sub, _ = SanitizeSubpath(m[3])
+			}
+			return ParsedSource{Type: SourceTypeGitHub, URL: "https://github.com/" + m[1] + "/" + m[2] + ".git", Ref: fragmentRef, Subpath: sub, SkillFilter: fragmentSkillFilter}, true
+		}
+	}
+	return ParsedSource{}, false
+}
+
 func ParseSource(input string) ParsedSource {
 	if IsLocalPath(input) {
 		resolved, _ := filepath.Abs(input)
-		return ParsedSource{
-			Type:      SourceTypeLocal,
-			URL:       resolved,
-			LocalPath: resolved,
-		}
+		return ParsedSource{Type: SourceTypeLocal, URL: resolved, LocalPath: resolved}
 	}
 
 	fragResult := parseFragmentRef(input)
@@ -175,148 +243,26 @@ func ParseSource(input string) ParsedSource {
 		input = alias
 	}
 
-	// github: prefix
 	if m := regexp.MustCompile(`^github:(.+)$`).FindStringSubmatch(input); m != nil {
 		return ParseSource(AppendFragmentRef(m[1], fragmentRef, fragmentSkillFilter))
 	}
-
-	// gitlab: prefix
 	if m := regexp.MustCompile(`^gitlab:(.+)$`).FindStringSubmatch(input); m != nil {
 		return ParseSource(AppendFragmentRef("https://gitlab.com/"+m[1], fragmentRef, fragmentSkillFilter))
 	}
 
-	// GitHub URL with tree + path
-	if m := regexp.MustCompile(`github\.com/([^/]+)/([^/]+)/tree/([^/]+)/(.+)`).FindStringSubmatch(input); m != nil {
-		ref := m[3]
-		if fragmentRef != "" {
-			ref = fragmentRef
-		}
-		sub, _ := SanitizeSubpath(m[4])
-		return ParsedSource{
-			Type:    SourceTypeGitHub,
-			URL:     "https://github.com/" + m[1] + "/" + m[2] + ".git",
-			Ref:     ref,
-			Subpath: sub,
-		}
+	if p, ok := parseGitHubURL(input, fragmentRef); ok {
+		return p
 	}
-
-	// GitHub URL with tree only
-	if m := regexp.MustCompile(`github\.com/([^/]+)/([^/]+)/tree/([^/]+)$`).FindStringSubmatch(input); m != nil {
-		ref := m[3]
-		if fragmentRef != "" {
-			ref = fragmentRef
-		}
-		return ParsedSource{
-			Type: SourceTypeGitHub,
-			URL:  "https://github.com/" + m[1] + "/" + m[2] + ".git",
-			Ref:  ref,
-		}
+	if p, ok := parseGitLabURL(input, fragmentRef); ok {
+		return p
 	}
-
-	// GitHub URL
-	if m := regexp.MustCompile(`github\.com/([^/]+)/([^/]+)`).FindStringSubmatch(input); m != nil {
-		cleanRepo := strings.TrimSuffix(m[2], ".git")
-		return ParsedSource{
-			Type: SourceTypeGitHub,
-			URL:  "https://github.com/" + m[1] + "/" + cleanRepo + ".git",
-			Ref:  fragmentRef,
-		}
+	if p, ok := parseGitHubShorthand(input, fragmentRef, fragmentSkillFilter); ok {
+		return p
 	}
-
-	// GitLab URL with path
-	if m := regexp.MustCompile(`^(https?):\/\/([^/]+)/(.+?)\/-\/tree/([^/]+)/(.+)`).FindStringSubmatch(input); m != nil {
-		if m[2] != "github.com" && m[3] != "" {
-			ref := m[4]
-			if fragmentRef != "" {
-				ref = fragmentRef
-			}
-			sub, _ := SanitizeSubpath(m[5])
-			repoPath := strings.TrimSuffix(m[3], ".git")
-			return ParsedSource{
-				Type:    SourceTypeGitLab,
-				URL:     m[1] + "://" + m[2] + "/" + repoPath + ".git",
-				Ref:     ref,
-				Subpath: sub,
-			}
-		}
-	}
-
-	// GitLab URL with branch only
-	if m := regexp.MustCompile(`^(https?):\/\/([^/]+)/(.+?)\/-\/tree/([^/]+)$`).FindStringSubmatch(input); m != nil {
-		if m[2] != "github.com" && m[3] != "" {
-			ref := m[4]
-			if fragmentRef != "" {
-				ref = fragmentRef
-			}
-			repoPath := strings.TrimSuffix(m[3], ".git")
-			return ParsedSource{
-				Type: SourceTypeGitLab,
-				URL:  m[1] + "://" + m[2] + "/" + repoPath + ".git",
-				Ref:  ref,
-			}
-		}
-	}
-
-	// GitLab.com URL
-	if m := regexp.MustCompile(`gitlab\.com/(.+?)(?:\.git)?/?$`).FindStringSubmatch(input); m != nil {
-		repoPath := m[1]
-		if strings.Contains(repoPath, "/") {
-			return ParsedSource{
-				Type: SourceTypeGitLab,
-				URL:  "https://gitlab.com/" + repoPath + ".git",
-				Ref:  fragmentRef,
-			}
-		}
-	}
-
-	// GitHub shorthand with @skill: owner/repo@skill
-	if m := regexp.MustCompile(`^([^/]+)/([^/@]+)@(.+)$`).FindStringSubmatch(input); m != nil {
-		if !strings.Contains(input, ":") && !strings.HasPrefix(input, ".") && !strings.HasPrefix(input, "/") {
-			sf := fragmentSkillFilter
-			if sf == "" {
-				sf = m[3]
-			}
-			return ParsedSource{
-				Type:        SourceTypeGitHub,
-				URL:         "https://github.com/" + m[1] + "/" + m[2] + ".git",
-				Ref:         fragmentRef,
-				SkillFilter: sf,
-			}
-		}
-	}
-
-	// GitHub shorthand: owner/repo or owner/repo/subpath
-	if m := regexp.MustCompile(`^([^/]+)/([^/]+)(?:/(.+?))?/?$`).FindStringSubmatch(input); m != nil {
-		if !strings.Contains(input, ":") && !strings.HasPrefix(input, ".") && !strings.HasPrefix(input, "/") {
-			sub := ""
-			if m[3] != "" {
-				sub, _ = SanitizeSubpath(m[3])
-			}
-			sf := fragmentSkillFilter
-			return ParsedSource{
-				Type:        SourceTypeGitHub,
-				URL:         "https://github.com/" + m[1] + "/" + m[2] + ".git",
-				Ref:         fragmentRef,
-				Subpath:     sub,
-				SkillFilter: sf,
-			}
-		}
-	}
-
-	// Well-known URL
 	if IsWellKnownURL(input) {
-		return ParsedSource{
-			Type: SourceTypeWellKnown,
-			URL:  input,
-		}
+		return ParsedSource{Type: SourceTypeWellKnown, URL: input}
 	}
-
-	// Fallback: direct git URL
-	return ParsedSource{
-		Type: SourceTypeGit,
-		URL:  input,
-		Ref:  fragmentRef,
-	}
+	return ParsedSource{Type: SourceTypeGit, URL: input, Ref: fragmentRef}
 }
 
 func GetOwnerRepo(parsed ParsedSource) string {

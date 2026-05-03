@@ -242,17 +242,63 @@ func copyFile(src, dst string) error {
 	return err
 }
 
-func installSkillForAgent(s *skill.Skill, agentName string, global bool, mode InstallMode) InstallResult {
-	cwd, _ := os.Getwd()
+type copyFunc func(dst string) error
+
+func writeSkillFiles(targetDir string, files []struct{ Path, Contents string }) error {
+	for _, f := range files {
+		fullPath := filepath.Join(targetDir, f.Path)
+		if !isPathSafe(targetDir, fullPath) {
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(fullPath, []byte(f.Contents), 0644); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func performSymlinkInstall(canonicalDir, agentDir, agentName string, global bool, mode InstallMode, cp copyFunc) InstallResult {
+	if err := cleanAndCreateDir(canonicalDir); err != nil {
+		return InstallResult{Success: false, Path: agentDir, Mode: mode, Error: err.Error()}
+	}
+	if err := cp(canonicalDir); err != nil {
+		return InstallResult{Success: false, Path: agentDir, Mode: mode, Error: err.Error()}
+	}
+	if global && agent.IsUniversalAgent(agentName) {
+		return InstallResult{Success: true, Path: canonicalDir, CanonicalPath: canonicalDir, Mode: InstallModeSymlink}
+	}
+	if createSymlink(canonicalDir, agentDir) {
+		return InstallResult{Success: true, Path: agentDir, CanonicalPath: canonicalDir, Mode: InstallModeSymlink}
+	}
+	if err := cleanAndCreateDir(agentDir); err != nil {
+		return InstallResult{Success: false, Path: agentDir, Mode: mode, Error: err.Error()}
+	}
+	if err := cp(agentDir); err != nil {
+		return InstallResult{Success: false, Path: agentDir, Mode: mode, Error: err.Error()}
+	}
+	return InstallResult{Success: true, Path: agentDir, CanonicalPath: canonicalDir, Mode: InstallModeSymlink, SymlinkFailed: true}
+}
+
+func validateAgentInstall(agentName string, global bool, mode InstallMode) (*agent.AgentConfig, *InstallResult) {
 	a := agent.AllAgents[agentName]
 	if a == nil {
-		return InstallResult{Success: false, Path: "", Mode: mode, Error: "unknown agent: " + agentName}
+		r := InstallResult{Success: false, Path: "", Mode: mode, Error: "unknown agent: " + agentName}
+		return nil, &r
 	}
 	if global && a.GlobalSkillsDir == "" {
-		return InstallResult{
-			Success: false, Path: "", Mode: mode,
-			Error: a.DisplayName + " does not support global skill installation",
-		}
+		r := InstallResult{Success: false, Path: "", Mode: mode, Error: a.DisplayName + " does not support global skill installation"}
+		return nil, &r
+	}
+	return a, nil
+}
+
+func installSkillForAgent(s *skill.Skill, agentName string, global bool, mode InstallMode) InstallResult {
+	cwd, _ := os.Getwd()
+	if _, errResult := validateAgentInstall(agentName, global, mode); errResult != nil {
+		return *errResult
 	}
 
 	rawName := s.Name
@@ -280,44 +326,14 @@ func installSkillForAgent(s *skill.Skill, agentName string, global bool, mode In
 		return InstallResult{Success: true, Path: agentDir, Mode: InstallModeCopy}
 	}
 
-	// Symlink mode
-	if err := cleanAndCreateDir(canonicalDir); err != nil {
-		return InstallResult{Success: false, Path: agentDir, Mode: mode, Error: err.Error()}
-	}
-	if err := copyDirectory(s.Path, canonicalDir); err != nil {
-		return InstallResult{Success: false, Path: agentDir, Mode: mode, Error: err.Error()}
-	}
-
-	// For universal agents in global mode, skip symlink
-	if global && agent.IsUniversalAgent(agentName) {
-		return InstallResult{Success: true, Path: canonicalDir, CanonicalPath: canonicalDir, Mode: InstallModeSymlink}
-	}
-
-	if createSymlink(canonicalDir, agentDir) {
-		return InstallResult{Success: true, Path: agentDir, CanonicalPath: canonicalDir, Mode: InstallModeSymlink}
-	}
-
-	// Symlink failed, fall back to copy
-	if err := cleanAndCreateDir(agentDir); err != nil {
-		return InstallResult{Success: false, Path: agentDir, Mode: mode, Error: err.Error()}
-	}
-	if err := copyDirectory(s.Path, agentDir); err != nil {
-		return InstallResult{Success: false, Path: agentDir, Mode: mode, Error: err.Error()}
-	}
-	return InstallResult{Success: true, Path: agentDir, CanonicalPath: canonicalDir, Mode: InstallModeSymlink, SymlinkFailed: true}
+	return performSymlinkInstall(canonicalDir, agentDir, agentName, global, mode,
+		func(dst string) error { return copyDirectory(s.Path, dst) })
 }
 
 func installSkillFilesForAgent(skillName string, files []struct{ Path, Contents string }, agentName string, global bool, mode InstallMode) InstallResult {
 	cwd, _ := os.Getwd()
-	a := agent.AllAgents[agentName]
-	if a == nil {
-		return InstallResult{Success: false, Path: "", Mode: mode, Error: "unknown agent: " + agentName}
-	}
-	if global && a.GlobalSkillsDir == "" {
-		return InstallResult{
-			Success: false, Path: "", Mode: mode,
-			Error: a.DisplayName + " does not support global skill installation",
-		}
+	if _, errResult := validateAgentInstall(agentName, global, mode); errResult != nil {
+		return *errResult
 	}
 
 	sName := sanitizeName(skillName)
@@ -330,55 +346,19 @@ func installSkillFilesForAgent(skillName string, files []struct{ Path, Contents 
 		return InstallResult{Success: false, Path: agentDir, Mode: mode, Error: "potential path traversal detected"}
 	}
 
-	writeFiles := func(targetDir string) error {
-		for _, f := range files {
-			fullPath := filepath.Join(targetDir, f.Path)
-			if !isPathSafe(targetDir, fullPath) {
-				continue
-			}
-			if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
-				return err
-			}
-			if err := os.WriteFile(fullPath, []byte(f.Contents), 0644); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
+	cp := func(dst string) error { return writeSkillFiles(dst, files) }
 
 	if mode == InstallModeCopy {
 		if err := cleanAndCreateDir(agentDir); err != nil {
 			return InstallResult{Success: false, Path: agentDir, Mode: mode, Error: err.Error()}
 		}
-		if err := writeFiles(agentDir); err != nil {
+		if err := cp(agentDir); err != nil {
 			return InstallResult{Success: false, Path: agentDir, Mode: mode, Error: err.Error()}
 		}
 		return InstallResult{Success: true, Path: agentDir, Mode: InstallModeCopy}
 	}
 
-	// Symlink mode
-	if err := cleanAndCreateDir(canonicalDir); err != nil {
-		return InstallResult{Success: false, Path: agentDir, Mode: mode, Error: err.Error()}
-	}
-	if err := writeFiles(canonicalDir); err != nil {
-		return InstallResult{Success: false, Path: agentDir, Mode: mode, Error: err.Error()}
-	}
-
-	if global && agent.IsUniversalAgent(agentName) {
-		return InstallResult{Success: true, Path: canonicalDir, CanonicalPath: canonicalDir, Mode: InstallModeSymlink}
-	}
-
-	if createSymlink(canonicalDir, agentDir) {
-		return InstallResult{Success: true, Path: agentDir, CanonicalPath: canonicalDir, Mode: InstallModeSymlink}
-	}
-
-	if err := cleanAndCreateDir(agentDir); err != nil {
-		return InstallResult{Success: false, Path: agentDir, Mode: mode, Error: err.Error()}
-	}
-	if err := writeFiles(agentDir); err != nil {
-		return InstallResult{Success: false, Path: agentDir, Mode: mode, Error: err.Error()}
-	}
-	return InstallResult{Success: true, Path: agentDir, CanonicalPath: canonicalDir, Mode: InstallModeSymlink, SymlinkFailed: true}
+	return performSymlinkInstall(canonicalDir, agentDir, agentName, global, mode, cp)
 }
 
 func isSkillInstalled(skillName, agentName string, global bool) bool {
@@ -428,6 +408,204 @@ type InstalledSkill struct {
 	Agents        []string
 }
 
+type scopeEntry struct {
+	isGlobal  bool
+	path      string
+	agentType string
+}
+
+func filterAgentsToCheck(detected []string, agentFilter []string) []string {
+	if len(agentFilter) == 0 {
+		return detected
+	}
+	var filtered []string
+	for _, a := range detected {
+		for _, f := range agentFilter {
+			if a == f {
+				filtered = append(filtered, a)
+				break
+			}
+		}
+	}
+	return filtered
+}
+
+func agentDirForScope(agentName string, isGlobal bool, cwd string) string {
+	a := agent.AllAgents[agentName]
+	if a == nil {
+		return ""
+	}
+	if isGlobal {
+		return a.GlobalSkillsDir
+	}
+	return filepath.Join(cwd, a.SkillsDir)
+}
+
+func scopeEntryExists(scopes []scopeEntry, path string, isGlobal bool) bool {
+	for _, s := range scopes {
+		if s.path == path && s.isGlobal == isGlobal {
+			return true
+		}
+	}
+	return false
+}
+
+func appendDetectedAgentScopes(scopes []scopeEntry, agentsToCheck []string, isGlobal bool, cwd string) []scopeEntry {
+	for _, agentName := range agentsToCheck {
+		a := agent.AllAgents[agentName]
+		if a == nil || (isGlobal && a.GlobalSkillsDir == "") {
+			continue
+		}
+		agentDir := agentDirForScope(agentName, isGlobal, cwd)
+		if !scopeEntryExists(scopes, agentDir, isGlobal) {
+			scopes = append(scopes, scopeEntry{isGlobal: isGlobal, path: agentDir, agentType: agentName})
+		}
+	}
+	return scopes
+}
+
+func appendUndetectedAgentScopes(scopes []scopeEntry, agentsToCheck []string, isGlobal bool, cwd string) []scopeEntry {
+	for agentName, a := range agent.AllAgents {
+		if contains(agentsToCheck, agentName) {
+			continue
+		}
+		if isGlobal && a.GlobalSkillsDir == "" {
+			continue
+		}
+		agentDir := agentDirForScope(agentName, isGlobal, cwd)
+		if scopeEntryExists(scopes, agentDir, isGlobal) {
+			continue
+		}
+		if _, statErr := os.Stat(agentDir); statErr == nil {
+			scopes = append(scopes, scopeEntry{isGlobal: isGlobal, path: agentDir, agentType: agentName})
+		}
+	}
+	return scopes
+}
+
+func buildScopeEntries(agentsToCheck []string, scopeTypes []bool, cwd string) []scopeEntry {
+	var scopes []scopeEntry
+	for _, isGlobal := range scopeTypes {
+		scopes = append(scopes, scopeEntry{isGlobal: isGlobal, path: getCanonicalSkillsDir(isGlobal, cwd)})
+		scopes = appendDetectedAgentScopes(scopes, agentsToCheck, isGlobal, cwd)
+		scopes = appendUndetectedAgentScopes(scopes, agentsToCheck, isGlobal, cwd)
+	}
+	return scopes
+}
+
+func parseSkillInDir(skillDir string) *skill.Skill {
+	skillMdPath := filepath.Join(skillDir, "SKILL.md")
+	if _, err := os.Stat(skillMdPath); err != nil {
+		return nil
+	}
+	s, err := skill.ParseSkillMd(skillMdPath, true)
+	if err != nil || s == nil {
+		return nil
+	}
+	return s
+}
+
+func mergeAgentSkillIntoMap(skillsMap map[string]*InstalledSkill, mapKey, agentType string, s *skill.Skill, skillDir, scopeKey string) {
+	if existing, ok := skillsMap[mapKey]; ok {
+		if !contains(existing.Agents, agentType) {
+			existing.Agents = append(existing.Agents, agentType)
+		}
+	} else {
+		skillsMap[mapKey] = &InstalledSkill{
+			Name: s.Name, Description: s.Description,
+			Path: skillDir, CanonicalPath: skillDir,
+			Scope: scopeKey, Agents: []string{agentType},
+		}
+	}
+}
+
+func agentHasSkill(agentBase, dirName, sName, skillName string) bool {
+	for _, name := range []string{dirName, sName} {
+		agentSkillDir := filepath.Join(agentBase, name)
+		if !isPathSafe(agentBase, agentSkillDir) {
+			continue
+		}
+		if _, err := os.Stat(agentSkillDir); err == nil {
+			return true
+		}
+	}
+	agentEntries, err := os.ReadDir(agentBase)
+	if err != nil {
+		return false
+	}
+	for _, ae := range agentEntries {
+		if !ae.IsDir() {
+			continue
+		}
+		candidateDir := filepath.Join(agentBase, ae.Name())
+		candidateSkill, err := skill.ParseSkillMd(filepath.Join(candidateDir, "SKILL.md"), true)
+		if err == nil && candidateSkill != nil && candidateSkill.Name == skillName {
+			return true
+		}
+	}
+	return false
+}
+
+func findAgentsForSkill(s *skill.Skill, dirName string, agentsToCheck []string, isGlobal bool, cwd string) []string {
+	sName := sanitizeName(s.Name)
+	var result []string
+	for _, agentName := range agentsToCheck {
+		a := agent.AllAgents[agentName]
+		if a == nil || (isGlobal && a.GlobalSkillsDir == "") {
+			continue
+		}
+		agentBase := agentDirForScope(agentName, isGlobal, cwd)
+		if agentHasSkill(agentBase, dirName, sName, s.Name) {
+			result = append(result, agentName)
+		}
+	}
+	return result
+}
+
+func mergeCanonicalSkillIntoMap(skillsMap map[string]*InstalledSkill, mapKey string, agents []string, s *skill.Skill, skillDir, scopeKey string) {
+	if existing, ok := skillsMap[mapKey]; ok {
+		for _, ag := range agents {
+			if !contains(existing.Agents, ag) {
+				existing.Agents = append(existing.Agents, ag)
+			}
+		}
+	} else {
+		skillsMap[mapKey] = &InstalledSkill{
+			Name: s.Name, Description: s.Description,
+			Path: skillDir, CanonicalPath: skillDir,
+			Scope: scopeKey, Agents: agents,
+		}
+	}
+}
+
+func populateScopeSkills(scope scopeEntry, agentsToCheck []string, cwd string, skillsMap map[string]*InstalledSkill) {
+	entries, err := os.ReadDir(scope.path)
+	if err != nil {
+		return
+	}
+	scopeKey := "project"
+	if scope.isGlobal {
+		scopeKey = "global"
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		skillDir := filepath.Join(scope.path, e.Name())
+		s := parseSkillInDir(skillDir)
+		if s == nil {
+			continue
+		}
+		mapKey := scopeKey + ":" + s.Name
+		if scope.agentType != "" {
+			mergeAgentSkillIntoMap(skillsMap, mapKey, scope.agentType, s, skillDir, scopeKey)
+			continue
+		}
+		agents := findAgentsForSkill(s, e.Name(), agentsToCheck, scope.isGlobal, cwd)
+		mergeCanonicalSkillIntoMap(skillsMap, mapKey, agents, s, skillDir, scopeKey)
+	}
+}
+
 func shortenPath(fullPath, cwd string) string {
 	home, _ := os.UserHomeDir()
 	if fullPath == home || strings.HasPrefix(fullPath, home+string(filepath.Separator)) {
@@ -441,226 +619,17 @@ func shortenPath(fullPath, cwd string) string {
 
 func listInstalledSkills(global *bool, agentFilter []string) ([]*InstalledSkill, error) {
 	cwd, _ := os.Getwd()
-	skillsMap := map[string]*InstalledSkill{}
+	agentsToCheck := filterAgentsToCheck(agent.DetectInstalledAgents(), agentFilter)
 
-	detectedAgents := agent.DetectInstalledAgents()
-
-	agentsToCheck := detectedAgents
-	if len(agentFilter) > 0 {
-		var filtered []string
-		for _, a := range detectedAgents {
-			for _, f := range agentFilter {
-				if a == f {
-					filtered = append(filtered, a)
-					break
-				}
-			}
-		}
-		agentsToCheck = filtered
-	}
-
-	type scopeEntry struct {
-		isGlobal  bool
-		path      string
-		agentType string
-	}
-
-	var scopeTypes []bool
-	if global == nil {
-		scopeTypes = []bool{false, true}
-	} else {
+	scopeTypes := []bool{false, true}
+	if global != nil {
 		scopeTypes = []bool{*global}
 	}
+	scopes := buildScopeEntries(agentsToCheck, scopeTypes, cwd)
 
-	var scopes []scopeEntry
-
-	for _, isGlobal := range scopeTypes {
-		scopes = append(scopes, scopeEntry{isGlobal: isGlobal, path: getCanonicalSkillsDir(isGlobal, cwd)})
-
-		for _, agentName := range agentsToCheck {
-			a := agent.AllAgents[agentName]
-			if a == nil {
-				continue
-			}
-			if isGlobal && a.GlobalSkillsDir == "" {
-				continue
-			}
-			var agentDir string
-			if isGlobal {
-				agentDir = a.GlobalSkillsDir
-			} else {
-				agentDir = filepath.Join(cwd, a.SkillsDir)
-			}
-			alreadyAdded := false
-			for _, s := range scopes {
-				if s.path == agentDir && s.isGlobal == isGlobal {
-					alreadyAdded = true
-					break
-				}
-			}
-			if !alreadyAdded {
-				scopes = append(scopes, scopeEntry{isGlobal: isGlobal, path: agentDir, agentType: agentName})
-			}
-		}
-
-		// Also scan agent dirs for non-detected agents that have skills
-		for agentName, a := range agent.AllAgents {
-			alreadyInCheck := false
-			for _, ag := range agentsToCheck {
-				if ag == agentName {
-					alreadyInCheck = true
-					break
-				}
-			}
-			if alreadyInCheck {
-				continue
-			}
-			if isGlobal && a.GlobalSkillsDir == "" {
-				continue
-			}
-			var agentDir string
-			if isGlobal {
-				agentDir = a.GlobalSkillsDir
-			} else {
-				agentDir = filepath.Join(cwd, a.SkillsDir)
-			}
-			alreadyAdded := false
-			for _, s := range scopes {
-				if s.path == agentDir && s.isGlobal == isGlobal {
-					alreadyAdded = true
-					break
-				}
-			}
-			if _, statErr := os.Stat(agentDir); !alreadyAdded && statErr == nil {
-				scopes = append(scopes, scopeEntry{isGlobal: isGlobal, path: agentDir, agentType: agentName})
-			}
-		}
-	}
-
+	skillsMap := map[string]*InstalledSkill{}
 	for _, scope := range scopes {
-		entries, err := os.ReadDir(scope.path)
-		if err != nil {
-			continue
-		}
-		scopeKey := "project"
-		if scope.isGlobal {
-			scopeKey = "global"
-		}
-		for _, e := range entries {
-			if !e.IsDir() {
-				continue
-			}
-			skillDir := filepath.Join(scope.path, e.Name())
-			skillMdPath := filepath.Join(skillDir, "SKILL.md")
-			if _, err := os.Stat(skillMdPath); err != nil {
-				continue
-			}
-			s, err := skill.ParseSkillMd(skillMdPath, true)
-			if err != nil || s == nil {
-				continue
-			}
-			mapKey := scopeKey + ":" + s.Name
-
-			if scope.agentType != "" {
-				if existing, ok := skillsMap[mapKey]; ok {
-					agentFound := false
-					for _, ag := range existing.Agents {
-						if ag == scope.agentType {
-							agentFound = true
-							break
-						}
-					}
-					if !agentFound {
-						existing.Agents = append(existing.Agents, scope.agentType)
-					}
-				} else {
-					skillsMap[mapKey] = &InstalledSkill{
-						Name:          s.Name,
-						Description:   s.Description,
-						Path:          skillDir,
-						CanonicalPath: skillDir,
-						Scope:         scopeKey,
-						Agents:        []string{scope.agentType},
-					}
-				}
-				continue
-			}
-
-			// Canonical directory - find which agents have this skill
-			sName := sanitizeName(s.Name)
-			var installedAgents []string
-			for _, agentName := range agentsToCheck {
-				a := agent.AllAgents[agentName]
-				if a == nil {
-					continue
-				}
-				if scope.isGlobal && a.GlobalSkillsDir == "" {
-					continue
-				}
-				var agentBase string
-				if scope.isGlobal {
-					agentBase = a.GlobalSkillsDir
-				} else {
-					agentBase = filepath.Join(cwd, a.SkillsDir)
-				}
-				found := false
-				for _, name := range []string{e.Name(), sName} {
-					agentSkillDir := filepath.Join(agentBase, name)
-					if !isPathSafe(agentBase, agentSkillDir) {
-						continue
-					}
-					if _, err := os.Stat(agentSkillDir); err == nil {
-						found = true
-						break
-					}
-				}
-				if !found {
-					// Scan agent base for matching skill name
-					agentEntries, err := os.ReadDir(agentBase)
-					if err == nil {
-						for _, ae := range agentEntries {
-							if !ae.IsDir() {
-								continue
-							}
-							candidateDir := filepath.Join(agentBase, ae.Name())
-							candidateMd := filepath.Join(candidateDir, "SKILL.md")
-							candidateSkill, err := skill.ParseSkillMd(candidateMd, true)
-							if err == nil && candidateSkill != nil && candidateSkill.Name == s.Name {
-								found = true
-								break
-							}
-						}
-					}
-				}
-				if found {
-					installedAgents = append(installedAgents, agentName)
-				}
-			}
-
-			if existing, ok := skillsMap[mapKey]; ok {
-				for _, ag := range installedAgents {
-					agentFound := false
-					for _, ea := range existing.Agents {
-						if ea == ag {
-							agentFound = true
-							break
-						}
-					}
-					if !agentFound {
-						existing.Agents = append(existing.Agents, ag)
-					}
-				}
-			} else {
-				skillsMap[mapKey] = &InstalledSkill{
-					Name:          s.Name,
-					Description:   s.Description,
-					Path:          skillDir,
-					CanonicalPath: skillDir,
-					Scope:         scopeKey,
-					Agents:        installedAgents,
-				}
-			}
-		}
+		populateScopeSkills(scope, agentsToCheck, cwd, skillsMap)
 	}
 
 	var result []*InstalledSkill

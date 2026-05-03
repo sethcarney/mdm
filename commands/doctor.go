@@ -129,23 +129,7 @@ func runDoctor(opts DoctorOptions) {
 			results = append(results, r)
 		}
 
-		// Only skip agent skill directories that actually exist on disk, to avoid
-		// accidentally suppressing real project folders from the markdown scan.
-		if _, err := os.Stat(canonicalBase); err == nil {
-			skipDirs[filepath.Clean(canonicalBase)] = true
-		}
-		for _, agentCfg := range agent.AllAgents {
-			if agentCfg == nil {
-				continue
-			}
-			agentSkillsDir := filepath.Clean(filepath.Join(cwd, agentCfg.SkillsDir))
-			if _, err := os.Stat(agentSkillsDir); err == nil {
-				skipDirs[agentSkillsDir] = true
-			}
-			if agentCfg.InstructionsFile != "" {
-				skipFiles[filepath.Clean(filepath.Join(cwd, agentCfg.InstructionsFile))] = true
-			}
-		}
+		buildProjectSkipPaths(cwd, canonicalBase, skipDirs, skipFiles)
 	}
 
 	var instrIssues []doctorIssue
@@ -167,6 +151,24 @@ func runDoctor(opts DoctorOptions) {
 	})
 
 	printDoctorResults(results, instrIssues, mdIssues, mdTruncated, readmeIssue, checkProject, cwd)
+}
+
+func buildProjectSkipPaths(cwd, canonicalBase string, skipDirs, skipFiles map[string]bool) {
+	if _, err := os.Stat(canonicalBase); err == nil {
+		skipDirs[filepath.Clean(canonicalBase)] = true
+	}
+	for _, agentCfg := range agent.AllAgents {
+		if agentCfg == nil {
+			continue
+		}
+		agentSkillsDir := filepath.Clean(filepath.Join(cwd, agentCfg.SkillsDir))
+		if _, err := os.Stat(agentSkillsDir); err == nil {
+			skipDirs[agentSkillsDir] = true
+		}
+		if agentCfg.InstructionsFile != "" {
+			skipFiles[filepath.Clean(filepath.Join(cwd, agentCfg.InstructionsFile))] = true
+		}
+	}
 }
 
 // ── Checks ─────────────────────────────────────────────────────────────────────
@@ -440,82 +442,95 @@ func printDoctorResults(results []doctorResult, instrIssues, mdIssues []doctorIs
 		if !ok {
 			continue
 		}
-		scopeTitle := strings.ToUpper(scope[:1]) + scope[1:]
-		fmt.Printf("%s%s skills:%s\n\n", ansiText, scopeTitle, ansiReset)
-
-		for _, r := range scopeResults {
-			errCount, warnCount := 0, 0
-			for _, issue := range r.Issues {
-				switch issue.Level {
-				case "error":
-					errCount++
-				case "warn":
-					warnCount++
-				}
-			}
-			totalErrors += errCount
-			totalWarnings += warnCount
-
-			statusIcon, statusColor := doctorStatusIcon(errCount, warnCount)
-			fmt.Printf("  %s%s%s %s%s%s\n", statusColor, statusIcon, ansiReset, ansiBold, r.Name, ansiReset)
-
-			if len(r.Issues) == 0 {
-				fmt.Printf("    %s%s%s\n", ansiDim, shortenPath(r.Path, cwd), ansiReset)
-			} else {
-				for _, issue := range r.Issues {
-					icon, color := doctorIssueIcon(issue.Level)
-					fmt.Printf("    %s%s%s %s%s%s\n", color, icon, ansiReset, ansiDim, issue.Message, ansiReset)
-				}
-			}
-			fmt.Println()
-		}
+		e, w := printDoctorSkillSection(scopeResults, scope, cwd)
+		totalErrors += e
+		totalWarnings += w
 	}
 
-	// Instruction files section
 	if len(instrIssues) > 0 {
 		fmt.Printf("%sInstruction files:%s\n\n", ansiText, ansiReset)
-		for _, issue := range instrIssues {
-			icon, color := doctorIssueIcon(issue.Level)
-			fmt.Printf("  %s%s%s %s%s%s\n", color, icon, ansiReset, ansiDim, issue.Message, ansiReset)
-			if issue.Level == "error" {
-				totalErrors++
-			} else {
-				totalWarnings++
+		e, w := printAndCountDoctorIssues(instrIssues)
+		totalErrors += e
+		totalWarnings += w
+		fmt.Println()
+	}
+
+	e, w := printDoctorMarkdownSection(readmeIssue, mdIssues, mdTruncated)
+	totalErrors += e
+	totalWarnings += w
+
+	printDoctorSummary(len(results), scannedProject, totalErrors, totalWarnings)
+}
+
+func printDoctorSkillSection(scopeResults []doctorResult, scope, cwd string) (errs, warns int) {
+	scopeTitle := strings.ToUpper(scope[:1]) + scope[1:]
+	fmt.Printf("%s%s skills:%s\n\n", ansiText, scopeTitle, ansiReset)
+	for _, r := range scopeResults {
+		errCount, warnCount := 0, 0
+		for _, issue := range r.Issues {
+			switch issue.Level {
+			case "error":
+				errCount++
+			case "warn":
+				warnCount++
+			}
+		}
+		errs += errCount
+		warns += warnCount
+		statusIcon, statusColor := doctorStatusIcon(errCount, warnCount)
+		fmt.Printf("  %s%s%s %s%s%s\n", statusColor, statusIcon, ansiReset, ansiBold, r.Name, ansiReset)
+		if len(r.Issues) == 0 {
+			fmt.Printf("    %s%s%s\n", ansiDim, shortenPath(r.Path, cwd), ansiReset)
+		} else {
+			for _, issue := range r.Issues {
+				icon, color := doctorIssueIcon(issue.Level)
+				fmt.Printf("    %s%s%s %s%s%s\n", color, icon, ansiReset, ansiDim, issue.Message, ansiReset)
 			}
 		}
 		fmt.Println()
 	}
+	return
+}
 
-	// General project markdown section
-	if readmeIssue != nil || len(mdIssues) > 0 || mdTruncated {
-		fmt.Printf("%sProject markdown:%s\n\n", ansiText, ansiReset)
-		if readmeIssue != nil {
-			icon, color := doctorIssueIcon(readmeIssue.Level)
-			fmt.Printf("  %s%s%s %s%s%s\n", color, icon, ansiReset, ansiDim, readmeIssue.Message, ansiReset)
-			if readmeIssue.Level == "error" {
-				totalErrors++
-			} else {
-				totalWarnings++
-			}
+func printAndCountDoctorIssues(issues []doctorIssue) (errs, warns int) {
+	for _, issue := range issues {
+		icon, color := doctorIssueIcon(issue.Level)
+		fmt.Printf("  %s%s%s %s%s%s\n", color, icon, ansiReset, ansiDim, issue.Message, ansiReset)
+		if issue.Level == "error" {
+			errs++
+		} else {
+			warns++
 		}
-		for _, issue := range mdIssues {
-			icon, color := doctorIssueIcon(issue.Level)
-			fmt.Printf("  %s%s%s %s%s%s\n", color, icon, ansiReset, ansiDim, issue.Message, ansiReset)
-			if issue.Level == "error" {
-				totalErrors++
-			} else {
-				totalWarnings++
-			}
-		}
-		if mdTruncated {
-			fmt.Printf("  %s▲%s %sscan stopped after %d entries — run from a subdirectory to check further%s\n",
-				ansiYellow, ansiReset, ansiDim, markdownWalkLimit, ansiReset)
-		}
-		fmt.Println()
 	}
+	return
+}
 
-	// Summary
-	total := len(results)
+func printDoctorMarkdownSection(readmeIssue *doctorIssue, mdIssues []doctorIssue, mdTruncated bool) (errs, warns int) {
+	if readmeIssue == nil && len(mdIssues) == 0 && !mdTruncated {
+		return
+	}
+	fmt.Printf("%sProject markdown:%s\n\n", ansiText, ansiReset)
+	if readmeIssue != nil {
+		icon, color := doctorIssueIcon(readmeIssue.Level)
+		fmt.Printf("  %s%s%s %s%s%s\n", color, icon, ansiReset, ansiDim, readmeIssue.Message, ansiReset)
+		if readmeIssue.Level == "error" {
+			errs++
+		} else {
+			warns++
+		}
+	}
+	e, w := printAndCountDoctorIssues(mdIssues)
+	errs += e
+	warns += w
+	if mdTruncated {
+		fmt.Printf("  %s▲%s %sscan stopped after %d entries — run from a subdirectory to check further%s\n",
+			ansiYellow, ansiReset, ansiDim, markdownWalkLimit, ansiReset)
+	}
+	fmt.Println()
+	return
+}
+
+func printDoctorSummary(total int, scannedProject bool, errs, warns int) {
 	if total > 0 {
 		fmt.Printf("%sDoctor complete:%s %d skill(s) checked", ansiText, ansiReset, total)
 	} else {
@@ -524,13 +539,13 @@ func printDoctorResults(results []doctorResult, instrIssues, mdIssues []doctorIs
 	if scannedProject {
 		fmt.Printf(", project markdown scanned")
 	}
-	if totalErrors > 0 {
-		fmt.Printf(", %s%d error(s)%s", ansiRed, totalErrors, ansiReset)
+	if errs > 0 {
+		fmt.Printf(", %s%d error(s)%s", ansiRed, errs, ansiReset)
 	}
-	if totalWarnings > 0 {
-		fmt.Printf(", %s%d warning(s)%s", ansiYellow, totalWarnings, ansiReset)
+	if warns > 0 {
+		fmt.Printf(", %s%d warning(s)%s", ansiYellow, warns, ansiReset)
 	}
-	if totalErrors == 0 && totalWarnings == 0 {
+	if errs == 0 && warns == 0 {
 		fmt.Printf(", %sall clear%s", ansiGreen, ansiReset)
 	}
 	fmt.Println()

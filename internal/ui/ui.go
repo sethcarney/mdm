@@ -546,45 +546,51 @@ func (m *searchModel) Init() tea.Cmd {
 	return textinput.Blink
 }
 
+func handleSearchModelKey(m *searchModel, msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
+	switch msg.Type {
+	case tea.KeyUp:
+		if m.cursor > 0 {
+			m.cursor--
+			m.clampOffset()
+		}
+		return m, nil, true
+	case tea.KeyDown:
+		if len(m.filtered) > 0 && m.cursor < len(m.filtered)-1 {
+			m.cursor++
+			m.clampOffset()
+		}
+		return m, nil, true
+	case tea.KeySpace:
+		if len(m.filtered) > 0 && m.cursor < len(m.filtered) {
+			fi := m.filtered[m.cursor]
+			m.selected[fi] = !m.selected[fi]
+		}
+		return m, nil, true
+	case tea.KeyEnter:
+		var result []int
+		for i, s := range m.selected {
+			if s {
+				result = append(result, i)
+			}
+		}
+		m.result = result
+		m.done = true
+		return m, tea.Quit, true
+	case tea.KeyEsc, tea.KeyCtrlC:
+		m.cancelled = true
+		m.done = true
+		return m, tea.Quit, true
+	}
+	return nil, nil, false
+}
+
 func (m *searchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.height = msg.Height
-
 	case tea.KeyMsg:
-		switch msg.Type {
-		case tea.KeyUp:
-			if m.cursor > 0 {
-				m.cursor--
-				m.clampOffset()
-			}
-			return m, nil
-		case tea.KeyDown:
-			if len(m.filtered) > 0 && m.cursor < len(m.filtered)-1 {
-				m.cursor++
-				m.clampOffset()
-			}
-			return m, nil
-		case tea.KeySpace:
-			if len(m.filtered) > 0 && m.cursor < len(m.filtered) {
-				fi := m.filtered[m.cursor]
-				m.selected[fi] = !m.selected[fi]
-			}
-			return m, nil
-		case tea.KeyEnter:
-			var result []int
-			for i, s := range m.selected {
-				if s {
-					result = append(result, i)
-				}
-			}
-			m.result = result
-			m.done = true
-			return m, tea.Quit
-		case tea.KeyEsc, tea.KeyCtrlC:
-			m.cancelled = true
-			m.done = true
-			return m, tea.Quit
+		if model, cmd, handled := handleSearchModelKey(m, msg); handled {
+			return model, cmd
 		}
 	}
 
@@ -603,36 +609,8 @@ func (m *searchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m *searchModel) View() string {
-	if m.done {
-		if m.cancelled {
-			return styleDimmed.Render(m.message) + "\n"
-		}
-		var labels []string
-		for _, lo := range m.locked {
-			labels = append(labels, lo.Label)
-		}
-		for _, i := range m.result {
-			labels = append(labels, m.options[i].Label)
-		}
-		return stylePrompt.Render(m.message) + "  " + styleDimmed.Render(strings.Join(labels, ", ")) + "\n"
-	}
-
+func (m *searchModel) viewOptionsList() string {
 	var sb strings.Builder
-	sb.WriteString(stylePrompt.Render(m.message) + "\n")
-	sb.WriteString("  " + m.input.View() + "\n")
-
-	if len(m.locked) > 0 {
-		sb.WriteString("  " + styleDimmed.Render("── always included ──") + "\n")
-		for _, lo := range m.locked {
-			sb.WriteString("    " + styleDimmed.Render("◉") + " " + styleDimmed.Render(lo.Label))
-			if lo.Hint != "" {
-				sb.WriteString("  " + styleDimmed.Render(lo.Hint))
-			}
-			sb.WriteString("\n")
-		}
-	}
-
 	vis := m.visibleHeight()
 	end := m.offset + vis
 	if end > len(m.filtered) {
@@ -666,6 +644,40 @@ func (m *searchModel) View() string {
 			sb.WriteString("  " + styleDimmed.Render("↓ more") + "\n")
 		}
 	}
+	return sb.String()
+}
+
+func (m *searchModel) View() string {
+	if m.done {
+		if m.cancelled {
+			return styleDimmed.Render(m.message) + "\n"
+		}
+		var labels []string
+		for _, lo := range m.locked {
+			labels = append(labels, lo.Label)
+		}
+		for _, i := range m.result {
+			labels = append(labels, m.options[i].Label)
+		}
+		return stylePrompt.Render(m.message) + "  " + styleDimmed.Render(strings.Join(labels, ", ")) + "\n"
+	}
+
+	var sb strings.Builder
+	sb.WriteString(stylePrompt.Render(m.message) + "\n")
+	sb.WriteString("  " + m.input.View() + "\n")
+
+	if len(m.locked) > 0 {
+		sb.WriteString("  " + styleDimmed.Render("── always included ──") + "\n")
+		for _, lo := range m.locked {
+			sb.WriteString("    " + styleDimmed.Render("◉") + " " + styleDimmed.Render(lo.Label))
+			if lo.Hint != "" {
+				sb.WriteString("  " + styleDimmed.Render(lo.Hint))
+			}
+			sb.WriteString("\n")
+		}
+	}
+
+	sb.WriteString(m.viewOptionsList())
 	sb.WriteString(styleDimmed.Render("type to filter · space to toggle · enter to confirm") + "\n")
 	return sb.String()
 }
