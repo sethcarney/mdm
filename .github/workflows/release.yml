@@ -18,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write # needed for OIDC keyless cosign signing
 
     steps:
       - name: Checkout
@@ -58,6 +59,17 @@ jobs:
         if: steps.check.outputs.exists == 'false'
         run: cd dist && sha256sum * > sha256sums.txt
 
+      - name: Install cosign
+        if: steps.check.outputs.exists == 'false'
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3.9.1
+
+      - name: Sign binaries
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          for f in dist/mdm-linux-x64 dist/mdm-linux-arm64 dist/mdm-macos-x64 dist/mdm-macos-arm64 dist/mdm-windows-x64.exe; do
+            cosign sign-blob --yes "$f" --bundle "${f}.bundle"
+          done
+
       - name: Create GitHub Release
         if: steps.check.outputs.exists == 'false'
         run: |
@@ -69,6 +81,11 @@ jobs:
             dist/mdm-macos-x64 \
             dist/mdm-macos-arm64 \
             dist/mdm-windows-x64.exe \
+            dist/mdm-linux-x64.bundle \
+            dist/mdm-linux-arm64.bundle \
+            dist/mdm-macos-x64.bundle \
+            dist/mdm-macos-arm64.bundle \
+            dist/mdm-windows-x64.exe.bundle \
             dist/sha256sums.txt
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
