@@ -1,25 +1,47 @@
-# skl installer for Windows
-# Usage: irm https://raw.githubusercontent.com/sethcarney/skl/main/install.ps1 | iex
+# mdm installer for Windows
+# Usage: irm https://raw.githubusercontent.com/sethcarney/mdm/main/install.ps1 | iex
 
 $ErrorActionPreference = 'Stop'
 
-$Repo = "sethcarney/skl"
-$BinaryName = "skl-windows-x64.exe"
+$Repo = "sethcarney/mdm"
+$BinaryName = "mdm-windows-x64.exe"
 $InstallDir = if ($env:INSTALL_DIR) { $env:INSTALL_DIR } else { "$env:USERPROFILE\.local\bin" }
-$InstallPath = Join-Path $InstallDir "skl.exe"
+$InstallPath = Join-Path $InstallDir "mdm.exe"
 
 $DownloadUrl = "https://github.com/$Repo/releases/latest/download/$BinaryName"
 
-Write-Host "Downloading skl (windows-x64)..."
+Write-Host "Downloading mdm (windows-x64)..."
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 
-$TempFile = Join-Path $env:TEMP "skl-install.exe"
+$TempFile = Join-Path $env:TEMP "mdm-install.exe"
 (New-Object System.Net.WebClient).DownloadFile($DownloadUrl, $TempFile)
+
+$CosignCmd = Get-Command cosign -ErrorAction SilentlyContinue
+if ($CosignCmd) {
+    Write-Host "Verifying cosign signature..."
+    $BundleUrl = "https://github.com/$Repo/releases/latest/download/$BinaryName.bundle"
+    $BundleFile = Join-Path $env:TEMP "mdm-install.exe.bundle"
+    (New-Object System.Net.WebClient).DownloadFile($BundleUrl, $BundleFile)
+    & cosign verify-blob $TempFile `
+        --bundle $BundleFile `
+        --certificate-identity-regexp='^https://github\.com/sethcarney/mdm/\.github/workflows/release\.yml@refs/heads/main$' `
+        --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Signature verification FAILED. The binary may be tampered. Aborting."
+        Remove-Item -Force $TempFile, $BundleFile -ErrorAction SilentlyContinue
+        exit 1
+    }
+    Remove-Item -Force $BundleFile
+    Write-Host "Signature verified!"
+} else {
+    Write-Host "cosign not found — skipping signature verification."
+    Write-Host "Install cosign to verify: https://docs.sigstore.dev/cosign/system_config/installation/"
+}
 
 Move-Item -Force $TempFile $InstallPath
 
 Write-Host ""
-Write-Host "skl installed successfully to $InstallPath"
+Write-Host "mdm installed successfully to $InstallPath"
 
 $UserPath = [Environment]::GetEnvironmentVariable("PATH", "User")
 $MachinePath = [Environment]::GetEnvironmentVariable("PATH", "Machine")
@@ -34,4 +56,4 @@ if ($UserPath -notlike "*$InstallDir*" -and $MachinePath -notlike "*$InstallDir*
     Write-Host ""
 }
 
-Write-Host "Verify with: skl --version"
+Write-Host "Verify with: mdm --version"

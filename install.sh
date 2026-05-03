@@ -33,10 +33,31 @@ case "$OS" in
     ;;
 esac
 
-DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/mdm-${TARGET}"
+BINARY_NAME="mdm-${TARGET}"
+DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/${BINARY_NAME}"
 
 echo "Downloading mdm (${TARGET})..."
 curl -fsSL "$DOWNLOAD_URL" -o /tmp/mdm-install
+
+if command -v cosign >/dev/null 2>&1; then
+  echo "Verifying cosign signature..."
+  BUNDLE_URL="https://github.com/${REPO}/releases/latest/download/${BINARY_NAME}.bundle"
+  curl -fsSL "$BUNDLE_URL" -o /tmp/mdm-install.bundle
+  cosign verify-blob /tmp/mdm-install \
+    --bundle /tmp/mdm-install.bundle \
+    --certificate-identity-regexp='^https://github\.com/sethcarney/mdm/\.github/workflows/release\.yml@refs/heads/main$' \
+    --certificate-oidc-issuer="https://token.actions.githubusercontent.com" || {
+    echo "Signature verification FAILED. The binary may be tampered. Aborting." >&2
+    rm -f /tmp/mdm-install /tmp/mdm-install.bundle
+    exit 1
+  }
+  rm -f /tmp/mdm-install.bundle
+  echo "Signature verified!"
+else
+  echo "cosign not found — skipping signature verification."
+  echo "Install cosign to verify: https://docs.sigstore.dev/cosign/system_config/installation/"
+fi
+
 chmod +x /tmp/mdm-install
 
 mkdir -p "$INSTALL_DIR"
