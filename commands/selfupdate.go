@@ -11,11 +11,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/sethcarney/mdm/internal/version"
 )
 
 const maxBinaryBytes = 100 * 1024 * 1024 // 100 MB hard cap
@@ -67,27 +68,6 @@ func getBinaryAssetName() string {
 		}
 	}
 	return ""
-}
-
-func isNewer(latest, current string) bool {
-	lParts := strings.Split(strings.TrimPrefix(latest, "v"), ".")
-	cParts := strings.Split(strings.TrimPrefix(current, "v"), ".")
-	for i := 0; i < 3; i++ {
-		var l, c int
-		if i < len(lParts) {
-			l, _ = strconv.Atoi(lParts[i])
-		}
-		if i < len(cParts) {
-			c, _ = strconv.Atoi(cParts[i])
-		}
-		if l > c {
-			return true
-		}
-		if l < c {
-			return false
-		}
-	}
-	return false
 }
 
 // isGitHubURL returns true only for github.com and its CDN hostnames.
@@ -147,7 +127,7 @@ func runSelfUpdate(currentVersion string) {
 
 	latestVersion := strings.TrimPrefix(release.TagName, "v")
 
-	if !isNewer(latestVersion, currentVersion) {
+	if !version.IsNewer(latestVersion, currentVersion) {
 		fmt.Printf("%sAlready up to date%s %s(%s)%s\n", ansiText, ansiReset, ansiDim, currentVersion, ansiReset)
 		return
 	}
