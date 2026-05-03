@@ -1,5 +1,10 @@
 # mdm
 
+[![CI](https://github.com/sethcarney/mdm/actions/workflows/ci.yml/badge.svg)](https://github.com/sethcarney/mdm/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/sethcarney/mdm/actions/workflows/codeql.yml/badge.svg)](https://github.com/sethcarney/mdm/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/sethcarney/mdm/badge)](https://securityscorecards.dev/viewer/?uri=github.com/sethcarney/mdm)
+[![Go Report Card](https://goreportcard.com/badge/github.com/sethcarney/mdm)](https://goreportcard.com/report/github.com/sethcarney/mdm)
+
 The markdown management CLI. No telemetry · Fully open source.
 
 ## Install
