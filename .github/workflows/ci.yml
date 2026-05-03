@@ -18,3 +18,8 @@ jobs:
 
       - name: Test
         run: cd src && go test ./...
+
+      - name: Check for vulnerabilities
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          cd src && govulncheck ./...

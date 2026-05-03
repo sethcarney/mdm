@@ -58,9 +58,8 @@ func TestDiagnoseSkillMissingSkillMd(t *testing.T) {
 	r := &doctorResult{Name: "test-skill", Scope: "global", Path: dir}
 	diagnoseSkill(r, "", false, t.TempDir())
 
-	// Expect SKILL.md error + README warning
-	if len(r.Issues) != 2 {
-		t.Fatalf("expected 2 issues, got %d: %v", len(r.Issues), r.Issues)
+	if len(r.Issues) != 1 {
+		t.Fatalf("expected 1 issue, got %d: %v", len(r.Issues), r.Issues)
 	}
 	if r.Issues[0].Level != "error" {
 		t.Errorf("expected error level, got %q", r.Issues[0].Level)

@@ -23,7 +23,7 @@ jobs:
 
       - name: Get version
         id: version
-        run: echo "version=$(grep 'const Version' src/main.go | grep -oP '"\K[^"]+')" >> $GITHUB_OUTPUT
+        run: echo "version=$(grep 'const Version' src/internal/version/version.go | grep -oP '"\K[^"]+')" >> $GITHUB_OUTPUT
 
       - name: Check if release already exists
         id: check
@@ -53,6 +53,10 @@ jobs:
           GOOS=darwin  GOARCH=arm64 go build -ldflags="-s -w" -o ../dist/mdm-macos-arm64
           GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o ../dist/mdm-windows-x64.exe
 
+      - name: Generate checksums
+        if: steps.check.outputs.exists == 'false'
+        run: cd dist && sha256sum * > sha256sums.txt
+
       - name: Create GitHub Release
         if: steps.check.outputs.exists == 'false'
         run: |
@@ -63,6 +67,7 @@ jobs:
             dist/mdm-linux-arm64 \
             dist/mdm-macos-x64 \
             dist/mdm-macos-arm64 \
-            dist/mdm-windows-x64.exe
+            dist/mdm-windows-x64.exe \
+            dist/sha256sums.txt
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/sethcarney/mdm/internal/version"
 )
 
 var mdmBin string
@@ -84,8 +86,8 @@ func TestVersion(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("mdm --version exited %d", code)
 	}
-	if !strings.Contains(stdout, "0.0.8") {
-		t.Errorf("expected version output to contain '0.0.8', got: %q", stdout)
+	if !strings.Contains(stdout, version.Version) {
+		t.Errorf("expected version output to contain %q, got: %q", version.Version, stdout)
 	}
 }
 
@@ -165,8 +167,8 @@ func TestDoctorHelp(t *testing.T) {
 
 func TestNormalizeMultiFlags(t *testing.T) {
 	// This should NOT produce "unknown flag" or "flag needs an argument" in stderr.
-	// It will fail on network, but flag parsing should succeed.
-	_, stderr, _ := runMdm(t, "skills", "add", "owner/repo", "-a", "claude", "cursor", "--list")
+	// Uses a non-existent local path so it fails fast without any network call.
+	_, stderr, _ := runMdm(t, "skills", "add", "/nonexistent-mdm-test-path", "-a", "claude", "cursor", "--list")
 	if strings.Contains(stderr, "unknown flag") {
 		t.Errorf("unexpected 'unknown flag' in stderr: %q", stderr)
 	}

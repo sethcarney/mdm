@@ -76,7 +76,7 @@ func WriteSkillLock(lock SkillLockFile) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(lockPath, data, 0644)
+	return os.WriteFile(lockPath, data, 0600)
 }
 
 func EmptySkillLock() SkillLockFile {
@@ -136,13 +136,7 @@ func SaveSelectedAgents(agents []string) error {
 }
 
 func GetGitHubToken() string {
-	if tok := os.Getenv("GITHUB_TOKEN"); tok != "" {
-		return tok
-	}
-	if tok := os.Getenv("GH_TOKEN"); tok != "" {
-		return tok
-	}
-	return ""
+	return os.Getenv("GITHUB_TOKEN")
 }
 
 func ComputeContentHash(content string) string {
@@ -206,7 +200,7 @@ func WriteLocalLock(lock LocalSkillLockFile, cwd string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(GetLocalLockPath(cwd), append(data, '\n'), 0644)
+	return os.WriteFile(GetLocalLockPath(cwd), append(data, '\n'), 0600)
 }
 
 func EmptyLocalLock() LocalSkillLockFile {

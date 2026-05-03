@@ -1,10 +1,12 @@
 package commands
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,6 +17,8 @@ import (
 
 	"github.com/spf13/cobra"
 )
+
+const maxBinaryBytes = 100 * 1024 * 1024 // 100 MB hard cap
 
 const updateRepo = "sethcarney/mdm"
 const releasesAPI = "https://api.github.com/repos/" + updateRepo + "/releases/latest"
@@ -86,6 +90,35 @@ func isNewer(latest, current string) bool {
 	return false
 }
 
+// isGitHubURL returns true only for github.com and its CDN hostnames.
+func isGitHubURL(rawURL string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	h := strings.ToLower(u.Hostname())
+	return h == "github.com" ||
+		strings.HasSuffix(h, ".github.com") ||
+		strings.HasSuffix(h, ".githubusercontent.com")
+}
+
+// verifyChecksums returns true if the SHA256 of data matches the entry for
+// assetName in a sha256sum-format checksum file.
+func verifyChecksums(data []byte, checksumText, assetName string) bool {
+	sum := fmt.Sprintf("%x", sha256.Sum256(data))
+	for _, line := range strings.Split(checksumText, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			continue
+		}
+		name := strings.TrimPrefix(fields[1], "*")
+		if name == assetName && strings.EqualFold(fields[0], sum) {
+			return true
+		}
+	}
+	return false
+}
+
 func runSelfUpdate(currentVersion string) {
 	client := &http.Client{Timeout: 30 * time.Second}
 
@@ -130,16 +163,33 @@ func runSelfUpdate(currentVersion string) {
 		os.Exit(1)
 	}
 
-	var downloadURL string
+	var downloadURL, checksumsURL string
 	for _, a := range release.Assets {
-		if a.Name == assetName {
+		switch a.Name {
+		case assetName:
 			downloadURL = a.BrowserDownloadURL
-			break
+		case "sha256sums.txt":
+			checksumsURL = a.BrowserDownloadURL
 		}
 	}
 	if downloadURL == "" {
 		fmt.Fprintf(os.Stderr, "Binary for your platform (%s) not found in release %s.\n", assetName, latestVersion)
 		os.Exit(1)
+	}
+	if !isGitHubURL(downloadURL) {
+		fmt.Fprintf(os.Stderr, "Unexpected download host in release asset — aborting.\n")
+		os.Exit(1)
+	}
+
+	// Fetch the checksum file before the binary so a hash mismatch aborts early.
+	var checksumText string
+	if checksumsURL != "" && isGitHubURL(checksumsURL) {
+		csResp, csErr := client.Get(checksumsURL)
+		if csErr == nil && csResp.StatusCode == 200 {
+			csBody, _ := io.ReadAll(io.LimitReader(csResp.Body, 1024*1024))
+			csResp.Body.Close()
+			checksumText = string(csBody)
+		}
 	}
 
 	fmt.Printf("%sDownloading %s...%s\n", ansiDim, assetName, ansiReset)
@@ -155,11 +205,40 @@ func runSelfUpdate(currentVersion string) {
 		os.Exit(1)
 	}
 
-	dlBody, _ := io.ReadAll(dlResp.Body)
-	tmpPath := filepath.Join(os.TempDir(), fmt.Sprintf(appName+"-update-%d", time.Now().UnixNano()))
+	dlBody, err := io.ReadAll(io.LimitReader(dlResp.Body, maxBinaryBytes+1))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Download read failed: %v\n", err)
+		os.Exit(1)
+	}
+	if int64(len(dlBody)) > maxBinaryBytes {
+		fmt.Fprintf(os.Stderr, "Downloaded binary exceeds %d MB limit — aborting.\n", maxBinaryBytes/1024/1024)
+		os.Exit(1)
+	}
 
-	if err := os.WriteFile(tmpPath, dlBody, 0700); err != nil {
+	if checksumText != "" {
+		if !verifyChecksums(dlBody, checksumText, assetName) {
+			fmt.Fprintf(os.Stderr, "SHA256 checksum mismatch for %s — aborting update.\n", assetName)
+			os.Exit(1)
+		}
+		fmt.Printf("%sSHA256 verified.%s\n", ansiDim, ansiReset)
+	}
+
+	tmpFile, err := os.CreateTemp("", appName+"-update-*")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create temp file: %v\n", err)
+		os.Exit(1)
+	}
+	tmpPath := tmpFile.Name()
+	if _, err := tmpFile.Write(dlBody); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpPath)
 		fmt.Fprintf(os.Stderr, "Failed to write temp file: %v\n", err)
+		os.Exit(1)
+	}
+	tmpFile.Close()
+	if err := os.Chmod(tmpPath, 0700); err != nil {
+		os.Remove(tmpPath)
+		fmt.Fprintf(os.Stderr, "Failed to set permissions on temp file: %v\n", err)
 		os.Exit(1)
 	}
 

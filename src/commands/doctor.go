@@ -63,11 +63,11 @@ func buildDoctorCmd() *cobra.Command {
 
 Checks performed:
   • Missing skill directories or SKILL.md files
-  • Missing README in skill directory
   • Broken symlinks in agent skill directories
   • Skills modified since install (hash mismatch; global installs with a recorded hash only)
   • Markdown files inside skill directories that are too large
   • Oversized agent instruction files (CLAUDE.md, AGENTS.md, .cursorrules, etc.)
+  • Missing README in the project root
   • All other .md files in the project that may strain agent context windows
 
 %sExamples:%s
@@ -152,9 +152,11 @@ func runDoctor(opts DoctorOptions) {
 	var mdIssues []doctorIssue
 	var mdTruncated bool
 
+	var readmeIssue *doctorIssue
 	if checkProject {
 		instrIssues = checkInstructionFiles(cwd)
 		mdIssues, mdTruncated = checkProjectMarkdown(cwd, skipDirs, skipFiles)
+		readmeIssue = checkProjectReadme(cwd)
 	}
 
 	sort.Slice(results, func(i, j int) bool {
@@ -164,7 +166,7 @@ func runDoctor(opts DoctorOptions) {
 		return results[i].Name < results[j].Name
 	})
 
-	printDoctorResults(results, instrIssues, mdIssues, mdTruncated, checkProject, cwd)
+	printDoctorResults(results, instrIssues, mdIssues, mdTruncated, readmeIssue, checkProject, cwd)
 }
 
 // ── Checks ─────────────────────────────────────────────────────────────────────
@@ -201,22 +203,7 @@ func diagnoseSkill(r *doctorResult, storedHash string, global bool, cwd string) 
 		}
 	}
 
-	// 3. README should exist so users understand the skill
-	hasReadme := false
-	for _, name := range []string{"README.md", "readme.md", "README", "README.txt"} {
-		if _, err := os.Stat(filepath.Join(r.Path, name)); err == nil {
-			hasReadme = true
-			break
-		}
-	}
-	if !hasReadme {
-		r.Issues = append(r.Issues, doctorIssue{
-			Level:   "warn",
-			Message: "no README found — consider adding a README.md to describe the skill",
-		})
-	}
-
-	// 4. Symlinks in agent-specific directories must resolve
+	// 3. Symlinks in agent-specific directories must resolve
 	checkAgentLinks(r, global, cwd)
 
 	// 5. Skill content must match the installed hash (global skills only)
@@ -363,6 +350,19 @@ func checkInstructionFiles(cwd string) []doctorIssue {
 	return issues
 }
 
+// checkProjectReadme verifies that the project root contains a README file.
+func checkProjectReadme(cwd string) *doctorIssue {
+	for _, name := range []string{"README.md", "readme.md", "README", "README.txt"} {
+		if _, err := os.Stat(filepath.Join(cwd, name)); err == nil {
+			return nil
+		}
+	}
+	return &doctorIssue{
+		Level:   "warn",
+		Message: "no README found in project root — consider adding a README.md",
+	}
+}
+
 // checkProjectMarkdown walks the project tree and flags .md files that are
 // large enough to strain agent context windows. It skips directories and files
 // already covered by the skill and instruction-file checks, as well as common
@@ -425,7 +425,7 @@ func checkProjectMarkdown(cwd string, skipDirs map[string]bool, skipFiles map[st
 
 // ── Output ─────────────────────────────────────────────────────────────────────
 
-func printDoctorResults(results []doctorResult, instrIssues, mdIssues []doctorIssue, mdTruncated, scannedProject bool, cwd string) {
+func printDoctorResults(results []doctorResult, instrIssues, mdIssues []doctorIssue, mdTruncated bool, readmeIssue *doctorIssue, scannedProject bool, cwd string) {
 	fmt.Println()
 
 	byScope := map[string][]doctorResult{}
@@ -487,8 +487,17 @@ func printDoctorResults(results []doctorResult, instrIssues, mdIssues []doctorIs
 	}
 
 	// General project markdown section
-	if len(mdIssues) > 0 || mdTruncated {
+	if readmeIssue != nil || len(mdIssues) > 0 || mdTruncated {
 		fmt.Printf("%sProject markdown:%s\n\n", ansiText, ansiReset)
+		if readmeIssue != nil {
+			icon, color := doctorIssueIcon(readmeIssue.Level)
+			fmt.Printf("  %s%s%s %s%s%s\n", color, icon, ansiReset, ansiDim, readmeIssue.Message, ansiReset)
+			if readmeIssue.Level == "error" {
+				totalErrors++
+			} else {
+				totalWarnings++
+			}
+		}
 		for _, issue := range mdIssues {
 			icon, color := doctorIssueIcon(issue.Level)
 			fmt.Printf("  %s%s%s %s%s%s\n", color, icon, ansiReset, ansiDim, issue.Message, ansiReset)

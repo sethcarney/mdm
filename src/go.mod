@@ -1,8 +1,6 @@
 module github.com/sethcarney/mdm
 
-go 1.24.2
-
-toolchain go1.24.7
+go 1.25.9
 
 require gopkg.in/yaml.v3 v3.0.1
 
