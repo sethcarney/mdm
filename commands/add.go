@@ -292,33 +292,37 @@ func runAddLocal(parsed source.ParsedSource, opts AddOptions, cwd string) {
 
 // ─── GitHub / GitLab / git ─────────────────────────────────────────────────────
 
+func tryBlobFastInstall(parsed source.ParsedSource, opts AddOptions, cwd, ownerRepo, sourceInput string) bool {
+	if parsed.Type != source.SourceTypeGitHub || ownerRepo == "" {
+		return false
+	}
+	blobOpts := struct {
+		Subpath         string
+		SkillFilter     string
+		Ref             string
+		Token           string
+		IncludeInternal bool
+	}{
+		Subpath:     parsed.Subpath,
+		SkillFilter: skillFilterFromOpts(opts, parsed),
+		Ref:         parsed.Ref,
+		Token:       lock.GetGitHubToken(),
+	}
+	spin := ui.NewSpinner("Fetching skills...")
+	blobResult, _ := blob.TryBlobInstall(ownerRepo, blobOpts)
+	spin.Stop("")
+	if blobResult == nil || len(blobResult.Skills) == 0 {
+		return false
+	}
+	runAddBlob(blobResult, parsed, opts, cwd, ownerRepo, sourceInput)
+	return true
+}
+
 func runAddGitOrHub(parsed source.ParsedSource, opts AddOptions, cwd, sourceInput string) {
 	ownerRepo := source.GetOwnerRepo(parsed)
-	token := lock.GetGitHubToken()
 
-	// Try blob fast-install (vercel/vercel-labs only)
-	if parsed.Type == source.SourceTypeGitHub && ownerRepo != "" {
-		blobOpts := struct {
-			Subpath         string
-			SkillFilter     string
-			Ref             string
-			Token           string
-			IncludeInternal bool
-		}{
-			Subpath:     parsed.Subpath,
-			SkillFilter: skillFilterFromOpts(opts, parsed),
-			Ref:         parsed.Ref,
-			Token:       token,
-		}
-
-		spin := ui.NewSpinner("Fetching skills...")
-		blobResult, _ := blob.TryBlobInstall(ownerRepo, blobOpts)
-		spin.Stop("")
-
-		if blobResult != nil && len(blobResult.Skills) > 0 {
-			runAddBlob(blobResult, parsed, opts, cwd, ownerRepo, sourceInput)
-			return
-		}
+	if tryBlobFastInstall(parsed, opts, cwd, ownerRepo, sourceInput) {
+		return
 	}
 
 	// Clone repo
@@ -345,6 +349,9 @@ func runAddGitOrHub(parsed source.ParsedSource, opts AddOptions, cwd, sourceInpu
 	skills := discoverSkillsInDir(searchRoot, opts.FullDepth, skillFilter)
 	if len(skills) == 0 {
 		fmt.Fprintf(os.Stderr, "%sNo skills found in %s%s\n", ansiText, parsed.URL, ansiReset)
+		if strings.HasPrefix(parsed.URL, "https://") {
+			fmt.Fprintf(os.Stderr, "%sTip: If you're having trouble accessing a private repository, try the SSH URL format instead (e.g. git@bitbucket.org:owner/repo.git).%s\n", ansiDim, ansiReset)
+		}
 		os.Exit(1)
 	}
 

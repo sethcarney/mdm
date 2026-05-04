@@ -98,6 +98,29 @@ Add an entry to `AllAgents` in `internal/agent/` with the agent's skills dir pat
 
 Create a file in `commands/`, define a `cobra.Command`, and register it either on the root command in `root.go` (for top-level commands like `upgrade`) or on the `skills` subcommand in `skills.go` (for skill management commands like `add`, `list`, etc.).
 
+## Pre-PR Checklist
+
+Before opening a pull request, run all CI checks locally and fix any failures:
+
+```bash
+# 1. Tests
+go test ./...
+
+# 2. Vulnerability scan
+go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+govulncheck ./...
+
+# 3. Formatting — must produce no output
+gofmt -s -l .
+# Auto-fix with: gofmt -s -w .
+
+# 4. Cyclomatic complexity — no function may exceed 16
+go install github.com/fzipp/gocyclo/cmd/gocyclo@v0.6.0
+gocyclo -over 16 .
+```
+
+All four checks must pass with no errors before a PR is opened. CI will run the same checks and block merge on failure.
+
 ## Release Process
 
 CI in `.github/workflows/release.yml` triggers on pushes to `main` (non-markdown files). It builds binaries for Linux/macOS/Windows (x64 + ARM64), then creates a GitHub release. Version is read from `internal/version/version.go` — bump it there before merging to main.

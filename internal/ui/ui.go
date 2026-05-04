@@ -337,44 +337,50 @@ func (m *multiModel) clampOffset() {
 
 func (m *multiModel) Init() tea.Cmd { return nil }
 
+func handleMultiModelKey(m *multiModel, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyUp:
+		if m.cursor > 0 {
+			m.cursor--
+			m.clampOffset()
+		}
+	case tea.KeyDown:
+		if m.cursor < len(m.options)-1 {
+			m.cursor++
+			m.clampOffset()
+		}
+	case tea.KeyEnter:
+		var result []int
+		for i, s := range m.selected {
+			if s {
+				result = append(result, i)
+			}
+		}
+		if m.required && len(result) == 0 {
+			return m, nil
+		}
+		m.result = result
+		m.done = true
+		return m, tea.Quit
+	case tea.KeyEsc, tea.KeyCtrlC:
+		m.cancelled = true
+		m.done = true
+		return m, tea.Quit
+	}
+	if msg.Type == tea.KeySpace || msg.String() == " " {
+		if !m.locked[m.cursor] {
+			m.selected[m.cursor] = !m.selected[m.cursor]
+		}
+	}
+	return m, nil
+}
+
 func (m *multiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.height = msg.Height
 	case tea.KeyMsg:
-		switch msg.Type {
-		case tea.KeyUp:
-			if m.cursor > 0 {
-				m.cursor--
-				m.clampOffset()
-			}
-		case tea.KeyDown:
-			if m.cursor < len(m.options)-1 {
-				m.cursor++
-				m.clampOffset()
-			}
-		case tea.KeySpace:
-			if !m.locked[m.cursor] {
-				m.selected[m.cursor] = !m.selected[m.cursor]
-			}
-		case tea.KeyEnter:
-			var result []int
-			for i, s := range m.selected {
-				if s {
-					result = append(result, i)
-				}
-			}
-			if m.required && len(result) == 0 {
-				return m, nil
-			}
-			m.result = result
-			m.done = true
-			return m, tea.Quit
-		case tea.KeyEsc, tea.KeyCtrlC:
-			m.cancelled = true
-			m.done = true
-			return m, tea.Quit
-		}
+		return handleMultiModelKey(m, msg)
 	}
 	return m, nil
 }
@@ -560,12 +566,6 @@ func handleSearchModelKey(m *searchModel, msg tea.KeyMsg) (tea.Model, tea.Cmd, b
 			m.clampOffset()
 		}
 		return m, nil, true
-	case tea.KeySpace:
-		if len(m.filtered) > 0 && m.cursor < len(m.filtered) {
-			fi := m.filtered[m.cursor]
-			m.selected[fi] = !m.selected[fi]
-		}
-		return m, nil, true
 	case tea.KeyEnter:
 		var result []int
 		for i, s := range m.selected {
@@ -580,6 +580,15 @@ func handleSearchModelKey(m *searchModel, msg tea.KeyMsg) (tea.Model, tea.Cmd, b
 		m.cancelled = true
 		m.done = true
 		return m, tea.Quit, true
+	}
+	// Use msg.String() to detect space reliably across all terminal/platform
+	// delivery mechanisms (tea.KeySpace, KeyRunes with ' ', coninput on Windows).
+	if msg.Type == tea.KeySpace || msg.String() == " " {
+		if len(m.filtered) > 0 && m.cursor < len(m.filtered) {
+			fi := m.filtered[m.cursor]
+			m.selected[fi] = !m.selected[fi]
+		}
+		return m, nil, true
 	}
 	return nil, nil, false
 }

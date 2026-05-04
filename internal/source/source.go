@@ -74,6 +74,10 @@ func looksLikeGitSource(input string) bool {
 				matched, _ := regexp.MatchString(`^/.+?/[^/]+(?:\.git)?(?:/-/tree/[^/]+(?:/.*)?)?/?$`, path)
 				return matched
 			}
+			if u.Hostname() == "bitbucket.org" {
+				matched, _ := regexp.MatchString(`^/[^/]+/[^/]+(?:\.git|/src/[^/]+(?:/.*)?)?/?$`, path)
+				return matched
+			}
 		}
 	}
 	matched, _ := regexp.MatchString(`(?i)^https?://.+\.git(?:$|[/?])`, input)
@@ -146,6 +150,7 @@ func IsWellKnownURL(input string) bool {
 		"github.com":                true,
 		"gitlab.com":                true,
 		"raw.githubusercontent.com": true,
+		"bitbucket.org":             true,
 	}
 	if excluded[u.Hostname()] {
 		return false
@@ -206,6 +211,31 @@ func parseGitLabURL(input, fragmentRef string) (ParsedSource, bool) {
 	return ParsedSource{}, false
 }
 
+func parseBitbucketURL(input, fragmentRef string) (ParsedSource, bool) {
+	// https://bitbucket.org/{owner}/{repo}/src/{branch}/{path}
+	if m := regexp.MustCompile(`^(https?):\/\/bitbucket\.org/([^/]+)/([^/]+)/src/([^/]+)/(.+)`).FindStringSubmatch(input); m != nil {
+		ref := m[4]
+		if fragmentRef != "" {
+			ref = fragmentRef
+		}
+		sub, _ := SanitizeSubpath(m[5])
+		return ParsedSource{Type: SourceTypeGit, URL: m[1] + "://bitbucket.org/" + m[2] + "/" + m[3] + ".git", Ref: ref, Subpath: sub}, true
+	}
+	// https://bitbucket.org/{owner}/{repo}/src/{branch}
+	if m := regexp.MustCompile(`^(https?):\/\/bitbucket\.org/([^/]+)/([^/]+)/src/([^/]+)/?$`).FindStringSubmatch(input); m != nil {
+		ref := m[4]
+		if fragmentRef != "" {
+			ref = fragmentRef
+		}
+		return ParsedSource{Type: SourceTypeGit, URL: m[1] + "://bitbucket.org/" + m[2] + "/" + m[3] + ".git", Ref: ref}, true
+	}
+	// https://bitbucket.org/{owner}/{repo}
+	if m := regexp.MustCompile(`^(https?):\/\/bitbucket\.org/([^/]+)/([^/]+?)(?:\.git)?/?$`).FindStringSubmatch(input); m != nil {
+		return ParsedSource{Type: SourceTypeGit, URL: m[1] + "://bitbucket.org/" + m[2] + "/" + m[3] + ".git", Ref: fragmentRef}, true
+	}
+	return ParsedSource{}, false
+}
+
 func parseGitHubShorthand(input, fragmentRef, fragmentSkillFilter string) (ParsedSource, bool) {
 	if m := regexp.MustCompile(`^([^/]+)/([^/@]+)@(.+)$`).FindStringSubmatch(input); m != nil {
 		if !strings.Contains(input, ":") && !strings.HasPrefix(input, ".") && !strings.HasPrefix(input, "/") {
@@ -254,6 +284,9 @@ func ParseSource(input string) ParsedSource {
 		return p
 	}
 	if p, ok := parseGitLabURL(input, fragmentRef); ok {
+		return p
+	}
+	if p, ok := parseBitbucketURL(input, fragmentRef); ok {
 		return p
 	}
 	if p, ok := parseGitHubShorthand(input, fragmentRef, fragmentSkillFilter); ok {
