@@ -168,6 +168,68 @@ var blobAllowedOwners = map[string]bool{
 	"vercel-labs": true,
 }
 
+func findSkillMdPaths(tree *RepoTree, subpath string) []string {
+	var skillPaths []string
+	for _, e := range tree.Tree {
+		if e.Type != "blob" {
+			continue
+		}
+		if !strings.HasSuffix(e.Path, "/SKILL.md") && e.Path != "SKILL.md" {
+			continue
+		}
+		if subpath != "" && !strings.HasPrefix(e.Path, subpath+"/") {
+			continue
+		}
+		skillPaths = append(skillPaths, e.Path)
+	}
+	return skillPaths
+}
+
+func fetchSkillMDContent(ctx context.Context, ownerRepo, branch, skillMdPath, token string) ([]byte, bool) {
+	rawURL := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s", ownerRepo, branch, skillMdPath)
+	headers := map[string]string{}
+	if token != "" {
+		headers["Authorization"] = "Bearer " + token
+	}
+	body, status, err := HttpGet(ctx, rawURL, headers)
+	if err != nil || status != 200 {
+		return nil, false
+	}
+	return body, true
+}
+
+func checkBlobSkillFilter(data map[string]interface{}, name, filter string, includeInternal bool) bool {
+	if filter != "" && !strings.EqualFold(name, filter) && !strings.EqualFold(ToSkillSlug(name), filter) {
+		return false
+	}
+	isInternal := false
+	if metaVal, ok := data["metadata"]; ok {
+		if metaMap, ok := metaVal.(map[string]interface{}); ok {
+			if b, ok := metaMap["internal"].(bool); ok && b {
+				isInternal = true
+			}
+		}
+	}
+	return !isInternal || includeInternal
+}
+
+func fetchBlobSkillData(ctx context.Context, owner, repo, slug, branch, subpath, skillMdPath, name, desc string, body []byte) *BlobSkill {
+	dlURL := fmt.Sprintf("%s/api/download?owner=%s&repo=%s&slug=%s&branch=%s", downloadBaseURL, owner, repo, slug, branch)
+	if subpath != "" {
+		dlURL += "&subpath=" + url.QueryEscape(subpath)
+	}
+	dlBody, dlStatus, dlErr := HttpGet(ctx, dlURL, nil)
+	if dlErr != nil || dlStatus != 200 {
+		files := []SkillSnapshotFile{{Path: "SKILL.md", Contents: string(body)}}
+		return &BlobSkill{Skill: skill.Skill{Name: name, Description: desc}, Files: files, RepoPath: skillMdPath}
+	}
+	var dlResp SkillDownloadResponse
+	if err := json.Unmarshal(dlBody, &dlResp); err != nil {
+		return nil
+	}
+	return &BlobSkill{Skill: skill.Skill{Name: name, Description: desc}, Files: dlResp.Files, SnapshotHash: dlResp.Hash, RepoPath: skillMdPath}
+}
+
 func TryBlobInstall(ownerRepo string, opts struct {
 	Subpath         string
 	SkillFilter     string
@@ -179,8 +241,7 @@ func TryBlobInstall(ownerRepo string, opts struct {
 	if len(parts) != 2 {
 		return nil, nil
 	}
-	owner := strings.ToLower(parts[0])
-	if !blobAllowedOwners[owner] {
+	if !blobAllowedOwners[strings.ToLower(parts[0])] {
 		return nil, nil
 	}
 
@@ -194,21 +255,7 @@ func TryBlobInstall(ownerRepo string, opts struct {
 		return nil, nil
 	}
 
-	// Find SKILL.md files in tree
-	var skillPaths []string
-	for _, e := range tree.Tree {
-		if e.Type != "blob" {
-			continue
-		}
-		if !strings.HasSuffix(e.Path, "/SKILL.md") && e.Path != "SKILL.md" {
-			continue
-		}
-		if opts.Subpath != "" && !strings.HasPrefix(e.Path, opts.Subpath+"/") {
-			continue
-		}
-		skillPaths = append(skillPaths, e.Path)
-	}
-
+	skillPaths := findSkillMdPaths(tree, opts.Subpath)
 	if len(skillPaths) == 0 {
 		return nil, nil
 	}
@@ -217,84 +264,30 @@ func TryBlobInstall(ownerRepo string, opts struct {
 	defer cancel()
 
 	var blobSkills []*BlobSkill
-
 	for _, skillMdPath := range skillPaths {
-		// Fetch SKILL.md content to get name/description
 		branch := tree.Branch
-		rawURL := fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s", ownerRepo, branch, skillMdPath)
-		headers := map[string]string{}
-		if opts.Token != "" {
-			headers["Authorization"] = "Bearer " + opts.Token
-		}
-		body, status, err := HttpGet(ctx, rawURL, headers)
-		if err != nil || status != 200 {
+		body, ok := fetchSkillMDContent(ctx, ownerRepo, branch, skillMdPath, opts.Token)
+		if !ok {
 			continue
 		}
 		data, _ := skill.ParseFrontmatter(string(body))
-		nameVal, _ := data["name"]
-		descVal, _ := data["description"]
-		name, _ := nameVal.(string)
-		desc, _ := descVal.(string)
+		name, _ := data["name"].(string)
+		desc, _ := data["description"].(string)
 		if name == "" || desc == "" {
 			continue
 		}
-
-		// Apply skill filter
-		if opts.SkillFilter != "" {
-			if !strings.EqualFold(name, opts.SkillFilter) && !strings.EqualFold(ToSkillSlug(name), opts.SkillFilter) {
-				continue
-			}
-		}
-
-		// Check internal
-		isInternal := false
-		if metaVal, ok := data["metadata"]; ok {
-			if metaMap, ok := metaVal.(map[string]interface{}); ok {
-				if b, ok := metaMap["internal"].(bool); ok && b {
-					isInternal = true
-				}
-			}
-		}
-		if isInternal && !opts.IncludeInternal {
+		if !checkBlobSkillFilter(data, name, opts.SkillFilter, opts.IncludeInternal) {
 			continue
 		}
-
-		// Download full skill via skills.sh API
-		slug := ToSkillSlug(name)
-		dlURL := fmt.Sprintf("%s/api/download?owner=%s&repo=%s&slug=%s&branch=%s", downloadBaseURL, parts[0], parts[1], slug, branch)
-		if opts.Subpath != "" {
-			dlURL += "&subpath=" + url.QueryEscape(opts.Subpath)
-		}
-		dlBody, dlStatus, dlErr := HttpGet(ctx, dlURL, nil)
-		if dlErr != nil || dlStatus != 200 {
-			// Fall back to constructing files from tree
-			var files []SkillSnapshotFile
-			files = append(files, SkillSnapshotFile{Path: "SKILL.md", Contents: string(body)})
-			blobSkills = append(blobSkills, &BlobSkill{
-				Skill:        skill.Skill{Name: name, Description: desc},
-				Files:        files,
-				SnapshotHash: "",
-				RepoPath:     skillMdPath,
-			})
+		blobSkill := fetchBlobSkillData(ctx, parts[0], parts[1], ToSkillSlug(name), branch, opts.Subpath, skillMdPath, name, desc, body)
+		if blobSkill == nil {
 			continue
 		}
-
-		var dlResp SkillDownloadResponse
-		if err := json.Unmarshal(dlBody, &dlResp); err != nil {
-			continue
-		}
-
-		blobSkills = append(blobSkills, &BlobSkill{
-			Skill:        skill.Skill{Name: name, Description: desc},
-			Files:        dlResp.Files,
-			SnapshotHash: dlResp.Hash,
-			RepoPath:     skillMdPath,
-		})
+		blobSkills = append(blobSkills, blobSkill)
 	}
 
 	if len(blobSkills) == 0 {
 		return nil, nil
 	}
-
 	return &BlobInstallResult{Skills: blobSkills, Tree: tree}, nil
 }

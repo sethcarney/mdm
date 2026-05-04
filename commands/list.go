@@ -95,35 +95,12 @@ func runListWithOpts(globalFlag *bool, agentFilter []string, jsonMode bool) {
 		byScope[s.Scope] = append(byScope[s.Scope], s)
 	}
 
-	scopes := []string{"project", "global"}
-	for _, scope := range scopes {
+	for _, scope := range []string{"project", "global"} {
 		scopeSkills, ok := byScope[scope]
 		if !ok {
 			continue
 		}
-		scopeTitle := strings.ToUpper(scope[:1]) + scope[1:]
-		fmt.Printf("%s%s skills:%s\n\n", ansiText, scopeTitle, ansiReset)
-		for _, s := range scopeSkills {
-			fmt.Printf("  %s%s%s", ansiText, s.Name, ansiReset)
-			if s.Description != "" {
-				fmt.Printf("  %s%s%s", ansiDim, s.Description, ansiReset)
-			}
-			fmt.Println()
-			if len(s.Agents) > 0 {
-				var displayNames []string
-				for _, a := range s.Agents {
-					if cfg := agent.AllAgents[a]; cfg != nil {
-						displayNames = append(displayNames, cfg.DisplayName)
-					} else {
-						displayNames = append(displayNames, a)
-					}
-				}
-				fmt.Printf("    %sagents: %s%s\n", ansiDim, strings.Join(displayNames, ", "), ansiReset)
-			}
-			shortPath := shortenPath(s.Path, cwd)
-			fmt.Printf("    %s%s%s\n", ansiDim, shortPath, ansiReset)
-		}
-		fmt.Println()
+		printSkillsForScope(scopeSkills, scope, cwd)
 	}
 
 	if !jsonMode && term.IsTerminal(os.Stdin.Fd()) {
@@ -135,6 +112,32 @@ func runListWithOpts(globalFlag *bool, agentFilter []string, jsonMode bool) {
 			fmt.Println()
 		}
 	}
+}
+
+func printSkillsForScope(scopeSkills []*InstalledSkill, scope, cwd string) {
+	scopeTitle := strings.ToUpper(scope[:1]) + scope[1:]
+	fmt.Printf("%s%s skills:%s\n\n", ansiText, scopeTitle, ansiReset)
+	for _, s := range scopeSkills {
+		fmt.Printf("  %s%s%s", ansiText, s.Name, ansiReset)
+		if s.Description != "" {
+			fmt.Printf("  %s%s%s", ansiDim, s.Description, ansiReset)
+		}
+		fmt.Println()
+		if len(s.Agents) > 0 {
+			var displayNames []string
+			for _, a := range s.Agents {
+				if cfg := agent.AllAgents[a]; cfg != nil {
+					displayNames = append(displayNames, cfg.DisplayName)
+				} else {
+					displayNames = append(displayNames, a)
+				}
+			}
+			fmt.Printf("    %sagents: %s%s\n", ansiDim, strings.Join(displayNames, ", "), ansiReset)
+		}
+		shortPath := shortenPath(s.Path, cwd)
+		fmt.Printf("    %s%s%s\n", ansiDim, shortPath, ansiReset)
+	}
+	fmt.Println()
 }
 
 func printSkillSummaries(skills []*InstalledSkill, cwd string) {

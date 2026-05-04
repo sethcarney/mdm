@@ -60,6 +60,30 @@ func ParseFrontmatter(raw string) (data map[string]interface{}, content string) 
 	return d, afterDelim
 }
 
+func checkSkillInternal(data map[string]interface{}, includeInternal bool) bool {
+	if meta, ok := data["metadata"]; ok {
+		if metaMap, ok := meta.(map[string]interface{}); ok {
+			if internal, ok := metaMap["internal"]; ok {
+				if b, ok := internal.(bool); ok && b {
+					if !includeInternal && os.Getenv("INSTALL_INTERNAL_SKILLS") != "1" && os.Getenv("INSTALL_INTERNAL_SKILLS") != "true" {
+						return false
+					}
+				}
+			}
+		}
+	}
+	return true
+}
+
+func extractSkillMetadata(data map[string]interface{}) map[string]interface{} {
+	if m, ok := data["metadata"]; ok {
+		if mm, ok := m.(map[string]interface{}); ok {
+			return mm
+		}
+	}
+	return nil
+}
+
 func ParseSkillMd(skillMdPath string, includeInternal bool) (*Skill, error) {
 	content, err := os.ReadFile(skillMdPath)
 	if err != nil {
@@ -81,25 +105,8 @@ func ParseSkillMd(skillMdPath string, includeInternal bool) (*Skill, error) {
 	if !ok {
 		return nil, nil
 	}
-
-	// Check internal flag
-	if meta, ok := data["metadata"]; ok {
-		if metaMap, ok := meta.(map[string]interface{}); ok {
-			if internal, ok := metaMap["internal"]; ok {
-				if b, ok := internal.(bool); ok && b {
-					if !includeInternal && os.Getenv("INSTALL_INTERNAL_SKILLS") != "1" && os.Getenv("INSTALL_INTERNAL_SKILLS") != "true" {
-						return nil, nil
-					}
-				}
-			}
-		}
-	}
-
-	var metaMap map[string]interface{}
-	if m, ok := data["metadata"]; ok {
-		if mm, ok := m.(map[string]interface{}); ok {
-			metaMap = mm
-		}
+	if !checkSkillInternal(data, includeInternal) {
+		return nil, nil
 	}
 
 	return &Skill{
@@ -107,7 +114,7 @@ func ParseSkillMd(skillMdPath string, includeInternal bool) (*Skill, error) {
 		Description: desc,
 		Path:        filepath.Dir(skillMdPath),
 		RawContent:  raw,
-		Metadata:    metaMap,
+		Metadata:    extractSkillMetadata(data),
 	}, nil
 }
 
@@ -216,10 +223,52 @@ func GetPluginSkillPaths(searchPath string) []string {
 	return result
 }
 
-func DiscoverSkills(basePath, subpath string, opts DiscoverOptions) ([]*Skill, error) {
-	var skills []*Skill
-	seenNames := map[string]bool{}
+func applyPluginGrouping(s *Skill, pluginGroupings map[string]string) *Skill {
+	resolvedPath, _ := filepath.Abs(s.Path)
+	if pn, ok := pluginGroupings[resolvedPath]; ok {
+		s.PluginName = pn
+	}
+	return s
+}
 
+func scanPriorityDirs(priorityDirs []string, opts DiscoverOptions, seenNames map[string]bool, pluginGroupings map[string]string) []*Skill {
+	var result []*Skill
+	for _, dir := range priorityDirs {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			skillDir := filepath.Join(dir, e.Name())
+			if !HasSkillMd(skillDir) {
+				continue
+			}
+			sk, err := ParseSkillMd(filepath.Join(skillDir, "SKILL.md"), opts.IncludeInternal)
+			if err == nil && sk != nil && !seenNames[sk.Name] {
+				result = append(result, applyPluginGrouping(sk, pluginGroupings))
+				seenNames[sk.Name] = true
+			}
+		}
+	}
+	return result
+}
+
+func scanFallbackDirs(searchPath string, opts DiscoverOptions, seenNames map[string]bool, pluginGroupings map[string]string) []*Skill {
+	var result []*Skill
+	for _, skillDir := range FindSkillDirs(searchPath, 0, 5) {
+		sk, err := ParseSkillMd(filepath.Join(skillDir, "SKILL.md"), opts.IncludeInternal)
+		if err == nil && sk != nil && !seenNames[sk.Name] {
+			result = append(result, applyPluginGrouping(sk, pluginGroupings))
+			seenNames[sk.Name] = true
+		}
+	}
+	return result
+}
+
+func DiscoverSkills(basePath, subpath string, opts DiscoverOptions) ([]*Skill, error) {
 	if subpath != "" && !isSubpathSafe(basePath, subpath) {
 		return nil, fmt.Errorf("invalid subpath: %q escapes repository directory", subpath)
 	}
@@ -230,21 +279,13 @@ func DiscoverSkills(basePath, subpath string, opts DiscoverOptions) ([]*Skill, e
 	}
 
 	pluginGroupings := GetPluginGroupings(searchPath)
+	seenNames := map[string]bool{}
+	var skills []*Skill
 
-	enhanceSkill := func(s *Skill) *Skill {
-		resolvedPath, _ := filepath.Abs(s.Path)
-		if pn, ok := pluginGroupings[resolvedPath]; ok {
-			s.PluginName = pn
-		}
-		return s
-	}
-
-	// If pointing directly at a skill
 	if HasSkillMd(searchPath) {
 		sk, err := ParseSkillMd(filepath.Join(searchPath, "SKILL.md"), opts.IncludeInternal)
 		if err == nil && sk != nil {
-			sk = enhanceSkill(sk)
-			skills = append(skills, sk)
+			skills = append(skills, applyPluginGrouping(sk, pluginGroupings))
 			seenNames[sk.Name] = true
 			if !opts.FullDepth {
 				return skills, nil
@@ -252,7 +293,6 @@ func DiscoverSkills(basePath, subpath string, opts DiscoverOptions) ([]*Skill, e
 		}
 	}
 
-	// Priority search directories
 	priorityDirs := []string{
 		searchPath,
 		filepath.Join(searchPath, "skills"),
@@ -283,42 +323,12 @@ func DiscoverSkills(basePath, subpath string, opts DiscoverOptions) ([]*Skill, e
 		filepath.Join(searchPath, ".windsurf/skills"),
 		filepath.Join(searchPath, ".zencoder/skills"),
 	}
-
-	// Add plugin manifest skill dirs
 	priorityDirs = append(priorityDirs, GetPluginSkillPaths(searchPath)...)
 
-	for _, dir := range priorityDirs {
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			continue
-		}
-		for _, e := range entries {
-			if !e.IsDir() {
-				continue
-			}
-			skillDir := filepath.Join(dir, e.Name())
-			if HasSkillMd(skillDir) {
-				sk, err := ParseSkillMd(filepath.Join(skillDir, "SKILL.md"), opts.IncludeInternal)
-				if err == nil && sk != nil && !seenNames[sk.Name] {
-					sk = enhanceSkill(sk)
-					skills = append(skills, sk)
-					seenNames[sk.Name] = true
-				}
-			}
-		}
-	}
+	skills = append(skills, scanPriorityDirs(priorityDirs, opts, seenNames, pluginGroupings)...)
 
-	// Fall back to recursive search if nothing found or fullDepth
 	if len(skills) == 0 || opts.FullDepth {
-		allSkillDirs := FindSkillDirs(searchPath, 0, 5)
-		for _, skillDir := range allSkillDirs {
-			sk, err := ParseSkillMd(filepath.Join(skillDir, "SKILL.md"), opts.IncludeInternal)
-			if err == nil && sk != nil && !seenNames[sk.Name] {
-				sk = enhanceSkill(sk)
-				skills = append(skills, sk)
-				seenNames[sk.Name] = true
-			}
-		}
+		skills = append(skills, scanFallbackDirs(searchPath, opts, seenNames, pluginGroupings)...)
 	}
 
 	return skills, nil
@@ -355,40 +365,37 @@ type NodeModuleSkill struct {
 	PackageName string
 }
 
+func scanNodeModulePackage(pkgDir, packageName string) []NodeModuleSkill {
+	if s, err := ParseSkillMd(filepath.Join(pkgDir, "SKILL.md"), false); err == nil && s != nil {
+		return []NodeModuleSkill{{s, packageName}}
+	}
+	var found []NodeModuleSkill
+	for _, dir := range []string{pkgDir, filepath.Join(pkgDir, "skills"), filepath.Join(pkgDir, ".agents/skills")} {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			if s, err := ParseSkillMd(filepath.Join(dir, e.Name(), "SKILL.md"), false); err == nil && s != nil {
+				found = append(found, NodeModuleSkill{s, packageName})
+			}
+		}
+	}
+	return found
+}
+
 // DiscoverNodeModuleSkills scans node_modules for SKILL.md files.
 func DiscoverNodeModuleSkills(cwd string) []NodeModuleSkill {
-	var results []NodeModuleSkill
-
 	nmDir := filepath.Join(cwd, "node_modules")
 	entries, err := os.ReadDir(nmDir)
 	if err != nil {
 		return nil
 	}
 
-	processPackage := func(pkgDir, packageName string) {
-		// Check root SKILL.md
-		if s, err := ParseSkillMd(filepath.Join(pkgDir, "SKILL.md"), false); err == nil && s != nil {
-			results = append(results, NodeModuleSkill{s, packageName})
-			return
-		}
-		// Check common locations
-		for _, dir := range []string{pkgDir, filepath.Join(pkgDir, "skills"), filepath.Join(pkgDir, ".agents/skills")} {
-			entries, err := os.ReadDir(dir)
-			if err != nil {
-				continue
-			}
-			for _, e := range entries {
-				if !e.IsDir() {
-					continue
-				}
-				skillDir := filepath.Join(dir, e.Name())
-				if s, err := ParseSkillMd(filepath.Join(skillDir, "SKILL.md"), false); err == nil && s != nil {
-					results = append(results, NodeModuleSkill{s, packageName})
-				}
-			}
-		}
-	}
-
+	var results []NodeModuleSkill
 	for _, e := range entries {
 		if strings.HasPrefix(e.Name(), ".") {
 			continue
@@ -399,18 +406,17 @@ func DiscoverNodeModuleSkills(cwd string) []NodeModuleSkill {
 			continue
 		}
 		if e.Name()[0] == '@' && info.IsDir() {
-			// Scoped package
 			subEntries, err := os.ReadDir(fullPath)
 			if err != nil {
 				continue
 			}
 			for _, sub := range subEntries {
 				if sub.IsDir() {
-					processPackage(filepath.Join(fullPath, sub.Name()), e.Name()+"/"+sub.Name())
+					results = append(results, scanNodeModulePackage(filepath.Join(fullPath, sub.Name()), e.Name()+"/"+sub.Name())...)
 				}
 			}
 		} else if info.IsDir() {
-			processPackage(fullPath, e.Name())
+			results = append(results, scanNodeModulePackage(fullPath, e.Name())...)
 		}
 	}
 

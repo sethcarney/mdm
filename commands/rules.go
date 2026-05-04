@@ -91,131 +91,122 @@ type agentCandidate struct {
 	file        string
 }
 
-func runRulesLink(agentFilter []string, yes bool) {
-	cwd, _ := os.Getwd()
-	agentsMDPath := filepath.Join(cwd, agentsMDFile)
+// ruleFile holds an existing instruction file with its content and display metadata.
+type ruleFile struct {
+	file        string
+	agentLabels []string
+	preview     string
+	content     []byte
+}
 
-	// ── Step 1: resolve the source of truth ───────────────────────────────────
-	// Scan ALL known instruction files (across every agent) for existing content.
-	// Present them so the user explicitly picks which is their current source.
-	// AGENTS.md with content is already the source — skip the question.
+func scanForExistingRuleFiles(cwd string) []ruleFile {
+	seen := map[string]bool{}
+	fileAgentLabels := map[string][]string{}
+	fileContent := map[string][]byte{}
 
-	agentsMDReady := false
+	for name, a := range agent.AllAgents {
+		if a.InstructionsFile == "" || a.InstructionsFile == agentsMDFile {
+			continue
+		}
+		fullPath := filepath.Join(cwd, a.InstructionsFile)
+		info, err := os.Lstat(fullPath)
+		if err != nil || info.Mode()&os.ModeSymlink != 0 {
+			continue
+		}
+		data, err := os.ReadFile(fullPath)
+		if err != nil || len(strings.TrimSpace(string(data))) == 0 {
+			continue
+		}
+		fileAgentLabels[a.InstructionsFile] = append(fileAgentLabels[a.InstructionsFile], agent.AllAgents[name].DisplayName)
+		if !seen[a.InstructionsFile] {
+			seen[a.InstructionsFile] = true
+			fileContent[a.InstructionsFile] = data
+		}
+	}
+
+	var found []ruleFile
+	for file := range seen {
+		data := fileContent[file]
+		preview := strings.TrimSpace(string(data))
+		if nl := strings.Index(preview, "\n"); nl > 0 {
+			preview = preview[:nl]
+		}
+		if len(preview) > 55 {
+			preview = preview[:52] + "..."
+		}
+		sort.Strings(fileAgentLabels[file])
+		found = append(found, ruleFile{file: file, agentLabels: fileAgentLabels[file], preview: preview, content: data})
+	}
+	sort.Slice(found, func(i, j int) bool { return found[i].file < found[j].file })
+	return found
+}
+
+func pickAndWriteSourceOfTruth(found []ruleFile, agentsMDPath string) bool {
+	const noneLabel = "None of these — start with an empty AGENTS.md"
+	opts := make([]ui.UIOption, 0, len(found)+1)
+	for _, f := range found {
+		hint := strings.Join(f.agentLabels, ", ")
+		if f.preview != "" {
+			hint = hint + " · " + f.preview
+		}
+		opts = append(opts, ui.UIOption{Label: f.file, Value: f.file, Hint: hint})
+	}
+	opts = append(opts, ui.UIOption{Label: noneLabel, Value: "__none__"})
+
+	idx, ok := ui.UiSelect("Which file contains your current rules?", opts)
+	if !ok {
+		fmt.Println("Cancelled.")
+		return false
+	}
+	fmt.Println()
+
+	var content []byte
+	var successMsg string
+	if opts[idx].Value != "__none__" {
+		content = found[idx].content
+		successMsg = fmt.Sprintf("Copied %s → %s", found[idx].file, agentsMDFile)
+	} else {
+		successMsg = "Created empty " + agentsMDFile
+	}
+	if err := os.WriteFile(agentsMDPath, content, 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "%sError:%s could not write %s: %v\n", ansiRed, ansiReset, agentsMDFile, err)
+		return false
+	}
+	ui.LogSuccess(successMsg)
+	fmt.Println()
+	return true
+}
+
+func resolveSourceOfTruth(cwd, agentsMDPath string) bool {
 	if info, err := os.Lstat(agentsMDPath); err == nil && info.Mode()&os.ModeSymlink == 0 {
 		data, _ := os.ReadFile(agentsMDPath)
 		if len(strings.TrimSpace(string(data))) > 0 {
-			agentsMDReady = true
+			fmt.Println()
+			ui.LogSuccess("AGENTS.md already set up as source of truth")
+			fmt.Println()
+			return true
 		}
 	}
 
-	if agentsMDReady {
+	found := scanForExistingRuleFiles(cwd)
+	fmt.Println()
+
+	if len(found) == 0 {
+		fmt.Printf("  %s•%s No existing instruction files found in this project.\n", ansiDim, ansiReset)
 		fmt.Println()
-		ui.LogSuccess("AGENTS.md already set up as source of truth")
+		if err := os.WriteFile(agentsMDPath, []byte(""), 0644); err != nil {
+			fmt.Fprintf(os.Stderr, "%sError:%s could not create %s: %v\n", ansiRed, ansiReset, agentsMDFile, err)
+			return false
+		}
+		ui.LogSuccess("Created empty " + agentsMDFile)
 		fmt.Println()
-	} else {
-		// Collect every unique instruction file that exists, is a real file, and has content.
-		type existingFile struct {
-			file        string
-			agentLabels []string // display names of agents that use this file
-			preview     string   // first non-empty line, truncated
-		}
-		seen := map[string]bool{}
-		fileAgentLabels := map[string][]string{}
-		fileContent := map[string][]byte{}
-
-		for name, a := range agent.AllAgents {
-			if a.InstructionsFile == "" || a.InstructionsFile == agentsMDFile {
-				continue
-			}
-			fullPath := filepath.Join(cwd, a.InstructionsFile)
-			info, err := os.Lstat(fullPath)
-			if err != nil || info.Mode()&os.ModeSymlink != 0 {
-				continue
-			}
-			data, err := os.ReadFile(fullPath)
-			if err != nil || len(strings.TrimSpace(string(data))) == 0 {
-				continue
-			}
-			fileAgentLabels[a.InstructionsFile] = append(fileAgentLabels[a.InstructionsFile], agent.AllAgents[name].DisplayName)
-			if !seen[a.InstructionsFile] {
-				seen[a.InstructionsFile] = true
-				fileContent[a.InstructionsFile] = data
-			}
-		}
-
-		var found []existingFile
-		for file := range seen {
-			data := fileContent[file]
-			preview := strings.TrimSpace(string(data))
-			if nl := strings.Index(preview, "\n"); nl > 0 {
-				preview = preview[:nl]
-			}
-			if len(preview) > 55 {
-				preview = preview[:52] + "..."
-			}
-			sort.Strings(fileAgentLabels[file])
-			found = append(found, existingFile{
-				file:        file,
-				agentLabels: fileAgentLabels[file],
-				preview:     preview,
-			})
-		}
-		sort.Slice(found, func(i, j int) bool { return found[i].file < found[j].file })
-
-		fmt.Println()
-
-		if len(found) == 0 {
-			// No existing rules anywhere — create an empty AGENTS.md.
-			fmt.Printf("  %s•%s No existing instruction files found in this project.\n", ansiDim, ansiReset)
-			fmt.Println()
-			if err := os.WriteFile(agentsMDPath, []byte(""), 0644); err != nil {
-				fmt.Fprintf(os.Stderr, "%sError:%s could not create %s: %v\n", ansiRed, ansiReset, agentsMDFile, err)
-				return
-			}
-			ui.LogSuccess("Created empty " + agentsMDFile)
-			fmt.Println()
-		} else {
-			// Ask the user which file is their current source of truth.
-			const noneLabel = "None of these — start with an empty AGENTS.md"
-			opts := make([]ui.UIOption, 0, len(found)+1)
-			for _, f := range found {
-				hint := strings.Join(f.agentLabels, ", ")
-				if f.preview != "" {
-					hint = hint + " · " + f.preview
-				}
-				opts = append(opts, ui.UIOption{Label: f.file, Value: f.file, Hint: hint})
-			}
-			opts = append(opts, ui.UIOption{Label: noneLabel, Value: "__none__"})
-
-			idx, ok := ui.UiSelect("Which file contains your current rules?", opts)
-			if !ok {
-				fmt.Println("Cancelled.")
-				return
-			}
-			fmt.Println()
-
-			if opts[idx].Value != "__none__" {
-				chosen := found[idx]
-				if err := os.WriteFile(agentsMDPath, fileContent[chosen.file], 0644); err != nil {
-					fmt.Fprintf(os.Stderr, "%sError:%s could not write %s: %v\n", ansiRed, ansiReset, agentsMDFile, err)
-					return
-				}
-				ui.LogSuccess(fmt.Sprintf("Copied %s → %s", chosen.file, agentsMDFile))
-				fmt.Println()
-				// chosen.file will be replaced by a symlink in step 3 below.
-			} else {
-				if err := os.WriteFile(agentsMDPath, []byte(""), 0644); err != nil {
-					fmt.Fprintf(os.Stderr, "%sError:%s could not create %s: %v\n", ansiRed, ansiReset, agentsMDFile, err)
-					return
-				}
-				ui.LogSuccess("Created empty " + agentsMDFile)
-				fmt.Println()
-			}
-		}
+		return true
 	}
 
-	// ── Step 2: select which agents to link ───────────────────────────────────
-	// Split into linkable (need a symlink) vs locked (already read AGENTS.md natively).
+	return pickAndWriteSourceOfTruth(found, agentsMDPath)
+}
+
+func buildLinkableCandidates() ([]agentCandidate, []ui.UIOption) {
 	var linkable []agentCandidate
 	var lockedOptions []ui.UIOption
 	for name, a := range agent.AllAgents {
@@ -223,25 +214,19 @@ func runRulesLink(agentFilter []string, yes bool) {
 			continue
 		}
 		if a.InstructionsFile == agentsMDFile {
-			lockedOptions = append(lockedOptions, ui.UIOption{
-				Label: a.DisplayName,
-				Value: name,
-				Hint:  "reads AGENTS.md natively",
-			})
+			lockedOptions = append(lockedOptions, ui.UIOption{Label: a.DisplayName, Value: name, Hint: "reads AGENTS.md natively"})
 			continue
 		}
-		linkable = append(linkable, agentCandidate{
-			name:        name,
-			displayName: a.DisplayName,
-			file:        a.InstructionsFile,
-		})
+		linkable = append(linkable, agentCandidate{name: name, displayName: a.DisplayName, file: a.InstructionsFile})
 	}
 	sort.Slice(linkable, func(i, j int) bool { return linkable[i].displayName < linkable[j].displayName })
 	sort.Slice(lockedOptions, func(i, j int) bool { return lockedOptions[i].Label < lockedOptions[j].Label })
+	return linkable, lockedOptions
+}
 
-	var selected []agentCandidate
-
+func selectAgentsToLink(agentFilter []string, linkable []agentCandidate, lockedOptions []ui.UIOption) ([]agentCandidate, bool) {
 	if len(agentFilter) > 0 {
+		var selected []agentCandidate
 		for _, c := range linkable {
 			if contains(agentFilter, c.name) {
 				selected = append(selected, c)
@@ -249,40 +234,35 @@ func runRulesLink(agentFilter []string, yes bool) {
 		}
 		if len(selected) == 0 {
 			fmt.Printf("%sNo matching agents found.%s\n", ansiDim, ansiReset)
-			return
+			return nil, false
 		}
-	} else {
-		preSelected := make([]int, 0)
-		for i, c := range linkable {
-			a := agent.AllAgents[c.name]
-			if a.DetectInstalled != nil && a.DetectInstalled() {
-				preSelected = append(preSelected, i)
-			}
-		}
-
-		options := make([]ui.UIOption, len(linkable))
-		for i, c := range linkable {
-			options[i] = ui.UIOption{Label: c.displayName, Value: c.name, Hint: c.file}
-		}
-
-		indices, ok := ui.UiSearchMultiselect("Which AI tools are you using in this project?", options, lockedOptions, preSelected)
-		if !ok {
-			fmt.Println("Cancelled.")
-			return
-		}
-		for _, i := range indices {
-			selected = append(selected, linkable[i])
-		}
+		return selected, true
 	}
 
-	if len(selected) == 0 {
-		fmt.Printf("%sNo agents selected.%s\n", ansiDim, ansiReset)
-		return
+	preSelected := make([]int, 0)
+	for i, c := range linkable {
+		a := agent.AllAgents[c.name]
+		if a.DetectInstalled != nil && a.DetectInstalled() {
+			preSelected = append(preSelected, i)
+		}
 	}
+	options := make([]ui.UIOption, len(linkable))
+	for i, c := range linkable {
+		options[i] = ui.UIOption{Label: c.displayName, Value: c.name, Hint: c.file}
+	}
+	indices, ok := ui.UiSearchMultiselect("Which AI tools are you using in this project?", options, lockedOptions, preSelected)
+	if !ok {
+		fmt.Println("Cancelled.")
+		return nil, false
+	}
+	var selected []agentCandidate
+	for _, i := range indices {
+		selected = append(selected, linkable[i])
+	}
+	return selected, true
+}
 
-	fmt.Println()
-
-	// ── Step 3: create symlinks for all selected agents ───────────────────────
+func createAgentSymlinks(selected []agentCandidate, cwd, agentsMDPath string, yes bool) {
 	linked := 0
 	skipped := 0
 	for _, c := range selected {
@@ -345,6 +325,28 @@ func runRulesLink(agentFilter []string, yes bool) {
 		fmt.Printf("%s%d file(s) skipped%s\n", ansiDim, skipped, ansiReset)
 	}
 	fmt.Println()
+}
+
+func runRulesLink(agentFilter []string, yes bool) {
+	cwd, _ := os.Getwd()
+	agentsMDPath := filepath.Join(cwd, agentsMDFile)
+
+	if !resolveSourceOfTruth(cwd, agentsMDPath) {
+		return
+	}
+
+	linkable, lockedOptions := buildLinkableCandidates()
+	selected, ok := selectAgentsToLink(agentFilter, linkable, lockedOptions)
+	if !ok {
+		return
+	}
+	if len(selected) == 0 {
+		fmt.Printf("%sNo agents selected.%s\n", ansiDim, ansiReset)
+		return
+	}
+
+	fmt.Println()
+	createAgentSymlinks(selected, cwd, agentsMDPath, yes)
 }
 
 // ─── status ───────────────────────────────────────────────────────────────────
@@ -466,15 +468,14 @@ Only symlinks are removed — real files are never touched.
 	return cmd
 }
 
-func runRulesUnlink(agentFilter []string, yes bool) {
-	cwd, _ := os.Getwd()
+type symlinkedFile struct {
+	file string
+	dest string
+}
 
-	type symlinkedFile struct {
-		file string
-		dest string
-	}
-	var toRemove []symlinkedFile
-
+func collectSymlinkedFiles(cwd string, agentFilter []string) []symlinkedFile {
+	var result []symlinkedFile
+	seen := map[string]bool{}
 	for name, a := range agent.AllAgents {
 		if a.InstructionsFile == "" {
 			continue
@@ -487,19 +488,19 @@ func runRulesUnlink(agentFilter []string, yes bool) {
 		if err != nil || info.Mode()&os.ModeSymlink == 0 {
 			continue
 		}
+		if seen[a.InstructionsFile] {
+			continue
+		}
+		seen[a.InstructionsFile] = true
 		dest, _ := os.Readlink(targetPath)
-		// Deduplicate by file path.
-		found := false
-		for _, r := range toRemove {
-			if r.file == a.InstructionsFile {
-				found = true
-				break
-			}
-		}
-		if !found {
-			toRemove = append(toRemove, symlinkedFile{file: a.InstructionsFile, dest: dest})
-		}
+		result = append(result, symlinkedFile{file: a.InstructionsFile, dest: dest})
 	}
+	return result
+}
+
+func runRulesUnlink(agentFilter []string, yes bool) {
+	cwd, _ := os.Getwd()
+	toRemove := collectSymlinkedFiles(cwd, agentFilter)
 
 	if len(toRemove) == 0 {
 		fmt.Printf("%sNo symlinked instruction files found.%s\n", ansiDim, ansiReset)

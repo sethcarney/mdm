@@ -35,6 +35,68 @@ func buildSyncCmd(ver string) *cobra.Command {
 	return cmd
 }
 
+func selectSkillsToSync(skills []*skill.Skill, yes bool) ([]*skill.Skill, bool) {
+	if yes || len(skills) == 1 {
+		return skills, true
+	}
+	options := make([]ui.UIOption, len(skills))
+	for i, s := range skills {
+		options[i] = ui.UIOption{Label: s.Name, Value: sanitizeName(s.Name), Hint: s.Description}
+	}
+	initSel := make([]int, len(skills))
+	for i := range skills {
+		initSel[i] = i
+	}
+	indices, ok := ui.UiMultiselect("Which skills would you like to sync?", options, true, initSel, nil)
+	if !ok {
+		fmt.Println("Cancelled.")
+		return nil, false
+	}
+	var selected []*skill.Skill
+	for _, i := range indices {
+		selected = append(selected, skills[i])
+	}
+	return selected, true
+}
+
+func syncAndLockSkill(s *skill.Skill, agents []string, global bool, mode InstallMode, cwd string) {
+	sName := sanitizeName(s.Name)
+	fmt.Printf("%sSyncing %s%s%s...\n", ansiDim, ansiText, s.Name, ansiReset)
+
+	var failedAgents []string
+	for _, agentName := range agents {
+		result := installSkillForAgent(s, agentName, global, mode)
+		if !result.Success {
+			failedAgents = append(failedAgents, agentName)
+		}
+	}
+
+	if len(failedAgents) == 0 {
+		ui.LogSuccess(s.Name)
+	} else {
+		ui.LogWarn(fmt.Sprintf("%s (failed for: %s)", s.Name, strings.Join(failedAgents, ", ")))
+	}
+
+	relPath, err := filepath.Rel(cwd, s.Path)
+	if err != nil {
+		relPath = s.Path
+	}
+	relPath = filepath.ToSlash(relPath)
+
+	_ = lock.AddSkillToLock(sName, lock.SkillLockEntry{
+		Source:     relPath,
+		SourceType: string(source.SourceTypeLocal),
+		SourceURL:  relPath,
+		PluginName: sName,
+	})
+	if !global {
+		_ = lock.AddSkillToLocalLock(sName, lock.LocalSkillLockEntry{
+			Source:     relPath,
+			SourceType: string(source.SourceTypeLocal),
+		}, cwd)
+	}
+}
+
 func runSync(opts SyncOptions) {
 	cwd, _ := os.Getwd()
 
@@ -47,7 +109,6 @@ func runSync(opts SyncOptions) {
 		return
 	}
 
-	// Flatten to *skill.Skill slice, deduplicating by name
 	seen := map[string]bool{}
 	var skills []*skill.Skill
 	for _, f := range found {
@@ -66,27 +127,9 @@ func runSync(opts SyncOptions) {
 			ansiDim, shortPath, ansiReset)
 	}
 
-	// Skill selection
-	var selectedSkills []*skill.Skill
-	if opts.Yes || len(skills) == 1 {
-		selectedSkills = skills
-	} else {
-		options := make([]ui.UIOption, len(skills))
-		for i, s := range skills {
-			options[i] = ui.UIOption{Label: s.Name, Value: sanitizeName(s.Name), Hint: s.Description}
-		}
-		var initSel []int
-		for i := range skills {
-			initSel = append(initSel, i)
-		}
-		indices, ok := ui.UiMultiselect("Which skills would you like to sync?", options, true, initSel, nil)
-		if !ok {
-			fmt.Println("Cancelled.")
-			return
-		}
-		for _, i := range indices {
-			selectedSkills = append(selectedSkills, skills[i])
-		}
+	selectedSkills, ok := selectSkillsToSync(skills, opts.Yes)
+	if !ok {
+		return
 	}
 
 	global, mode, agents, ok := promptScopeAndAgents(AddOptions{Yes: opts.Yes}, cwd)
@@ -96,42 +139,7 @@ func runSync(opts SyncOptions) {
 
 	fmt.Println()
 	for _, s := range selectedSkills {
-		sName := sanitizeName(s.Name)
-		fmt.Printf("%sSyncing %s%s%s...\n", ansiDim, ansiText, s.Name, ansiReset)
-
-		var failedAgents []string
-		for _, agentName := range agents {
-			result := installSkillForAgent(s, agentName, global, mode)
-			if !result.Success {
-				failedAgents = append(failedAgents, agentName)
-			}
-		}
-
-		if len(failedAgents) == 0 {
-			ui.LogSuccess(s.Name)
-		} else {
-			ui.LogWarn(fmt.Sprintf("%s (failed for: %s)", s.Name, strings.Join(failedAgents, ", ")))
-		}
-
-		// Use relative path from node_modules as source
-		relPath, err := filepath.Rel(cwd, s.Path)
-		if err != nil {
-			relPath = s.Path
-		}
-		relPath = filepath.ToSlash(relPath)
-
-		_ = lock.AddSkillToLock(sName, lock.SkillLockEntry{
-			Source:     relPath,
-			SourceType: string(source.SourceTypeLocal),
-			SourceURL:  relPath,
-			PluginName: sName,
-		})
-		if !global {
-			_ = lock.AddSkillToLocalLock(sName, lock.LocalSkillLockEntry{
-				Source:     relPath,
-				SourceType: string(source.SourceTypeLocal),
-			}, cwd)
-		}
+		syncAndLockSkill(s, agents, global, mode, cwd)
 	}
 
 	fmt.Println()

@@ -66,17 +66,94 @@ separated after the flag or repeated:
 	return cmd
 }
 
+func filterInstalledByName(installed []*InstalledSkill, names []string) ([]*InstalledSkill, bool) {
+	var result []*InstalledSkill
+	for _, s := range installed {
+		for _, f := range names {
+			if skillNameMatches(s.Name, f) {
+				result = append(result, s)
+				break
+			}
+		}
+	}
+	if len(result) == 0 {
+		fmt.Printf("%sNo matching skills found.%s\n", ansiDim, ansiReset)
+		return nil, false
+	}
+	return result, true
+}
+
+func selectSkillsToRemove(installed []*InstalledSkill, skillFilter []string, opts RemoveOptions) ([]*InstalledSkill, bool) {
+	if len(skillFilter) == 1 && skillFilter[0] == "*" {
+		return installed, true
+	}
+	if len(skillFilter) > 0 {
+		return filterInstalledByName(installed, skillFilter)
+	}
+	if opts.Yes || len(installed) == 1 {
+		return installed, true
+	}
+	options := make([]ui.UIOption, len(installed))
+	for i, s := range installed {
+		hint := s.Description
+		if len(s.Agents) > 0 {
+			hint = strings.Join(s.Agents, ", ")
+		}
+		options[i] = ui.UIOption{Label: s.Name, Value: sanitizeName(s.Name), Hint: hint}
+	}
+	indices, ok := ui.UiMultiselect("Which skills would you like to remove?", options, true, nil, nil)
+	if !ok {
+		fmt.Println("Cancelled.")
+		return nil, false
+	}
+	var selected []*InstalledSkill
+	for _, i := range indices {
+		selected = append(selected, installed[i])
+	}
+	return selected, true
+}
+
+func removeSkillFromDisk(sk *InstalledSkill, agentsToRemove []string, global bool, cwd string) {
+	sName := sanitizeName(sk.Name)
+	for _, agentName := range agentsToRemove {
+		agentBase := getAgentBaseDir(agentName, global, cwd)
+		if agentBase == "" {
+			continue
+		}
+		for _, name := range []string{sName, filepath.Base(sk.Path)} {
+			agentSkillDir := filepath.Join(agentBase, name)
+			if !isPathSafe(agentBase, agentSkillDir) {
+				continue
+			}
+			if info, err := os.Lstat(agentSkillDir); err == nil {
+				if info.Mode()&os.ModeSymlink != 0 {
+					os.Remove(agentSkillDir)
+				} else {
+					os.RemoveAll(agentSkillDir)
+				}
+			}
+		}
+	}
+	canonicalDir := getCanonicalPath(sk.Name, global)
+	if canonicalDir != "" && isPathSafe(getCanonicalSkillsDir(global, cwd), canonicalDir) {
+		os.RemoveAll(canonicalDir)
+	}
+	_ = lock.RemoveSkillFromLock(sName)
+	if !global {
+		_ = lock.RemoveSkillFromLocalLock(sName, cwd)
+	}
+	ui.LogSuccess("Removed " + sk.Name)
+}
+
 func runRemove(positional []string, opts RemoveOptions) {
 	cwd, _ := os.Getwd()
 	global := opts.Global
 
-	// Merge positional + --skill args
 	skillFilter := opts.Skills
 	if len(positional) > 0 {
 		skillFilter = append(skillFilter, positional...)
 	}
 
-	// Determine scope if not specified
 	if !opts.Global && !opts.Yes {
 		idx, ok := ui.UiSelect("Which scope?", []ui.UIOption{
 			{Label: "Project", Hint: "remove from this project"},
@@ -88,11 +165,9 @@ func runRemove(positional []string, opts RemoveOptions) {
 		global = idx == 1
 	}
 
-	// Discover installed skills in the appropriate scope
 	scopeGlobal := &global
 	installed, err := listInstalledSkills(scopeGlobal, opts.Agents)
 	if err != nil || len(installed) == 0 {
-		// Check for orphaned lock entries (in lock but missing from disk)
 		if global {
 			cleaned := cleanOrphanedLockEntries(cwd)
 			if cleaned > 0 {
@@ -105,111 +180,37 @@ func runRemove(positional []string, opts RemoveOptions) {
 		return
 	}
 
-	// If skill filter provided, narrow down
-	var toRemove []*InstalledSkill
-	if len(skillFilter) > 0 && !(len(skillFilter) == 1 && skillFilter[0] == "*") {
-		for _, s := range installed {
-			for _, f := range skillFilter {
-				if skillNameMatches(s.Name, f) {
-					toRemove = append(toRemove, s)
-					break
-				}
-			}
-		}
-		if len(toRemove) == 0 {
-			fmt.Printf("%sNo matching skills found.%s\n", ansiDim, ansiReset)
-			return
-		}
-	} else if len(skillFilter) == 1 && skillFilter[0] == "*" {
-		toRemove = installed
-	} else if opts.Yes || len(installed) == 1 {
-		toRemove = installed
-	} else {
-		// Interactive selection
-		options := make([]ui.UIOption, len(installed))
-		for i, s := range installed {
-			hint := s.Description
-			if len(s.Agents) > 0 {
-				hint = strings.Join(s.Agents, ", ")
-			}
-			options[i] = ui.UIOption{Label: s.Name, Value: sanitizeName(s.Name), Hint: hint}
-		}
-		indices, ok := ui.UiMultiselect("Which skills would you like to remove?", options, true, nil, nil)
-		if !ok {
-			fmt.Println("Cancelled.")
-			return
-		}
-		for _, i := range indices {
-			toRemove = append(toRemove, installed[i])
-		}
-	}
-
-	if len(toRemove) == 0 {
+	toRemove, ok := selectSkillsToRemove(installed, skillFilter, opts)
+	if !ok || len(toRemove) == 0 {
 		return
 	}
 
-	// Confirm
-	if !opts.Yes && len(toRemove) > 0 {
-		var names []string
-		for _, s := range toRemove {
-			names = append(names, s.Name)
-		}
-		confirmed, ok := ui.UiConfirm(fmt.Sprintf("Remove %d skill(s): %s?", len(toRemove), strings.Join(names, ", ")))
-		if !ok || !confirmed {
-			fmt.Println("Cancelled.")
-			return
-		}
+	if !opts.Yes && !confirmRemove(toRemove) {
+		return
 	}
 
 	fmt.Println()
-
-	// Remove each skill
 	for _, sk := range toRemove {
-		sName := sanitizeName(sk.Name)
-
-		// Remove from each agent's skills directory
 		agentsToRemove := sk.Agents
 		if len(opts.Agents) > 0 {
 			agentsToRemove = opts.Agents
 		}
-
-		for _, agentName := range agentsToRemove {
-			agentBase := getAgentBaseDir(agentName, global, cwd)
-			if agentBase == "" {
-				continue
-			}
-			// Try both the sanitized name and the directory name
-			for _, name := range []string{sName, filepath.Base(sk.Path)} {
-				agentSkillDir := filepath.Join(agentBase, name)
-				if !isPathSafe(agentBase, agentSkillDir) {
-					continue
-				}
-				if info, err := os.Lstat(agentSkillDir); err == nil {
-					if info.Mode()&os.ModeSymlink != 0 {
-						os.Remove(agentSkillDir)
-					} else {
-						os.RemoveAll(agentSkillDir)
-					}
-				}
-			}
-		}
-
-		// Remove canonical directory
-		canonicalDir := getCanonicalPath(sk.Name, global)
-		if canonicalDir != "" && isPathSafe(getCanonicalSkillsDir(global, cwd), canonicalDir) {
-			os.RemoveAll(canonicalDir)
-		}
-
-		// Update lock files
-		_ = lock.RemoveSkillFromLock(sName)
-		if !global {
-			_ = lock.RemoveSkillFromLocalLock(sName, cwd)
-		}
-
-		ui.LogSuccess("Removed " + sk.Name)
+		removeSkillFromDisk(sk, agentsToRemove, global, cwd)
 	}
-
 	fmt.Println()
+}
+
+func confirmRemove(toRemove []*InstalledSkill) bool {
+	var names []string
+	for _, s := range toRemove {
+		names = append(names, s.Name)
+	}
+	confirmed, ok := ui.UiConfirm(fmt.Sprintf("Remove %d skill(s): %s?", len(toRemove), strings.Join(names, ", ")))
+	if !ok || !confirmed {
+		fmt.Println("Cancelled.")
+		return false
+	}
+	return true
 }
 
 // cleanOrphanedLockEntries removes global lock entries whose skill files no

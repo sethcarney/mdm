@@ -294,7 +294,7 @@ func TestCheckProjectMarkdownSkipsExistingDirs(t *testing.T) {
 
 	// Non-existent dir added to skipDirs — should not cause a panic or side effects
 	skipDirs := map[string]bool{
-		filepath.Clean(skillsDir):                     true,
+		filepath.Clean(skillsDir):                    true,
 		filepath.Join(root, "nonexistent-agent-dir"): true,
 	}
 

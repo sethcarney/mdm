@@ -25,3 +25,19 @@ jobs:
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
           govulncheck ./...
+
+      - name: Check formatting (gofmt -s)
+        run: |
+          unformatted=$(gofmt -s -l .)
+          if [ -n "$unformatted" ]; then
+            echo "The following files are not formatted with 'gofmt -s':"
+            echo "$unformatted"
+            echo ""
+            echo "Run 'gofmt -s -w .' to fix."
+            exit 1
+          fi
+
+      - name: Check cyclomatic complexity (gocyclo)
+        run: |
+          go install github.com/fzipp/gocyclo/cmd/gocyclo@v0.6.0
+          gocyclo -over 16 .

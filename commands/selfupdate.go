@@ -99,50 +99,29 @@ func verifyChecksums(data []byte, checksumText, assetName string) bool {
 	return false
 }
 
-func runSelfUpdate(currentVersion string) {
-	client := &http.Client{Timeout: 30 * time.Second}
-
-	fmt.Printf("%sChecking for updates...%s\n", ansiDim, ansiReset)
-
+func fetchLatestRelease(client *http.Client, currentVersion string) (*githubRelease, error) {
 	req, _ := http.NewRequest("GET", releasesAPI, nil)
 	req.Header.Set("User-Agent", appName+"-cli/"+currentVersion)
 	resp, err := client.Do(req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to check for updates: %v\n", err)
-		os.Exit(1)
+		return nil, err
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode != 200 {
 		fmt.Fprintf(os.Stderr, "GitHub API returned %d\n", resp.StatusCode)
-		os.Exit(1)
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
-
 	body, _ := io.ReadAll(resp.Body)
 	var release githubRelease
 	if err := json.Unmarshal(body, &release); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to parse release info: %v\n", err)
-		os.Exit(1)
+		return nil, err
 	}
+	return &release, nil
+}
 
-	latestVersion := strings.TrimPrefix(release.TagName, "v")
-
-	if !version.IsNewer(latestVersion, currentVersion) {
-		fmt.Printf("%sAlready up to date%s %s(%s)%s\n", ansiText, ansiReset, ansiDim, currentVersion, ansiReset)
-		return
-	}
-
-	fmt.Printf("%sNew version available:%s %s %s(current: %s)%s\n",
-		ansiText, ansiReset, latestVersion, ansiDim, currentVersion, ansiReset)
-	fmt.Println()
-
-	assetName := getBinaryAssetName()
-	if assetName == "" {
-		fmt.Fprintf(os.Stderr, "Unsupported platform: %s/%s\n", runtime.GOOS, runtime.GOARCH)
-		fmt.Fprintf(os.Stderr, "Download manually from: https://github.com/%s/releases/latest\n", updateRepo)
-		os.Exit(1)
-	}
-
+func findReleaseURLs(release *githubRelease, assetName, latestVersion string) (string, string, bool) {
 	var downloadURL, checksumsURL string
 	for _, a := range release.Assets {
 		switch a.Name {
@@ -154,14 +133,16 @@ func runSelfUpdate(currentVersion string) {
 	}
 	if downloadURL == "" {
 		fmt.Fprintf(os.Stderr, "Binary for your platform (%s) not found in release %s.\n", assetName, latestVersion)
-		os.Exit(1)
+		return "", "", false
 	}
 	if !isGitHubURL(downloadURL) {
 		fmt.Fprintf(os.Stderr, "Unexpected download host in release asset — aborting.\n")
-		os.Exit(1)
+		return "", "", false
 	}
+	return downloadURL, checksumsURL, true
+}
 
-	// Fetch the checksum file before the binary so a hash mismatch aborts early.
+func downloadAndVerify(client *http.Client, downloadURL, checksumsURL, assetName string) ([]byte, error) {
 	var checksumText string
 	if checksumsURL != "" && isGitHubURL(checksumsURL) {
 		csResp, csErr := client.Get(checksumsURL)
@@ -176,61 +157,57 @@ func runSelfUpdate(currentVersion string) {
 	dlResp, err := client.Get(downloadURL)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Download failed: %v\n", err)
-		os.Exit(1)
+		return nil, err
 	}
 	defer dlResp.Body.Close()
-
 	if dlResp.StatusCode != 200 {
 		fmt.Fprintf(os.Stderr, "Download failed: HTTP %d\n", dlResp.StatusCode)
-		os.Exit(1)
+		return nil, fmt.Errorf("HTTP %d", dlResp.StatusCode)
 	}
-
 	dlBody, err := io.ReadAll(io.LimitReader(dlResp.Body, maxBinaryBytes+1))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Download read failed: %v\n", err)
-		os.Exit(1)
+		return nil, err
 	}
 	if int64(len(dlBody)) > maxBinaryBytes {
 		fmt.Fprintf(os.Stderr, "Downloaded binary exceeds %d MB limit — aborting.\n", maxBinaryBytes/1024/1024)
-		os.Exit(1)
+		return nil, fmt.Errorf("binary too large")
 	}
-
 	if checksumText != "" {
 		if !verifyChecksums(dlBody, checksumText, assetName) {
 			fmt.Fprintf(os.Stderr, "SHA256 checksum mismatch for %s — aborting update.\n", assetName)
-			os.Exit(1)
+			return nil, fmt.Errorf("checksum mismatch")
 		}
 		fmt.Printf("%sSHA256 verified.%s\n", ansiDim, ansiReset)
 	}
+	return dlBody, nil
+}
 
+func writeTempExecutable(data []byte) (string, error) {
 	tmpFile, err := os.CreateTemp("", appName+"-update-*")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create temp file: %v\n", err)
-		os.Exit(1)
+		return "", err
 	}
 	tmpPath := tmpFile.Name()
-	if _, err := tmpFile.Write(dlBody); err != nil {
+	if _, err := tmpFile.Write(data); err != nil {
 		tmpFile.Close()
 		os.Remove(tmpPath)
 		fmt.Fprintf(os.Stderr, "Failed to write temp file: %v\n", err)
-		os.Exit(1)
+		return "", err
 	}
 	tmpFile.Close()
 	if err := os.Chmod(tmpPath, 0700); err != nil {
 		os.Remove(tmpPath)
 		fmt.Fprintf(os.Stderr, "Failed to set permissions on temp file: %v\n", err)
-		os.Exit(1)
+		return "", err
 	}
+	return tmpPath, nil
+}
 
-	execPath, err := os.Executable()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Could not determine executable path: %v\n", err)
-		os.Exit(1)
-	}
-
+func replaceBinary(tmpPath, execPath, latestVersion string) {
 	if runtime.GOOS != "windows" {
 		if err := os.Rename(tmpPath, execPath); err != nil {
-			// Cross-filesystem: unlink + copy
 			os.Remove(execPath)
 			if err2 := copyFile(tmpPath, execPath); err2 != nil {
 				fmt.Fprintf(os.Stderr, "Failed to update binary: %v\n", err2)
@@ -241,24 +218,73 @@ func runSelfUpdate(currentVersion string) {
 		fmt.Printf("%sUpdated to %s successfully.%s\n", ansiText, latestVersion, ansiReset)
 		fmt.Printf("%sRestart your shell or run %s%s --version%s%s to confirm.%s\n",
 			ansiDim, ansiText, appName, ansiDim, ansiReset, ansiReset)
-	} else {
-		batchPath := filepath.Join(os.TempDir(), appName+"-update.bat")
-		escapedTmp := strings.ReplaceAll(tmpPath, "%", "%%")
-		escapedExec := strings.ReplaceAll(execPath, "%", "%%")
-		batchContent := fmt.Sprintf("@echo off\r\ntimeout /t 1 /nobreak > NUL\r\nmove /y \"%s\" \"%s\" > NUL\r\ndel \"%%~f0\"\r\n",
-			escapedTmp, escapedExec)
-		if err := os.WriteFile(batchPath, []byte(batchContent), 0644); err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to write update script: %v\n", err)
-			os.Exit(1)
-		}
-		if err := exec.Command("cmd", "/c", "start", "/b", "", batchPath).Start(); err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to launch update script: %v\n", err)
-			fmt.Printf("%sTo apply the update manually, run:%s\n  %s%s%s\n",
-				ansiDim, ansiReset, ansiText, batchPath, ansiReset)
-			return
-		}
-		fmt.Printf("%sUpdated to %s successfully.%s\n", ansiText, latestVersion, ansiReset)
-		fmt.Printf("%sApplying update as this process exits...%s\n", ansiDim, ansiReset)
-		os.Exit(0)
+		return
 	}
+	batchPath := filepath.Join(os.TempDir(), appName+"-update.bat")
+	escapedTmp := strings.ReplaceAll(tmpPath, "%", "%%")
+	escapedExec := strings.ReplaceAll(execPath, "%", "%%")
+	batchContent := fmt.Sprintf("@echo off\r\ntimeout /t 1 /nobreak > NUL\r\nmove /y \"%s\" \"%s\" > NUL\r\ndel \"%%~f0\"\r\n",
+		escapedTmp, escapedExec)
+	if err := os.WriteFile(batchPath, []byte(batchContent), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to write update script: %v\n", err)
+		os.Exit(1)
+	}
+	if err := exec.Command("cmd", "/c", "start", "/b", "", batchPath).Start(); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to launch update script: %v\n", err)
+		fmt.Printf("%sTo apply the update manually, run:%s\n  %s%s%s\n",
+			ansiDim, ansiReset, ansiText, batchPath, ansiReset)
+		return
+	}
+	fmt.Printf("%sUpdated to %s successfully.%s\n", ansiText, latestVersion, ansiReset)
+	fmt.Printf("%sApplying update as this process exits...%s\n", ansiDim, ansiReset)
+	os.Exit(0)
+}
+
+func runSelfUpdate(currentVersion string) {
+	client := &http.Client{Timeout: 30 * time.Second}
+	fmt.Printf("%sChecking for updates...%s\n", ansiDim, ansiReset)
+
+	release, err := fetchLatestRelease(client, currentVersion)
+	if err != nil {
+		os.Exit(1)
+	}
+
+	latestVersion := strings.TrimPrefix(release.TagName, "v")
+	if !version.IsNewer(latestVersion, currentVersion) {
+		fmt.Printf("%sAlready up to date%s %s(%s)%s\n", ansiText, ansiReset, ansiDim, currentVersion, ansiReset)
+		return
+	}
+	fmt.Printf("%sNew version available:%s %s %s(current: %s)%s\n",
+		ansiText, ansiReset, latestVersion, ansiDim, currentVersion, ansiReset)
+	fmt.Println()
+
+	assetName := getBinaryAssetName()
+	if assetName == "" {
+		fmt.Fprintf(os.Stderr, "Unsupported platform: %s/%s\n", runtime.GOOS, runtime.GOARCH)
+		fmt.Fprintf(os.Stderr, "Download manually from: https://github.com/%s/releases/latest\n", updateRepo)
+		os.Exit(1)
+	}
+
+	downloadURL, checksumsURL, ok := findReleaseURLs(release, assetName, latestVersion)
+	if !ok {
+		os.Exit(1)
+	}
+
+	dlBody, err := downloadAndVerify(client, downloadURL, checksumsURL, assetName)
+	if err != nil {
+		os.Exit(1)
+	}
+
+	tmpPath, err := writeTempExecutable(dlBody)
+	if err != nil {
+		os.Exit(1)
+	}
+
+	execPath, err := os.Executable()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Could not determine executable path: %v\n", err)
+		os.Exit(1)
+	}
+
+	replaceBinary(tmpPath, execPath, latestVersion)
 }

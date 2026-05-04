@@ -45,6 +45,33 @@ func buildFindCmd() *cobra.Command {
 	}
 }
 
+func buildFindOptions(results []FindSkillResult) []ui.UIOption {
+	options := make([]ui.UIOption, len(results))
+	for i, r := range results {
+		hint := r.Source
+		if r.Description != "" {
+			hint = r.Description
+		}
+		if r.Stars > 0 {
+			hint = fmt.Sprintf("%s ★%d", hint, r.Stars)
+		}
+		options[i] = ui.UIOption{Label: r.Name, Value: r.Source, Hint: hint}
+	}
+	return options
+}
+
+func installFindResult(r FindSkillResult) {
+	src := r.Source
+	if src == "" && r.Owner != "" && r.Repo != "" {
+		src = r.Owner + "/" + r.Repo
+	}
+	if src == "" {
+		return
+	}
+	fmt.Printf("%sAdding %s%s%s...\n", ansiDim, ansiText, r.Name, ansiReset)
+	runAdd(src, AddOptions{Yes: false, PreselectedSkills: []string{r.Name}})
+}
+
 func runFind(args []string) {
 	query := ""
 	for _, a := range args {
@@ -79,39 +106,14 @@ func runFind(args []string) {
 		return
 	}
 
-	// Build options
-	options := make([]ui.UIOption, len(results))
-	for i, r := range results {
-		hint := r.Source
-		if r.Description != "" {
-			hint = r.Description
-		}
-		if r.Stars > 0 {
-			hint = fmt.Sprintf("%s ★%d", hint, r.Stars)
-		}
-		options[i] = ui.UIOption{Label: r.Name, Value: r.Source, Hint: hint}
-	}
-
-	indices, ok := ui.UiMultiselect("Select skills to install", options, false, nil, nil)
+	indices, ok := ui.UiMultiselect("Select skills to install", buildFindOptions(results), false, nil, nil)
 	if !ok || len(indices) == 0 {
 		return
 	}
 
 	fmt.Println()
-
-	// Install each selected skill
 	for _, i := range indices {
-		r := results[i]
-		src := r.Source
-		if src == "" && r.Owner != "" && r.Repo != "" {
-			src = r.Owner + "/" + r.Repo
-		}
-		if src == "" {
-			continue
-		}
-		fmt.Printf("%sAdding %s%s%s...\n", ansiDim, ansiText, r.Name, ansiReset)
-		opts := AddOptions{Yes: false, PreselectedSkills: []string{r.Name}}
-		runAdd(src, opts)
+		installFindResult(results[i])
 	}
 }
 
