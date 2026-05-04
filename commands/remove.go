@@ -138,8 +138,9 @@ func removeSkillFromDisk(sk *InstalledSkill, agentsToRemove []string, global boo
 	if canonicalDir != "" && isPathSafe(getCanonicalSkillsDir(global, cwd), canonicalDir) {
 		os.RemoveAll(canonicalDir)
 	}
-	_ = lock.RemoveSkillFromLock(sName)
-	if !global {
+	if global {
+		_ = lock.RemoveSkillFromLock(sName)
+	} else {
 		_ = lock.RemoveSkillFromLocalLock(sName, cwd)
 	}
 	ui.LogSuccess("Removed " + sk.Name)

@@ -73,7 +73,7 @@ mdm
     ├── skill/           # Skill discovery (SKILL.md parsing); frontmatter; filtering
     ├── source/          # URL/path parsing into ParsedSource (GitHub, GitLab, local, well-known)
     ├── registry/        # Well-known registry fetching (.well-known/agent-skills standard)
-    ├── lock/            # skill-lock.json read/write; tracks hashes, versions, timestamps
+    ├── lock/            # skills-lock.json read/write; tracks hashes, versions, timestamps
     ├── git/             # Shallow git clone; branch/ref handling
     ├── blob/            # GitHub API tree/blob queries for skill discovery
     ├── ui/              # ANSI color constants; Bubbletea spinner
@@ -88,7 +88,7 @@ mdm
 3. `skill/` discovers `SKILL.md` files and applies `--skill` filters
 4. User is prompted for which agents to install to (or `--agent` flag)
 5. Skill dirs are copied into each agent's skills directory
-6. `lock/` records the installation in `.skill-lock.json`
+6. `lock/` records the installation in `skills-lock.json`
 
 ### Adding a new agent
 

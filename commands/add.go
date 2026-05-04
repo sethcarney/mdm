@@ -192,13 +192,14 @@ func installWellKnownForAgents(selectedSkills []*registry.WellKnownSkill, agents
 		} else {
 			ui.LogWarn(fmt.Sprintf("%s (failed for: %s)", s.Name, strings.Join(failedAgents, ", ")))
 		}
-		_ = lock.AddSkillToLock(sName, lock.SkillLockEntry{
-			Source:     sourceID,
-			SourceType: string(source.SourceTypeWellKnown),
-			SourceURL:  parsed.URL,
-			PluginName: s.InstallName,
-		})
-		if !global {
+		if global {
+			_ = lock.AddSkillToLock(sName, lock.SkillLockEntry{
+				Source:     sourceID,
+				SourceType: string(source.SourceTypeWellKnown),
+				SourceURL:  parsed.URL,
+				PluginName: s.InstallName,
+			})
+		} else {
 			_ = lock.AddSkillToLocalLock(sName, lock.LocalSkillLockEntry{
 				Source:     parsed.URL,
 				SourceType: string(source.SourceTypeWellKnown),
@@ -466,16 +467,17 @@ func installBlobSkillsForAgents(selectedBlob []*blob.BlobSkill, agents []string,
 		if result.Tree != nil {
 			folderHash = blob.GetSkillFolderHashFromTree(result.Tree, bSkill.RepoPath)
 		}
-		_ = lock.AddSkillToLock(sName, lock.SkillLockEntry{
-			Source:          sourceInput,
-			SourceType:      string(source.SourceTypeGitHub),
-			SourceURL:       parsed.URL,
-			Ref:             ref,
-			SkillPath:       bSkill.RepoPath,
-			SkillFolderHash: folderHash,
-			PluginName:      sName,
-		})
-		if !global {
+		if global {
+			_ = lock.AddSkillToLock(sName, lock.SkillLockEntry{
+				Source:          sourceInput,
+				SourceType:      string(source.SourceTypeGitHub),
+				SourceURL:       parsed.URL,
+				Ref:             ref,
+				SkillPath:       bSkill.RepoPath,
+				SkillFolderHash: folderHash,
+				PluginName:      sName,
+			})
+		} else {
 			_ = lock.AddSkillToLocalLock(sName, lock.LocalSkillLockEntry{
 				Source:     sourceInput,
 				Ref:        ref,
@@ -560,8 +562,9 @@ func installSkillsForAgents(skills []*skill.Skill, agents []string, global bool,
 			}
 		}
 
-		_ = lock.AddSkillToLock(sName, lockEntry)
-		if !global {
+		if global {
+			_ = lock.AddSkillToLock(sName, lockEntry)
+		} else {
 			_ = lock.AddSkillToLocalLock(sName, lock.LocalSkillLockEntry{
 				Source:     baseLockEntry.Source,
 				Ref:        baseLockEntry.Ref,

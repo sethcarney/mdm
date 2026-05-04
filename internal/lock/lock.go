@@ -15,7 +15,7 @@ import (
 )
 
 // ──────────────────────────────────────────────────────────
-// Global skill lock (~/.agents/.skill-lock.json)
+// Global skill lock (~/.agents/skills-lock.json)
 // ──────────────────────────────────────────────────────────
 
 const globalLockVersion = 3
@@ -46,10 +46,10 @@ type SkillLockFile struct {
 
 func GetSkillLockPath() string {
 	if xdgState := os.Getenv("XDG_STATE_HOME"); xdgState != "" {
-		return filepath.Join(xdgState, "skills", ".skill-lock.json")
+		return filepath.Join(xdgState, "skills", "skills-lock.json")
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, agent.AgentsDir, ".skill-lock.json")
+	return filepath.Join(home, agent.AgentsDir, "skills-lock.json")
 }
 
 func ReadSkillLock() SkillLockFile {
