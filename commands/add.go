@@ -364,6 +364,11 @@ func runAddGitOrHub(parsed source.ParsedSource, opts AddOptions, cwd, sourceInpu
 		return
 	}
 
+	// Pre-tick skills already installed from this source in the interactive picker.
+	if len(opts.Skills) == 0 {
+		opts.PreselectedSkills = mergeUnique(opts.PreselectedSkills, alreadyInstalledFromSource(parsed.URL, cwd))
+	}
+
 	selectedSkills, ok := selectSkills(skills, opts)
 	if !ok {
 		return
@@ -390,7 +395,7 @@ func runAddGitOrHub(parsed source.ParsedSource, opts AddOptions, cwd, sourceInpu
 	}
 	commitSHA, _ := git.GetLocalCommitSHA(tmpDir)
 	baseLockEntry := lock.SkillLockEntry{
-		Source:     sourceInput,
+		Source:     stripSourceRef(sourceInput),
 		SourceType: string(parsed.Type),
 		SourceURL:  parsed.URL,
 		Ref:        lockRef,
@@ -409,6 +414,19 @@ func filterBlobSkillsByName(skills []*blob.BlobSkill, filter string) []*blob.Blo
 	for _, s := range skills {
 		if strings.EqualFold(s.Name, filter) || strings.EqualFold(blob.ToSkillSlug(s.Name), filter) {
 			keep = append(keep, s)
+		}
+	}
+	return keep
+}
+
+func filterBlobSkillsByNames(skills []*blob.BlobSkill, names []string) []*blob.BlobSkill {
+	var keep []*blob.BlobSkill
+	for _, s := range skills {
+		for _, name := range names {
+			if strings.EqualFold(s.Name, name) || strings.EqualFold(blob.ToSkillSlug(s.Name), name) {
+				keep = append(keep, s)
+				break
+			}
 		}
 	}
 	return keep
@@ -469,7 +487,7 @@ func installBlobSkillsForAgents(selectedBlob []*blob.BlobSkill, agents []string,
 		}
 		if global {
 			_ = lock.AddSkillToLock(sName, lock.SkillLockEntry{
-				Source:          sourceInput,
+				Source:          stripSourceRef(sourceInput),
 				SourceType:      string(source.SourceTypeGitHub),
 				SourceURL:       parsed.URL,
 				Ref:             ref,
@@ -479,7 +497,7 @@ func installBlobSkillsForAgents(selectedBlob []*blob.BlobSkill, agents []string,
 			})
 		} else {
 			_ = lock.AddSkillToLocalLock(sName, lock.LocalSkillLockEntry{
-				Source:     sourceInput,
+				Source:     stripSourceRef(sourceInput),
 				Ref:        ref,
 				SourceType: string(source.SourceTypeGitHub),
 			}, cwd)
@@ -490,9 +508,13 @@ func installBlobSkillsForAgents(selectedBlob []*blob.BlobSkill, agents []string,
 func runAddBlob(result *blob.BlobInstallResult, parsed source.ParsedSource, opts AddOptions, cwd, ownerRepo, sourceInput string) {
 	skills := result.Skills
 
-	skillFilter := skillFilterFromOpts(opts, parsed)
-	if skillFilter != "" && skillFilter != "*" {
-		skills = filterBlobSkillsByName(skills, skillFilter)
+	if len(opts.Skills) > 0 && opts.Skills[0] != "*" {
+		skills = filterBlobSkillsByNames(skills, opts.Skills)
+	} else {
+		skillFilter := skillFilterFromOpts(opts, parsed)
+		if skillFilter != "" && skillFilter != "*" {
+			skills = filterBlobSkillsByName(skills, skillFilter)
+		}
 	}
 	if len(skills) == 0 {
 		fmt.Fprintf(os.Stderr, "%sNo matching skills found.%s\n", ansiText, ansiReset)
@@ -505,6 +527,11 @@ func runAddBlob(result *blob.BlobInstallResult, parsed source.ParsedSource, opts
 			fmt.Printf("  %s%s%s  %s%s%s\n", ansiText, s.Name, ansiReset, ansiDim, s.Description, ansiReset)
 		}
 		return
+	}
+
+	// Pre-tick skills already installed from this source in the interactive picker.
+	if len(opts.Skills) == 0 {
+		opts.PreselectedSkills = mergeUnique(opts.PreselectedSkills, alreadyInstalledFromSource(parsed.URL, cwd))
 	}
 
 	selectedBlob, ok := selectBlobSkills(skills, opts)
@@ -1085,9 +1112,65 @@ func confirmInstallAfterAudit(entries []installAuditEntry, autoYes bool) bool {
 	return true
 }
 
+// alreadyInstalledFromSource returns skill names that are already recorded in either the
+// global or project lock file as having been installed from parsedURL.
+func alreadyInstalledFromSource(parsedURL, cwd string) []string {
+	seen := map[string]bool{}
+	var result []string
+
+	// Global lock stores a canonical SourceURL field.
+	globalL := lock.ReadSkillLock()
+	for name, e := range globalL.Skills {
+		if strings.EqualFold(e.SourceURL, parsedURL) && !seen[name] {
+			seen[name] = true
+			result = append(result, name)
+		}
+	}
+
+	// Local lock only stores the raw Source input; re-parse to get the canonical URL.
+	localL := lock.ReadLocalLock(cwd)
+	for name, e := range localL.Skills {
+		if strings.EqualFold(source.ParseSource(e.Source).URL, parsedURL) && !seen[name] {
+			seen[name] = true
+			result = append(result, name)
+		}
+	}
+
+	return result
+}
+
+// mergeUnique appends items from extra into base, skipping duplicates (case-sensitive).
+func mergeUnique(base, extra []string) []string {
+	seen := make(map[string]bool, len(base))
+	for _, v := range base {
+		seen[v] = true
+	}
+	result := append([]string(nil), base...)
+	for _, v := range extra {
+		if !seen[v] {
+			seen[v] = true
+			result = append(result, v)
+		}
+	}
+	return result
+}
+
+// stripSourceRef removes a trailing #fragment from a source URL so that the ref
+// is stored only in the dedicated Ref field, not duplicated inside Source.
+func stripSourceRef(s string) string {
+	if idx := strings.LastIndex(s, "#"); idx >= 0 {
+		return s[:idx]
+	}
+	return s
+}
+
 func skillFilterFromOpts(opts AddOptions, parsed source.ParsedSource) string {
-	if len(opts.Skills) > 0 {
+	if len(opts.Skills) == 1 {
 		return opts.Skills[0]
+	}
+	if len(opts.Skills) > 1 {
+		// Multiple skills requested: skip pre-filtering here and let selectSkills handle it.
+		return ""
 	}
 	return parsed.SkillFilter
 }

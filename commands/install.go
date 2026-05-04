@@ -122,11 +122,22 @@ func restoreSkills(entries map[string]sourceRef, baseOpts AddOptions) {
 	}
 	sourceMap := map[string]*sourceGroup{}
 	for name, e := range entries {
-		key := e.source + "|" + e.ref
+		// Normalize: strip a trailing #fragment from the source when it duplicates
+		// the ref field (e.g. "git@host:repo.git#main" with ref="main" should group
+		// with "git@host:repo.git" with ref="main").
+		normalizedSource := e.source
+		if e.ref != "" {
+			if idx := strings.LastIndex(normalizedSource, "#"); idx >= 0 {
+				if strings.EqualFold(normalizedSource[idx+1:], e.ref) {
+					normalizedSource = normalizedSource[:idx]
+				}
+			}
+		}
+		key := normalizedSource + "|" + e.ref
 		if g, ok := sourceMap[key]; ok {
 			g.skills = append(g.skills, name)
 		} else {
-			sourceMap[key] = &sourceGroup{source: e.source, ref: e.ref, skills: []string{name}}
+			sourceMap[key] = &sourceGroup{source: normalizedSource, ref: e.ref, skills: []string{name}}
 		}
 	}
 
