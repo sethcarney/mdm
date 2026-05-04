@@ -83,13 +83,14 @@ func syncAndLockSkill(s *skill.Skill, agents []string, global bool, mode Install
 	}
 	relPath = filepath.ToSlash(relPath)
 
-	_ = lock.AddSkillToLock(sName, lock.SkillLockEntry{
-		Source:     relPath,
-		SourceType: string(source.SourceTypeLocal),
-		SourceURL:  relPath,
-		PluginName: sName,
-	})
-	if !global {
+	if global {
+		_ = lock.AddSkillToLock(sName, lock.SkillLockEntry{
+			Source:     relPath,
+			SourceType: string(source.SourceTypeLocal),
+			SourceURL:  relPath,
+			PluginName: sName,
+		})
+	} else {
 		_ = lock.AddSkillToLocalLock(sName, lock.LocalSkillLockEntry{
 			Source:     relPath,
 			SourceType: string(source.SourceTypeLocal),
