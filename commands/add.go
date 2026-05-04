@@ -271,7 +271,10 @@ func runAddLocal(parsed source.ParsedSource, opts AddOptions, cwd string) {
 		return
 	}
 
-	selectedSkills := selectSkills(skills, opts)
+	selectedSkills, ok := selectSkills(skills, opts)
+	if !ok {
+		return
+	}
 
 	global, mode, agents, ok := promptScopeAndAgents(opts, cwd)
 	if !ok {
@@ -353,7 +356,10 @@ func runAddGitOrHub(parsed source.ParsedSource, opts AddOptions, cwd, sourceInpu
 		return
 	}
 
-	selectedSkills := selectSkills(skills, opts)
+	selectedSkills, ok := selectSkills(skills, opts)
+	if !ok {
+		return
+	}
 
 	// Start audit concurrently while scope/agent prompts run
 	auditCh := startInstallAudit(ownerRepo, parsed.Type, opts.SkipAudit, selectedSkills)
@@ -611,16 +617,26 @@ func filterSkillsByName(skills []*skill.Skill, names []string) []*skill.Skill {
 	return filtered
 }
 
-func selectSkills(skills []*skill.Skill, opts AddOptions) []*skill.Skill {
+func selectSkills(skills []*skill.Skill, opts AddOptions) ([]*skill.Skill, bool) {
 	if (len(opts.Skills) > 0 && opts.Skills[0] == "*") || opts.Yes || len(skills) == 1 {
 		if len(opts.Skills) > 0 && opts.Skills[0] != "*" {
-			return filterSkillsByName(skills, opts.Skills)
+			filtered := filterSkillsByName(skills, opts.Skills)
+			if len(filtered) == 0 {
+				fmt.Fprintf(os.Stderr, "%sNo matching skills found.%s\n", ansiText, ansiReset)
+				return nil, false
+			}
+			return filtered, true
 		}
-		return skills
+		return skills, true
 	}
 
 	if len(opts.Skills) > 0 {
-		return filterSkillsByName(skills, opts.Skills)
+		filtered := filterSkillsByName(skills, opts.Skills)
+		if len(filtered) == 0 {
+			fmt.Fprintf(os.Stderr, "%sNo matching skills found.%s\n", ansiText, ansiReset)
+			return nil, false
+		}
+		return filtered, true
 	}
 
 	skills, initSel := reorderSkillsPreselectedFirst(skills, opts.PreselectedSkills)
@@ -631,13 +647,13 @@ func selectSkills(skills []*skill.Skill, opts AddOptions) []*skill.Skill {
 	indices, ok := ui.UiMultiselect("Which skills would you like to install?", options, true, initSel, nil)
 	if !ok {
 		fmt.Println("Cancelled.")
-		os.Exit(0)
+		return nil, false
 	}
 	var selected []*skill.Skill
 	for _, i := range indices {
 		selected = append(selected, skills[i])
 	}
-	return selected
+	return selected, true
 }
 
 // promptScopeAndAgents asks for global/project scope and agent selection.

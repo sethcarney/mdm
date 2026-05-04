@@ -95,16 +95,19 @@ func updateGlobalSkills(skillFilter []string, stats *updateStats) {
 			continue
 		}
 		fmt.Printf("%sChecking %s...%s\n", ansiDim, sName, ansiReset)
-		isUpToDate, err := checkSkillUpToDate(sName, entry)
-		if err != nil {
-			ui.LogWarn(fmt.Sprintf("Could not check %s: %v", sName, err))
-			stats.skipped++
-			continue
-		}
-		if isUpToDate {
-			ui.LogInfo(sName + " is up to date")
-			stats.skipped++
-			continue
+		// Up-to-date check uses the GitHub API; for non-GitHub sources always re-run
+		if entry.SourceType == string(source.SourceTypeGitHub) {
+			isUpToDate, err := checkSkillUpToDate(sName, entry)
+			if err != nil {
+				ui.LogWarn(fmt.Sprintf("Could not check %s: %v", sName, err))
+				stats.skipped++
+				continue
+			}
+			if isUpToDate {
+				ui.LogInfo(sName + " is up to date")
+				stats.skipped++
+				continue
+			}
 		}
 		runAdd(entry.Source, AddOptions{Global: true, Yes: true, Skills: []string{entry.PluginName}})
 		stats.updated++
