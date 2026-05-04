@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/sethcarney/mdm/internal/blob"
+	"github.com/sethcarney/mdm/internal/git"
 	"github.com/sethcarney/mdm/internal/lock"
 	"github.com/sethcarney/mdm/internal/source"
 	"github.com/sethcarney/mdm/internal/ui"
@@ -95,19 +96,16 @@ func updateGlobalSkills(skillFilter []string, stats *updateStats) {
 			continue
 		}
 		fmt.Printf("%sChecking %s...%s\n", ansiDim, sName, ansiReset)
-		// Up-to-date check uses the GitHub API; for non-GitHub sources always re-run
-		if entry.SourceType == string(source.SourceTypeGitHub) {
-			isUpToDate, err := checkSkillUpToDate(sName, entry)
-			if err != nil {
-				ui.LogWarn(fmt.Sprintf("Could not check %s: %v", sName, err))
-				stats.skipped++
-				continue
-			}
-			if isUpToDate {
-				ui.LogInfo(sName + " is up to date")
-				stats.skipped++
-				continue
-			}
+		isUpToDate, err := checkSkillUpToDate(sName, entry)
+		if err != nil {
+			ui.LogWarn(fmt.Sprintf("Could not check %s: %v", sName, err))
+			stats.skipped++
+			continue
+		}
+		if isUpToDate {
+			ui.LogInfo(sName + " is up to date")
+			stats.skipped++
+			continue
 		}
 		runAdd(entry.Source, AddOptions{Global: true, Yes: true, Skills: []string{entry.PluginName}})
 		stats.updated++
@@ -161,19 +159,34 @@ func runUpdateWithOpts(skillFilter []string, opts UpdateOptions) {
 }
 
 func checkSkillUpToDate(skillName string, entry lock.SkillLockEntry) (bool, error) {
-	if entry.SkillFolderHash == "" || entry.SkillPath == "" {
-		return false, nil
-	}
 	parsed := source.ParseSource(entry.Source)
-	ownerRepo := source.GetOwnerRepo(parsed)
-	if ownerRepo == "" {
-		return false, nil
+
+	// GitHub: prefer folder-level hash check (most precise — only changes when the skill
+	// folder itself changes, not when unrelated files in the repo change).
+	if entry.SourceType == string(source.SourceTypeGitHub) &&
+		entry.SkillFolderHash != "" && entry.SkillPath != "" {
+		ownerRepo := source.GetOwnerRepo(parsed)
+		if ownerRepo != "" {
+			token := lock.GetGitHubToken()
+			ref := entry.Ref
+			latestHash, err := blob.FetchSkillFolderHash(ownerRepo, entry.SkillPath, token, &ref)
+			if err == nil {
+				return latestHash == entry.SkillFolderHash, nil
+			}
+			// On GitHub API error fall through to commit SHA check below.
+		}
 	}
-	token := lock.GetGitHubToken()
-	ref := entry.Ref
-	latestHash, err := blob.FetchSkillFolderHash(ownerRepo, entry.SkillPath, token, &ref)
-	if err != nil {
-		return false, err
+
+	// Universal fallback: compare remote commit SHA via git ls-remote.
+	// Works for GitHub, GitLab, Bitbucket, and any self-hosted git server.
+	if entry.CommitSHA != "" {
+		currentSHA, err := git.FetchRemoteCommitSHA(parsed.URL, entry.Ref)
+		if err != nil {
+			return false, err
+		}
+		return currentSHA == entry.CommitSHA, nil
 	}
-	return latestHash == entry.SkillFolderHash, nil
+
+	// No hash stored — treat as outdated so we always update once to populate the hash.
+	return false, nil
 }

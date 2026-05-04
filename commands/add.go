@@ -380,11 +380,13 @@ func runAddGitOrHub(parsed source.ParsedSource, opts AddOptions, cwd, sourceInpu
 	if lockRef == "" {
 		lockRef = "main"
 	}
+	commitSHA, _ := git.GetLocalCommitSHA(tmpDir)
 	baseLockEntry := lock.SkillLockEntry{
 		Source:     sourceInput,
 		SourceType: string(parsed.Type),
 		SourceURL:  parsed.URL,
 		Ref:        lockRef,
+		CommitSHA:  commitSHA,
 	}
 
 	installSkillsForAgents(selectedSkills, agents, global, mode, baseLockEntry, cwd, ownerRepo != "" && parsed.Type == source.SourceTypeGitHub)

@@ -89,3 +89,47 @@ func CleanupTempDir(dir string) error {
 	}
 	return os.RemoveAll(dir)
 }
+
+// GetLocalCommitSHA returns the HEAD commit SHA of an already-cloned repository directory.
+func GetLocalCommitSHA(dir string) (string, error) {
+	cmd := exec.Command("git", "-C", dir, "rev-parse", "HEAD")
+	cmd.Env = os.Environ()
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("git rev-parse HEAD failed in %s: %w", dir, err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// FetchRemoteCommitSHA fetches the commit SHA for the given ref on a remote git URL using
+// "git ls-remote", which works for any git host (GitHub, GitLab, Bitbucket, self-hosted)
+// without performing a full clone.  If ref is empty it resolves HEAD.
+func FetchRemoteCommitSHA(gitURL, ref string) (string, error) {
+	args := []string{"ls-remote", gitURL}
+	if ref != "" {
+		// Check branch and tag refs; include the bare ref in case it is a full refspec.
+		args = append(args, "refs/heads/"+ref, "refs/tags/"+ref, ref)
+	} else {
+		args = append(args, "HEAD")
+	}
+
+	cmd := exec.Command("git", args...)
+	cmd.Env = append(os.Environ(),
+		"GIT_TERMINAL_PROMPT=0",
+		"GIT_LFS_SKIP_SMUDGE=1",
+	)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("git ls-remote failed for %s: %w", gitURL, err)
+	}
+
+	// Output format: "<SHA>\t<refname>\n" …  Return the SHA of the first matching line.
+	// Accept both SHA-1 (40 hex chars) and SHA-256 (64 hex chars) hashes.
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		parts := strings.Fields(line)
+		if len(parts) >= 1 && (len(parts[0]) == 40 || len(parts[0]) == 64) {
+			return parts[0], nil
+		}
+	}
+	return "", fmt.Errorf("no matching ref found in git ls-remote output for %s ref=%s", gitURL, ref)
+}

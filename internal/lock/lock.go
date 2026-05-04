@@ -27,6 +27,7 @@ type SkillLockEntry struct {
 	Ref             string `json:"ref,omitempty"`
 	SkillPath       string `json:"skillPath,omitempty"`
 	SkillFolderHash string `json:"skillFolderHash"`
+	CommitSHA       string `json:"commitSHA,omitempty"`
 	InstalledAt     string `json:"installedAt"`
 	UpdatedAt       string `json:"updatedAt"`
 	PluginName      string `json:"pluginName,omitempty"`
