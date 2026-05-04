@@ -169,13 +169,16 @@ func runRemove(positional []string, opts RemoveOptions) {
 	scopeGlobal := &global
 	installed, err := listInstalledSkills(scopeGlobal, opts.Agents)
 	if err != nil || len(installed) == 0 {
+		var cleaned int
 		if global {
-			cleaned := cleanOrphanedLockEntries(cwd)
-			if cleaned > 0 {
-				fmt.Printf("%sCleaned up %d orphaned lock entr%s with no files on disk.%s\n",
-					ansiDim, cleaned, map[bool]string{true: "ies", false: "y"}[cleaned != 1], ansiReset)
-				return
-			}
+			cleaned = cleanOrphanedLockEntries(cwd)
+		} else {
+			cleaned = cleanOrphanedLocalLockEntries(cwd)
+		}
+		if cleaned > 0 {
+			fmt.Printf("%sCleaned up %d orphaned lock entr%s with no files on disk.%s\n",
+				ansiDim, cleaned, map[bool]string{true: "ies", false: "y"}[cleaned != 1], ansiReset)
+			return
 		}
 		fmt.Printf("%sNo skills installed.%s\n", ansiDim, ansiReset)
 		return
@@ -197,6 +200,9 @@ func runRemove(positional []string, opts RemoveOptions) {
 			agentsToRemove = opts.Agents
 		}
 		removeSkillFromDisk(sk, agentsToRemove, global, cwd)
+	}
+	if !global {
+		cleanOrphanedLocalLockEntries(cwd)
 	}
 	fmt.Println()
 }
@@ -232,6 +238,28 @@ func cleanOrphanedLockEntries(cwd string) int {
 	}
 	for _, name := range removed {
 		_ = lock.RemoveSkillFromLock(sanitizeName(name))
+	}
+	return len(removed)
+}
+
+// cleanOrphanedLocalLockEntries removes project lock entries whose skill files
+// no longer exist on disk. Returns the number of entries removed.
+func cleanOrphanedLocalLockEntries(cwd string) int {
+	localLock := lock.ReadLocalLock(cwd)
+	if len(localLock.Skills) == 0 {
+		return 0
+	}
+	canonicalBase := getCanonicalSkillsDir(false, cwd)
+	var removed []string
+	for name := range localLock.Skills {
+		skillDir := filepath.Join(canonicalBase, sanitizeName(name))
+		skillMd := filepath.Join(skillDir, "SKILL.md")
+		if _, err := os.Stat(skillMd); os.IsNotExist(err) {
+			removed = append(removed, name)
+		}
+	}
+	for _, name := range removed {
+		_ = lock.RemoveSkillFromLocalLock(sanitizeName(name), cwd)
 	}
 	return len(removed)
 }
