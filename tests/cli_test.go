@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -21,6 +22,9 @@ func TestMain(m *testing.M) {
 	defer os.RemoveAll(tmpDir)
 
 	mdmBin = filepath.Join(tmpDir, "mdm")
+	if runtime.GOOS == "windows" {
+		mdmBin += ".exe"
+	}
 
 	srcDir := filepath.Join(filepath.Dir(tmpDir), "..")
 	// Use the module root (where go.mod lives)

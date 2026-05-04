@@ -3,6 +3,7 @@ package commands
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -76,6 +77,10 @@ func TestDiagnoseSkillMdReadError(t *testing.T) {
 	skillMd := filepath.Join(dir, "SKILL.md")
 	if err := os.WriteFile(skillMd, []byte("valid content"), 0o000); err != nil {
 		t.Fatal(err)
+	}
+	// File permissions don't prevent reads on Windows.
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping permission test on Windows")
 	}
 	// Running as root would bypass permissions; skip the test in that case.
 	if os.Getuid() == 0 {
