@@ -130,6 +130,17 @@ func restoreSkills(entries map[string]sourceRef, baseOpts AddOptions) {
 		}
 	}
 
+	// Resolve agents once so the user is not prompted for each source group.
+	if len(baseOpts.Agents) == 0 {
+		cwd, _ := os.Getwd()
+		agents, ok := promptAgents(baseOpts, baseOpts.Global, cwd)
+		if !ok {
+			fmt.Println("Cancelled.")
+			return
+		}
+		baseOpts.Agents = agents
+	}
+
 	for _, group := range sourceMap {
 		fmt.Printf("%sInstalling from %s...%s\n", ansiDim, group.source, ansiReset)
 		opts := baseOpts
