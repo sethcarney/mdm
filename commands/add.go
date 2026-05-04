@@ -884,12 +884,7 @@ func promptAgents(opts AddOptions, global bool, cwd string) ([]string, bool) {
 		return result, true
 	}
 
-	// Prefer configured agents for the initial selection; fall back to last selected.
-	defaultAgents := configured
-	if len(defaultAgents) == 0 {
-		defaultAgents = lock.GetLastSelectedAgents()
-	}
-	initSel := computeAgentInitSel(options, installedNonUniversal, defaultAgents)
+	initSel := computeAgentInitSel(options, installedNonUniversal, configured)
 	selectedIndices, ok := ui.UiSearchMultiselect("Which agents would you like to install to?", options, lockedOptions, initSel)
 	if !ok {
 		return nil, false
@@ -902,7 +897,7 @@ func promptAgents(opts AddOptions, global bool, cwd string) ([]string, bool) {
 	for _, i := range selectedIndices {
 		result = append(result, options[i].Value)
 	}
-	_ = lock.SaveSelectedAgents(result)
+	_ = lock.SetConfiguredAgents(result, global, cwd)
 	return result, true
 }
 

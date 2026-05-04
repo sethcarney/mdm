@@ -38,11 +38,10 @@ type DismissedPrompts struct {
 }
 
 type SkillLockFile struct {
-	Version            int                       `json:"version"`
-	Skills             map[string]SkillLockEntry `json:"skills"`
-	Dismissed          DismissedPrompts          `json:"dismissed,omitempty"`
-	LastSelectedAgents []string                  `json:"lastSelectedAgents,omitempty"`
-	ConfiguredAgents   []string                  `json:"configuredAgents,omitempty"`
+	Version          int                       `json:"version"`
+	Skills           map[string]SkillLockEntry `json:"skills"`
+	Dismissed        DismissedPrompts          `json:"dismissed,omitempty"`
+	ConfiguredAgents []string                  `json:"configuredAgents,omitempty"`
 }
 
 func GetSkillLockPath() string {
@@ -123,17 +122,6 @@ func DismissPrompt(key string) error {
 	if key == "findSkillsPrompt" {
 		lock.Dismissed.FindSkillsPrompt = true
 	}
-	return WriteSkillLock(lock)
-}
-
-func GetLastSelectedAgents() []string {
-	lock := ReadSkillLock()
-	return lock.LastSelectedAgents
-}
-
-func SaveSelectedAgents(agents []string) error {
-	lock := ReadSkillLock()
-	lock.LastSelectedAgents = agents
 	return WriteSkillLock(lock)
 }
 
