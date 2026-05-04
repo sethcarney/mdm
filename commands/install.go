@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/sethcarney/mdm/internal/lock"
+	"github.com/sethcarney/mdm/internal/ui"
 )
 
 // experimental_install: restore skills from skills-lock.json
@@ -31,47 +32,108 @@ func buildInstallFromLockCmd(ver string) *cobra.Command {
 
 func runInstallFromLock(yes bool) {
 	cwd, _ := os.Getwd()
-	l := lock.ReadLocalLock(cwd)
 
-	if len(l.Skills) == 0 {
-		fmt.Printf("\n%sNo skills in skills-lock.json.%s\n\n", ansiDim, ansiReset)
+	localL := lock.ReadLocalLock(cwd)
+	globalL := lock.ReadSkillLock()
+
+	hasLocal := len(localL.Skills) > 0
+	hasGlobal := len(globalL.Skills) > 0
+
+	switch {
+	case !hasLocal && !hasGlobal:
+		fmt.Printf("\n%sNo skills-lock.json found.%s\n\n", ansiDim, ansiReset)
 		fmt.Printf("Add skills with %smdm skills add <package>%s\n\n", ansiText, ansiReset)
-		return
+
+	case hasLocal && !hasGlobal:
+		// Only local lock has skills — restore silently
+		restoreFromLocalLock(localL, yes)
+
+	case !hasLocal && hasGlobal:
+		// Only global lock has skills — explain and ask
+		fmt.Printf("\n%sNo skills found in local skills-lock.json.%s\n", ansiDim, ansiReset)
+		fmt.Printf("%sFound %d skill(s) in global skills-lock.json (%s).%s\n\n",
+			ansiDim, len(globalL.Skills), lock.GetSkillLockPath(), ansiReset)
+		if !yes {
+			confirmed, ok := ui.UiConfirm("Install from global skills-lock.json?")
+			if !ok || !confirmed {
+				fmt.Println("Cancelled.")
+				return
+			}
+		}
+		restoreFromGlobalLock(globalL, yes)
+
+	default: // both have skills
+		if yes {
+			// Default to local when -y flag is used
+			restoreFromLocalLock(localL, yes)
+		} else {
+			idx, ok := ui.UiSelect("Install from which skills-lock.json?", []ui.UIOption{
+				{Label: fmt.Sprintf("Local  — %d skill(s)", len(localL.Skills)), Hint: lock.GetLocalLockPath(cwd)},
+				{Label: fmt.Sprintf("Global — %d skill(s)", len(globalL.Skills)), Hint: lock.GetSkillLockPath()},
+			})
+			if !ok {
+				fmt.Println("Cancelled.")
+				return
+			}
+			if idx == 1 {
+				restoreFromGlobalLock(globalL, yes)
+			} else {
+				restoreFromLocalLock(localL, yes)
+			}
+		}
 	}
+}
 
-	fmt.Printf("\n%sRestoring %d skill(s) from skills-lock.json...%s\n\n", ansiText, len(l.Skills), ansiReset)
+// restoreFromLocalLock installs all skills recorded in the project-level lock file.
+func restoreFromLocalLock(l lock.LocalSkillLockFile, yes bool) {
+	fmt.Printf("\n%sRestoring %d skill(s) from local skills-lock.json...%s\n\n", ansiText, len(l.Skills), ansiReset)
 
-	// Group by source to batch installations
+	// Convert local entries to a common source/ref map.
+	entries := make(map[string]sourceRef, len(l.Skills))
+	for name, e := range l.Skills {
+		entries[name] = sourceRef{source: e.Source, ref: e.Ref}
+	}
+	restoreSkills(entries, AddOptions{Project: true, Yes: yes})
+}
+
+// restoreFromGlobalLock installs all skills recorded in the global lock file.
+func restoreFromGlobalLock(l lock.SkillLockFile, yes bool) {
+	fmt.Printf("\n%sRestoring %d skill(s) from global skills-lock.json...%s\n\n", ansiText, len(l.Skills), ansiReset)
+
+	entries := make(map[string]sourceRef, len(l.Skills))
+	for name, e := range l.Skills {
+		entries[name] = sourceRef{source: e.Source, ref: e.Ref}
+	}
+	restoreSkills(entries, AddOptions{Global: true, Yes: yes})
+}
+
+// sourceRef holds the source URL/path and optional ref for a lock entry.
+type sourceRef struct {
+	source string
+	ref    string
+}
+
+// restoreSkills groups lock entries by source and calls runAdd for each group.
+func restoreSkills(entries map[string]sourceRef, baseOpts AddOptions) {
 	type sourceGroup struct {
-		source     string
-		sourceType string
-		ref        string
-		skills     []string
+		source string
+		ref    string
+		skills []string
 	}
 	sourceMap := map[string]*sourceGroup{}
-	for sName, entry := range l.Skills {
-		key := entry.Source + "|" + entry.Ref
+	for name, e := range entries {
+		key := e.source + "|" + e.ref
 		if g, ok := sourceMap[key]; ok {
-			g.skills = append(g.skills, sName)
+			g.skills = append(g.skills, name)
 		} else {
-			sourceMap[key] = &sourceGroup{
-				source:     entry.Source,
-				sourceType: entry.SourceType,
-				ref:        entry.Ref,
-				skills:     []string{sName},
-			}
+			sourceMap[key] = &sourceGroup{source: e.source, ref: e.ref, skills: []string{name}}
 		}
 	}
 
 	for _, group := range sourceMap {
 		fmt.Printf("%sInstalling from %s...%s\n", ansiDim, group.source, ansiReset)
-
-		opts := AddOptions{
-			Project: true,
-			Yes:     yes,
-			Skills:  group.skills,
-		}
-
+		opts := baseOpts
+		opts.Skills = group.skills
 		src := group.source
 		if group.ref != "" && !strings.Contains(src, "#") {
 			src = src + "#" + group.ref

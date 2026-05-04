@@ -163,6 +163,63 @@ func TestDoctorHelp(t *testing.T) {
 	}
 }
 
+func runMdmInDir(t *testing.T, dir string, env []string, args ...string) (stdout string, stderr string, exitCode int) {
+	t.Helper()
+	cmd := exec.Command(mdmBin, args...)
+	cmd.Dir = dir
+	var outBuf, errBuf strings.Builder
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	if env != nil {
+		cmd.Env = env
+	}
+	err := cmd.Run()
+	stdout = outBuf.String()
+	stderr = errBuf.String()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else {
+			exitCode = 1
+		}
+	}
+	return stdout, stderr, exitCode
+}
+
+func TestInstallNoLockFile(t *testing.T) {
+	// Run in an isolated temp dir with no skills-lock.json and a fresh XDG_STATE_HOME
+	// so there is no global lock file either.
+	tmpDir := t.TempDir()
+	stateDir := t.TempDir()
+
+	// Build a minimal environment (inherit PATH so the binary can run).
+	env := []string{
+		"PATH=" + os.Getenv("PATH"),
+		"HOME=" + tmpDir,
+		"XDG_STATE_HOME=" + stateDir,
+	}
+
+	stdout, stderr, _ := runMdmInDir(t, tmpDir, env, "skills", "install", "-y")
+	combined := stdout + stderr
+
+	if !strings.Contains(combined, "No skills-lock.json found") {
+		t.Errorf("expected 'No skills-lock.json found' in output, got stdout=%q stderr=%q", stdout, stderr)
+	}
+	if strings.Contains(combined, "Please provide a package source") {
+		t.Errorf("unexpected 'Please provide a package source' error in output: stdout=%q stderr=%q", stdout, stderr)
+	}
+}
+
+func TestInstallHelp(t *testing.T) {
+	stdout, _, code := runMdm(t, "skills", "install", "--help")
+	if code != 0 {
+		t.Fatalf("mdm skills install --help exited %d", code)
+	}
+	if !strings.Contains(stdout, "Restore skills from skills-lock.json") {
+		t.Errorf("expected install help to contain description, got: %q", stdout)
+	}
+}
+
 func TestNormalizeMultiFlags(t *testing.T) {
 	// This should NOT produce "unknown flag" or "flag needs an argument" in stderr.
 	// Uses a non-existent local path so it fails fast without any network call.

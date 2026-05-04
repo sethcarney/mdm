@@ -40,7 +40,7 @@ func buildAddCmd(ver string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "add <package>",
 		Short:   "Add a skill from GitHub or URL",
-		Aliases: []string{"a", "install", "i"},
+		Aliases: []string{"a"},
 		Long: fmt.Sprintf(`Add a skill package from GitHub, a URL, or a local path.
 
 The --agent (-a) and --skill (-s) flags accept multiple values. You can
