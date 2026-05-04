@@ -861,7 +861,14 @@ func promptAgents(opts AddOptions, global bool, cwd string) ([]string, bool) {
 	options := buildNonUniversalOptions(installedNonUniversal, global)
 	lockedOptions := buildLockedAgentOptions(global)
 
+	// If the user has a configured agent list for this scope, use it as the
+	// default — for both --yes and the interactive picker.
+	configured := lock.GetConfiguredAgents(global, cwd)
+
 	if opts.Yes {
+		if len(configured) > 0 {
+			return configured, true
+		}
 		return yesAgents(options, lockedOptions, detected), true
 	}
 
@@ -877,7 +884,12 @@ func promptAgents(opts AddOptions, global bool, cwd string) ([]string, bool) {
 		return result, true
 	}
 
-	initSel := computeAgentInitSel(options, installedNonUniversal, lock.GetLastSelectedAgents())
+	// Prefer configured agents for the initial selection; fall back to last selected.
+	defaultAgents := configured
+	if len(defaultAgents) == 0 {
+		defaultAgents = lock.GetLastSelectedAgents()
+	}
+	initSel := computeAgentInitSel(options, installedNonUniversal, defaultAgents)
 	selectedIndices, ok := ui.UiSearchMultiselect("Which agents would you like to install to?", options, lockedOptions, initSel)
 	if !ok {
 		return nil, false
