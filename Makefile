@@ -12,23 +12,21 @@ clean:
 install:
 	go install .
 
-# Render the SVG to a multi-resolution ICO (requires librsvg2-bin + imagemagick).
-icon: assets/mdm.ico
-
-assets/mdm.ico: assets/mdm.svg
-	@for size in 256 128 64 48 32 16; do \
-		rsvg-convert -w $$size -h $$size assets/mdm.svg > assets/mdm_$${size}.png; \
-	done
-	convert assets/mdm_256.png assets/mdm_128.png assets/mdm_64.png \
-	        assets/mdm_48.png  assets/mdm_32.png  assets/mdm_16.png  \
-	        assets/mdm.ico
-	@rm -f assets/mdm_256.png assets/mdm_128.png assets/mdm_64.png \
-	       assets/mdm_48.png  assets/mdm_32.png  assets/mdm_16.png
+# Re-render assets/mdm.ico from the SVG shapes in tools/gen-icon/ (pure Go, no external tools).
+# Run this after changing assets/mdm.svg, then commit the updated ICO.
+icon:
+	go run ./tools/gen-icon/
 
 # Generate resource_windows.syso from the ICO (Windows-only build tag via filename).
 # Run this before building the Windows release binary.
 # Version is read automatically from internal/version/version.go.
 syso: assets/mdm.ico
 	$(eval VERSION := $(shell grep 'const Version' internal/version/version.go | sed 's/.*"\(.*\)".*/\1/'))
-	go run github.com/josephspurrier/goversioninfo/cmd/goversioninfo@v1.4.1 \
-	    -ver $(VERSION).0 -o resource_windows.syso assets/versioninfo.json
+	$(eval VMAJOR  := $(word 1,$(subst ., ,$(VERSION))))
+	$(eval VMINOR  := $(word 2,$(subst ., ,$(VERSION))))
+	$(eval VPATCH  := $(word 3,$(subst ., ,$(VERSION))))
+	go tool goversioninfo \
+	    -64 \
+	    -ver-major $(VMAJOR) -ver-minor $(VMINOR) -ver-patch $(VPATCH) -ver-build 0 \
+	    -product-ver-major $(VMAJOR) -product-ver-minor $(VMINOR) -product-ver-patch $(VPATCH) -product-ver-build 0 \
+	    -o resource_windows.syso assets/versioninfo.json
