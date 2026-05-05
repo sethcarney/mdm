@@ -112,6 +112,18 @@ func updateGlobalSkills(skillFilter []string, stats *updateStats) {
 	}
 }
 
+func checkProjectSkillUpToDate(entry lock.LocalSkillLockEntry) (bool, error) {
+	if entry.CommitSHA == "" {
+		return false, nil
+	}
+	parsed := source.ParseSource(entry.Source)
+	currentSHA, err := git.FetchRemoteCommitSHA(parsed.URL, entry.Ref)
+	if err != nil {
+		return false, err
+	}
+	return currentSHA == entry.CommitSHA, nil
+}
+
 func updateProjectSkills(skillFilter []string, cwd string, stats *updateStats) {
 	localLock := lock.ReadLocalLock(cwd)
 	for sName, entry := range localLock.Skills {
@@ -123,6 +135,17 @@ func updateProjectSkills(skillFilter []string, cwd string, stats *updateStats) {
 			continue
 		}
 		fmt.Printf("%sChecking %s...%s\n", ansiDim, sName, ansiReset)
+		isUpToDate, err := checkProjectSkillUpToDate(entry)
+		if err != nil {
+			ui.LogWarn(fmt.Sprintf("Could not check %s: %v", sName, err))
+			stats.skipped++
+			continue
+		}
+		if isUpToDate {
+			ui.LogInfo(sName + " is up to date")
+			stats.skipped++
+			continue
+		}
 		src := entry.Source
 		if entry.Ref != "" && !strings.Contains(src, "#") {
 			src = src + "#" + entry.Ref

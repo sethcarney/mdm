@@ -213,7 +213,7 @@ func checkBlobSkillFilter(data map[string]interface{}, name, filter string, incl
 	return !isInternal || includeInternal
 }
 
-func fetchBlobSkillData(ctx context.Context, owner, repo, slug, branch, subpath, skillMdPath, name, desc string, body []byte) *BlobSkill {
+func fetchBlobSkillData(ctx context.Context, owner, repo, slug, branch, subpath, skillMdPath, name, desc, version string, body []byte) *BlobSkill {
 	dlURL := fmt.Sprintf("%s/api/download?owner=%s&repo=%s&slug=%s&branch=%s", downloadBaseURL, owner, repo, slug, branch)
 	if subpath != "" {
 		dlURL += "&subpath=" + url.QueryEscape(subpath)
@@ -221,13 +221,13 @@ func fetchBlobSkillData(ctx context.Context, owner, repo, slug, branch, subpath,
 	dlBody, dlStatus, dlErr := HttpGet(ctx, dlURL, nil)
 	if dlErr != nil || dlStatus != 200 {
 		files := []SkillSnapshotFile{{Path: "SKILL.md", Contents: string(body)}}
-		return &BlobSkill{Skill: skill.Skill{Name: name, Description: desc}, Files: files, RepoPath: skillMdPath}
+		return &BlobSkill{Skill: skill.Skill{Name: name, Description: desc, Version: version}, Files: files, RepoPath: skillMdPath}
 	}
 	var dlResp SkillDownloadResponse
 	if err := json.Unmarshal(dlBody, &dlResp); err != nil {
 		return nil
 	}
-	return &BlobSkill{Skill: skill.Skill{Name: name, Description: desc}, Files: dlResp.Files, SnapshotHash: dlResp.Hash, RepoPath: skillMdPath}
+	return &BlobSkill{Skill: skill.Skill{Name: name, Description: desc, Version: version}, Files: dlResp.Files, SnapshotHash: dlResp.Hash, RepoPath: skillMdPath}
 }
 
 func TryBlobInstall(ownerRepo string, opts struct {
@@ -273,13 +273,14 @@ func TryBlobInstall(ownerRepo string, opts struct {
 		data, _ := skill.ParseFrontmatter(string(body))
 		name, _ := data["name"].(string)
 		desc, _ := data["description"].(string)
+		version, _ := data["version"].(string)
 		if name == "" || desc == "" {
 			continue
 		}
 		if !checkBlobSkillFilter(data, name, opts.SkillFilter, opts.IncludeInternal) {
 			continue
 		}
-		blobSkill := fetchBlobSkillData(ctx, parts[0], parts[1], ToSkillSlug(name), branch, opts.Subpath, skillMdPath, name, desc, body)
+		blobSkill := fetchBlobSkillData(ctx, parts[0], parts[1], ToSkillSlug(name), branch, opts.Subpath, skillMdPath, name, desc, version, body)
 		if blobSkill == nil {
 			continue
 		}

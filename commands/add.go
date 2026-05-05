@@ -493,13 +493,15 @@ func installBlobSkillsForAgents(selectedBlob []*blob.BlobSkill, agents []string,
 				Ref:             ref,
 				SkillPath:       bSkill.RepoPath,
 				SkillFolderHash: folderHash,
+				SkillVersion:    bSkill.Version,
 				PluginName:      sName,
 			})
 		} else {
 			_ = lock.AddSkillToLocalLock(sName, lock.LocalSkillLockEntry{
-				Source:     stripSourceRef(sourceInput),
-				Ref:        ref,
-				SourceType: string(source.SourceTypeGitHub),
+				Source:       stripSourceRef(sourceInput),
+				Ref:          ref,
+				SourceType:   string(source.SourceTypeGitHub),
+				SkillVersion: bSkill.Version,
 			}, cwd)
 		}
 	}
@@ -583,6 +585,7 @@ func installSkillsForAgents(skills []*skill.Skill, agents []string, global bool,
 
 		lockEntry := baseLockEntry
 		lockEntry.PluginName = sName
+		lockEntry.SkillVersion = s.Version
 		if computeHash && s.Path != "" {
 			if hash, err := lock.ComputeSkillFolderHash(s.Path); err == nil {
 				lockEntry.SkillFolderHash = hash
@@ -593,9 +596,11 @@ func installSkillsForAgents(skills []*skill.Skill, agents []string, global bool,
 			_ = lock.AddSkillToLock(sName, lockEntry)
 		} else {
 			_ = lock.AddSkillToLocalLock(sName, lock.LocalSkillLockEntry{
-				Source:     baseLockEntry.Source,
-				Ref:        baseLockEntry.Ref,
-				SourceType: baseLockEntry.SourceType,
+				Source:       baseLockEntry.Source,
+				Ref:          baseLockEntry.Ref,
+				SourceType:   baseLockEntry.SourceType,
+				CommitSHA:    baseLockEntry.CommitSHA,
+				SkillVersion: s.Version,
 			}, cwd)
 		}
 	}

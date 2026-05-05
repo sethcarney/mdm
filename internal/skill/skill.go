@@ -15,6 +15,7 @@ import (
 type Skill struct {
 	Name        string
 	Description string
+	Version     string
 	Path        string
 	RawContent  string
 	PluginName  string
@@ -109,9 +110,16 @@ func ParseSkillMd(skillMdPath string, includeInternal bool) (*Skill, error) {
 		return nil, nil
 	}
 
+	var ver string
+	if v, ok := data["version"]; ok {
+		if vs, ok := v.(string); ok {
+			ver = vs
+		}
+	}
 	return &Skill{
 		Name:        name,
 		Description: desc,
+		Version:     ver,
 		Path:        filepath.Dir(skillMdPath),
 		RawContent:  raw,
 		Metadata:    extractSkillMetadata(data),
