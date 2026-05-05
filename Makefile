@@ -1,4 +1,4 @@
-.PHONY: build test clean install icon syso
+.PHONY: build test clean install fmt icon syso
 
 build:
 	go build -o mdm .
@@ -11,6 +11,9 @@ clean:
 
 install:
 	go install .
+
+fmt:
+	gofmt -s -w .
 
 # Re-render assets/mdm.ico from the SVG shapes in tools/gen-icon/ (pure Go, no external tools).
 # Run this after changing assets/mdm.svg, then commit the updated ICO.
