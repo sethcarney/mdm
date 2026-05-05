@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -92,15 +93,26 @@ If no agent names are provided an interactive picker is shown.
 Use %s--global%s / %s-g%s to configure agents at the user level.`, ansiBold, ansiReset, ansiBold, ansiReset),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cwd, _ := os.Getwd()
+
+			if len(args) == 0 {
+				if !cmd.Flags().Changed("global") {
+					isGlobal, ok := promptAgentScope()
+					if !ok {
+						return nil
+					}
+					global = isGlobal
+				}
+				scope := "project"
+				if global {
+					scope = "global"
+				}
+				return pickAndSaveAgents(global, scope, cwd)
+			}
+
 			scope := "project"
 			if global {
 				scope = "global"
 			}
-
-			if len(args) == 0 {
-				return pickAndSaveAgents(global, scope, cwd)
-			}
-
 			toAdd, ok := validateNamedAgents(args)
 			if !ok {
 				return fmt.Errorf("no valid agents specified")
@@ -126,6 +138,9 @@ Use %s--global%s / %s-g%s to configure agents at the user level.`, ansiBold, ans
 
 // pickAndSaveAgents shows an interactive picker pre-seeded with the current
 // configured list and replaces the entire list with the user's selection.
+// Truly universal agents (share .agents/skills AND have no unique instruction
+// file) are excluded from the picker — they are always supported and need no
+// configuration.
 func pickAndSaveAgents(global bool, scope, cwd string) error {
 	current := lock.GetConfiguredAgents(global, cwd)
 	currentSet := map[string]bool{}
@@ -134,14 +149,22 @@ func pickAndSaveAgents(global bool, scope, cwd string) error {
 	}
 
 	var options []ui.UIOption
+	var lockedOptions []ui.UIOption
 	for name, cfg := range agent.AllAgents {
 		if global && cfg.GlobalSkillsDir == "" {
+			continue
+		}
+		if agent.NeedsNoTracking(name) {
+			lockedOptions = append(lockedOptions, ui.UIOption{Label: cfg.DisplayName, Value: name})
 			continue
 		}
 		options = append(options, ui.UIOption{Label: cfg.DisplayName, Value: name})
 	}
 	sort.Slice(options, func(i, j int) bool {
 		return options[i].Label < options[j].Label
+	})
+	sort.Slice(lockedOptions, func(i, j int) bool {
+		return lockedOptions[i].Label < lockedOptions[j].Label
 	})
 
 	var initSel []int
@@ -151,7 +174,7 @@ func pickAndSaveAgents(global bool, scope, cwd string) error {
 		}
 	}
 
-	selected, ok := ui.UiSearchMultiselect("Which agents do you want to configure?", options, nil, initSel)
+	selected, ok := ui.UiSearchMultiselect("Which agents do you want to configure?", options, lockedOptions, initSel)
 	if !ok {
 		return nil
 	}
@@ -171,6 +194,18 @@ func pickAndSaveAgents(global bool, scope, cwd string) error {
 	return nil
 }
 
+func promptAgentScope() (isGlobal bool, ok bool) {
+	opts := []ui.UIOption{
+		{Label: "Project", Value: "project", Hint: "skills-lock.json in this directory"},
+		{Label: "Global", Value: "global", Hint: "~/.agents/skills-lock.json"},
+	}
+	idx, ok := ui.UiSelect("Configure agents for which scope?", opts)
+	if !ok {
+		return false, false
+	}
+	return idx == 1, true
+}
+
 func buildAgentsRemoveCmd() *cobra.Command {
 	var global bool
 	cmd := &cobra.Command{
@@ -179,6 +214,15 @@ func buildAgentsRemoveCmd() *cobra.Command {
 		Short:   "Remove agents from your configured list",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cwd, _ := os.Getwd()
+
+			if len(args) == 0 && !cmd.Flags().Changed("global") {
+				isGlobal, ok := promptAgentScope()
+				if !ok {
+					return nil
+				}
+				global = isGlobal
+			}
+
 			scope := "project"
 			if global {
 				scope = "global"
@@ -245,11 +289,54 @@ func buildAgentsRemoveCmd() *cobra.Command {
 				fmt.Printf("%s✓%s Removed %s%s%s from %s configured agents\n",
 					ansiGreen, ansiReset, ansiBold, displayName, ansiReset, scope)
 			}
+			fmt.Println()
+			cleanUpRemovedAgentFiles(toRemove, global, cwd)
 			return nil
 		},
 	}
 	cmd.Flags().BoolVarP(&global, "global", "g", false, "Remove from global configured agents")
 	return cmd
+}
+
+// cleanUpRemovedAgentFiles removes the skills directory and instructions file
+// that belong exclusively to each agent being removed. Shared resources
+// (.agents/skills, AGENTS.md) are never touched.
+func cleanUpRemovedAgentFiles(toRemove []string, global bool, cwd string) {
+	for _, name := range toRemove {
+		cfg := agent.AllAgents[name]
+		if cfg == nil {
+			continue
+		}
+
+		// Remove the agent's unique skills directory (skip shared .agents/skills).
+		if !agent.UsesSharedSkillsDir(name) {
+			var skillsPath string
+			if global {
+				skillsPath = cfg.GlobalSkillsDir
+			} else {
+				skillsPath = filepath.Join(cwd, cfg.SkillsDir)
+			}
+			if skillsPath != "" {
+				if info, err := os.Lstat(skillsPath); err == nil {
+					if info.Mode()&os.ModeSymlink != 0 {
+						os.Remove(skillsPath)
+					} else {
+						os.RemoveAll(skillsPath)
+					}
+					ui.LogInfo("Removed " + cfg.DisplayName + " skills directory")
+				}
+			}
+		}
+
+		// Remove the agent's instructions file (project scope only; skip shared AGENTS.md).
+		if !global && cfg.InstructionsFile != "" && cfg.InstructionsFile != "AGENTS.md" {
+			instrPath := filepath.Join(cwd, cfg.InstructionsFile)
+			if _, err := os.Lstat(instrPath); err == nil {
+				os.Remove(instrPath)
+				ui.LogInfo("Removed " + cfg.InstructionsFile)
+			}
+		}
+	}
 }
 
 func printAgentsSaved(agents []string, scope string) {

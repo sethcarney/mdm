@@ -83,7 +83,7 @@ func getAgentBaseDir(agentName string, global bool, cwd string) string {
 	if a == nil {
 		return ""
 	}
-	if agent.IsUniversalAgent(agentName) {
+	if agent.UsesSharedSkillsDir(agentName) {
 		return getCanonicalSkillsDir(global, cwd)
 	}
 	if global {
@@ -267,7 +267,7 @@ func performSymlinkInstall(canonicalDir, agentDir, agentName string, global bool
 	if err := cp(canonicalDir); err != nil {
 		return InstallResult{Success: false, Path: agentDir, Mode: mode, Error: err.Error()}
 	}
-	if global && agent.IsUniversalAgent(agentName) {
+	if global && agent.UsesSharedSkillsDir(agentName) {
 		return InstallResult{Success: true, Path: canonicalDir, CanonicalPath: canonicalDir, Mode: InstallModeSymlink}
 	}
 	if createSymlink(canonicalDir, agentDir) {

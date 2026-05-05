@@ -233,7 +233,7 @@ func diagnoseSkill(r *doctorResult, storedHash string, global bool, cwd string) 
 func checkAgentLinks(r *doctorResult, global bool, cwd string) {
 	sName := sanitizeName(r.Name)
 	for agentName, agentCfg := range agent.AllAgents {
-		if agentCfg == nil || agent.IsUniversalAgent(agentName) {
+		if agentCfg == nil || agent.UsesSharedSkillsDir(agentName) {
 			continue
 		}
 		var agentBase string
