@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- Dark background matching the terminal colour scheme -->
+  <rect width="256" height="256" rx="40" fill="#0f1117"/>
+  <!--
+    Block-M polygon (non-self-intersecting, nonzero fill):
+    Outer boundary traces the left bar up, across the two arm diagonals
+    meeting at the V tip, then the right bar down; the return path cuts
+    the inner V notch, leaving the classic M silhouette empty at the
+    inverted-V gap (top-centre) and the V notch (bottom-centre).
+  -->
+  <polygon
+    fill="#afffff"
+    points="44,145 44,42 76,42 128,91 180,42 212,42 212,145 180,145 180,70 128,119 76,70 76,145"
+  />
+  <!-- Arrow stem -->
+  <rect x="112" y="155" width="32" height="30" fill="#afffff"/>
+  <!-- Arrowhead (base overlaps stem by 7 px for a seamless join) -->
+  <polygon fill="#afffff" points="80,178 176,178 128,220"/>
+</svg>
