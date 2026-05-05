@@ -99,7 +99,18 @@ mdm agents add --global claude-code
 
 ## mdm agents remove
 
-With no arguments, shows a multiselect of your currently configured agents and removes your selection.
+With no arguments, shows a multiselect of your currently configured agents with nothing pre-selected. Check the agents you want to remove, then confirm before any changes are made.
+
+```
+Which agents would you like to remove?
+  > filter...
+  ❯ ○ Claude Code
+    ○ Cursor
+    ○ Windsurf
+  type to filter · space to toggle · enter to confirm
+
+Remove 1 agent(s): Windsurf? [y/N]
+```
 
 After removing agents from the configured list, mdm also cleans up the files that belong exclusively to each removed agent:
 

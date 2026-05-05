@@ -654,19 +654,25 @@ func (m *searchModel) viewOptionsList() string {
 	return sb.String()
 }
 
+// viewDone renders the final single-line summary shown after the user confirms
+// or cancels the prompt.
+func (m *searchModel) viewDone() string {
+	if m.cancelled {
+		return styleDimmed.Render(m.message) + "\n"
+	}
+	var labels []string
+	for _, lo := range m.locked {
+		labels = append(labels, lo.Label)
+	}
+	for _, i := range m.result {
+		labels = append(labels, m.options[i].Label)
+	}
+	return stylePrompt.Render(m.message) + "  " + styleDimmed.Render(strings.Join(labels, ", ")) + "\n"
+}
+
 func (m *searchModel) View() string {
 	if m.done {
-		if m.cancelled {
-			return styleDimmed.Render(m.message) + "\n"
-		}
-		var labels []string
-		for _, lo := range m.locked {
-			labels = append(labels, lo.Label)
-		}
-		for _, i := range m.result {
-			labels = append(labels, m.options[i].Label)
-		}
-		return stylePrompt.Render(m.message) + "  " + styleDimmed.Render(strings.Join(labels, ", ")) + "\n"
+		return m.viewDone()
 	}
 
 	footer := styleDimmed.Render("type to filter · space to toggle · enter to confirm")

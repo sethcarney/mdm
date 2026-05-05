@@ -1,10 +1,15 @@
-.PHONY: build test clean install fmt icon syso
+.PHONY: build test clean install fmt icon syso ci
 
 build:
 	go build -o mdm .
 
 test:
 	go test -v ./...
+
+ci: fmt
+	go test ./...
+	go install golang.org/x/vuln/cmd/govulncheck@v1.1.4 && govulncheck ./...
+	go install github.com/fzipp/gocyclo/cmd/gocyclo@v0.6.0 && gocyclo -over 16 .
 
 clean:
 	rm -f mdm resource_windows.syso

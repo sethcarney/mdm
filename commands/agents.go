@@ -242,39 +242,27 @@ func buildAgentsRemoveCmd() *cobra.Command {
 				}
 				toRemove = validated
 			} else {
-				var options []ui.UIOption
-				for _, name := range configured {
-					cfg := agent.AllAgents[name]
-					label := name
-					if cfg != nil {
-						label = cfg.DisplayName
-					}
-					options = append(options, ui.UIOption{Label: label, Value: name})
-				}
-
-				// Pre-select all — user unchecks the ones they want to remove.
-				initSel := make([]int, len(options))
-				for i := range options {
-					initSel[i] = i
-				}
-
-				kept, ok := ui.UiSearchMultiselect("Which agents do you want to keep?", options, nil, initSel)
+				picked, ok := pickAgentsToRemove(configured)
 				if !ok {
 					return nil
 				}
-				keptSet := map[string]bool{}
-				for _, i := range kept {
-					keptSet[options[i].Value] = true
+				toRemove = picked
+			}
+
+			// Confirm before acting.
+			var displayNames []string
+			for _, name := range toRemove {
+				cfg := agent.AllAgents[name]
+				if cfg != nil {
+					displayNames = append(displayNames, cfg.DisplayName)
+				} else {
+					displayNames = append(displayNames, name)
 				}
-				for _, name := range configured {
-					if !keptSet[name] {
-						toRemove = append(toRemove, name)
-					}
-				}
-				if len(toRemove) == 0 {
-					fmt.Printf("%sNo changes made.%s\n", ansiDim, ansiReset)
-					return nil
-				}
+			}
+			confirmed, ok := ui.UiConfirm(fmt.Sprintf("Remove %d agent(s): %s?", len(toRemove), strings.Join(displayNames, ", ")))
+			if !ok || !confirmed {
+				fmt.Println("Cancelled.")
+				return nil
 			}
 
 			if err := lock.RemoveFromConfiguredAgents(toRemove, global, cwd); err != nil {
@@ -296,6 +284,35 @@ func buildAgentsRemoveCmd() *cobra.Command {
 	}
 	cmd.Flags().BoolVarP(&global, "global", "g", false, "Remove from global configured agents")
 	return cmd
+}
+
+// pickAgentsToRemove shows an interactive picker with nothing pre-selected;
+// the user checks the agents they want to remove.
+func pickAgentsToRemove(configured []string) ([]string, bool) {
+	var options []ui.UIOption
+	for _, name := range configured {
+		cfg := agent.AllAgents[name]
+		label := name
+		if cfg != nil {
+			label = cfg.DisplayName
+		}
+		options = append(options, ui.UIOption{Label: label, Value: name})
+	}
+
+	indices, ok := ui.UiMultiselect("Which agents would you like to remove?", options, false, nil, nil)
+	if !ok {
+		fmt.Println("Cancelled.")
+		return nil, false
+	}
+	if len(indices) == 0 {
+		fmt.Printf("%sNo agents selected.%s\n", ansiDim, ansiReset)
+		return nil, false
+	}
+	var toRemove []string
+	for _, i := range indices {
+		toRemove = append(toRemove, options[i].Value)
+	}
+	return toRemove, true
 }
 
 // cleanUpRemovedAgentFiles removes the skills directory and instructions file

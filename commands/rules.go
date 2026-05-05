@@ -531,14 +531,37 @@ func collectSymlinkedFiles(cwd string, agentFilter []string) []symlinkedFile {
 
 func runRulesUnlink(agentFilter []string, yes bool) {
 	cwd, _ := os.Getwd()
-	toRemove := collectSymlinkedFiles(cwd, agentFilter)
+	found := collectSymlinkedFiles(cwd, agentFilter)
 
-	if len(toRemove) == 0 {
+	if len(found) == 0 {
 		fmt.Printf("%sNo symlinked instruction files found.%s\n", ansiDim, ansiReset)
 		return
 	}
 
-	sort.Slice(toRemove, func(i, j int) bool { return toRemove[i].file < toRemove[j].file })
+	sort.Slice(found, func(i, j int) bool { return found[i].file < found[j].file })
+
+	// When no --agent filter and not --yes, let the user pick which symlinks to remove.
+	var toRemove []symlinkedFile
+	if len(agentFilter) == 0 && !yes {
+		options := make([]ui.UIOption, len(found))
+		for i, r := range found {
+			options[i] = ui.UIOption{Label: r.file, Value: r.file, Hint: "→ " + r.dest}
+		}
+		indices, ok := ui.UiMultiselect("Which symlinks would you like to remove?", options, false, nil, nil)
+		if !ok {
+			fmt.Println("Cancelled.")
+			return
+		}
+		if len(indices) == 0 {
+			fmt.Printf("%sNo files selected.%s\n", ansiDim, ansiReset)
+			return
+		}
+		for _, i := range indices {
+			toRemove = append(toRemove, found[i])
+		}
+	} else {
+		toRemove = found
+	}
 
 	fmt.Println()
 	for _, r := range toRemove {

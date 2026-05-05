@@ -134,8 +134,23 @@ States:
 
 Removes symlinks created by `mdm rules link`. Real files are never touched.
 
+With no arguments, shows a picker listing each symlinked instruction file (with its symlink target as a hint). Check the ones you want to remove, then confirm:
+
+```
+Which symlinks would you like to remove?
+  > filter...
+  ❯ ○ .cursorrules          → AGENTS.md
+    ○ .windsurfrules        → AGENTS.md
+    ○ CLAUDE.md             → AGENTS.md
+  type to filter · space to toggle · enter to confirm
+
+Remove 2 symlink(s)? [y/N]
+```
+
+Pass `--agent` to skip the picker and target specific agents directly, or `-y` to skip the confirmation prompt.
+
 ```bash
-mdm rules unlink                        # interactive confirmation
-mdm rules unlink --agent cursor         # only remove cursor's symlink
+mdm rules unlink                        # interactive — pick then confirm
+mdm rules unlink --agent cursor         # only remove cursor's symlink (no picker)
 mdm rules unlink -y                     # skip confirmation
 ```

@@ -830,6 +830,28 @@ func computeAgentInitSel(options []ui.UIOption, installedNonUniversal []string, 
 	return initSel
 }
 
+// promptAgentsYes resolves the agent list when --yes is set, using configured
+// agents when available and falling back to detected agents.
+func promptAgentsYes(configured []string, lockedOptions, options []ui.UIOption, detected []string) []string {
+	if len(configured) > 0 {
+		// configuredAgents only holds non-universal agents; always expand
+		// with the locked universal agents for the actual installation.
+		added := make(map[string]bool)
+		var result []string
+		for _, lo := range lockedOptions {
+			result = append(result, lo.Value)
+			added[lo.Value] = true
+		}
+		for _, c := range configured {
+			if !added[c] {
+				result = append(result, c)
+			}
+		}
+		return result
+	}
+	return yesAgents(options, lockedOptions, detected)
+}
+
 func yesAgents(options []ui.UIOption, lockedOptions []ui.UIOption, detected []string) []string {
 	var result []string
 	for _, lo := range lockedOptions {
@@ -866,23 +888,7 @@ func promptAgents(opts AddOptions, global bool, cwd string) ([]string, bool) {
 	configured := lock.GetConfiguredAgents(global, cwd)
 
 	if opts.Yes {
-		if len(configured) > 0 {
-			// configuredAgents only holds non-universal agents; always expand
-			// with the locked universal agents for the actual installation.
-			added := make(map[string]bool)
-			var result []string
-			for _, lo := range lockedOptions {
-				result = append(result, lo.Value)
-				added[lo.Value] = true
-			}
-			for _, c := range configured {
-				if !added[c] {
-					result = append(result, c)
-				}
-			}
-			return result, true
-		}
-		return yesAgents(options, lockedOptions, detected), true
+		return promptAgentsYes(configured, lockedOptions, options, detected), true
 	}
 
 	if len(options) == 0 && len(lockedOptions) == 0 {
