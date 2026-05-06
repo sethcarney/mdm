@@ -114,25 +114,52 @@ func selectSkillsToRemove(installed []*InstalledSkill, skillFilter []string, opt
 	return selected, true
 }
 
-func removeSkillFromDisk(sk *InstalledSkill, agentsToRemove []string, global bool, cwd string) {
-	sName := sanitizeName(sk.Name)
-
-	// Resolve the skill's original source path (if local) so we can guard it
-	// from deletion in the edge case where it coincides with the canonical dir.
-	localSourceAbs := ""
+// resolveLocalSourceAbs returns the absolute path of the skill's source
+// directory when it was installed from a local path, or "" otherwise.
+func resolveLocalSourceAbs(sName string, global bool, cwd string) string {
 	if global {
 		if e, ok := lock.ReadSkillLock().Skills[sName]; ok && e.SourceType == string(source.SourceTypeLocal) {
-			localSourceAbs, _ = filepath.Abs(e.Source)
+			abs, _ := filepath.Abs(e.Source)
+			return abs
 		}
-	} else {
-		if le, ok := lock.ReadLocalLock(cwd).Skills[sName]; ok && le.SourceType == string(source.SourceTypeLocal) {
-			src := le.Source
-			if !filepath.IsAbs(src) {
-				src = filepath.Clean(filepath.Join(cwd, src))
-			}
-			localSourceAbs = src
-		}
+		return ""
 	}
+	le, ok := lock.ReadLocalLock(cwd).Skills[sName]
+	if !ok || le.SourceType != string(source.SourceTypeLocal) {
+		return ""
+	}
+	src := le.Source
+	if !filepath.IsAbs(src) {
+		src = filepath.Clean(filepath.Join(cwd, src))
+	}
+	return src
+}
+
+// removeAgentSkillDir deletes the skill directory for one candidate name under
+// an agent base, skipping paths that live inside the local source tree.
+func removeAgentSkillDir(agentBase, name, localSourceAbs string) {
+	agentSkillDir := filepath.Join(agentBase, name)
+	agentSkillAbs, _ := filepath.Abs(agentSkillDir)
+	if localSourceAbs != "" && isInsideOrEqual(agentSkillAbs, localSourceAbs) {
+		return
+	}
+	if !isPathSafe(agentBase, agentSkillDir) {
+		return
+	}
+	info, err := os.Lstat(agentSkillDir)
+	if err != nil {
+		return
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		os.Remove(agentSkillDir)
+	} else {
+		os.RemoveAll(agentSkillDir)
+	}
+}
+
+func removeSkillFromDisk(sk *InstalledSkill, agentsToRemove []string, global bool, cwd string) {
+	sName := sanitizeName(sk.Name)
+	localSourceAbs := resolveLocalSourceAbs(sName, global, cwd)
 
 	for _, agentName := range agentsToRemove {
 		agentBase := getAgentBaseDir(agentName, global, cwd)
@@ -140,28 +167,12 @@ func removeSkillFromDisk(sk *InstalledSkill, agentsToRemove []string, global boo
 			continue
 		}
 		for _, name := range []string{sName, filepath.Base(sk.Path)} {
-			agentSkillDir := filepath.Join(agentBase, name)
-			agentSkillAbs, _ := filepath.Abs(agentSkillDir)
-			// Never touch a path that is inside (or equal to) the local source tree.
-			if localSourceAbs != "" && isInsideOrEqual(agentSkillAbs, localSourceAbs) {
-				continue
-			}
-			if !isPathSafe(agentBase, agentSkillDir) {
-				continue
-			}
-			if info, err := os.Lstat(agentSkillDir); err == nil {
-				if info.Mode()&os.ModeSymlink != 0 {
-					os.Remove(agentSkillDir)
-				} else {
-					os.RemoveAll(agentSkillDir)
-				}
-			}
+			removeAgentSkillDir(agentBase, name, localSourceAbs)
 		}
 	}
 
 	canonicalDir := getCanonicalPath(sk.Name, global)
 	canonicalAbs, _ := filepath.Abs(canonicalDir)
-	// Never delete a directory that is inside or equal to the local source tree.
 	skipCanonical := localSourceAbs != "" && isInsideOrEqual(canonicalAbs, localSourceAbs)
 	if !skipCanonical && canonicalDir != "" && isPathSafe(getCanonicalSkillsDir(global, cwd), canonicalDir) {
 		os.RemoveAll(canonicalDir)
