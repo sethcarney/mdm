@@ -483,6 +483,7 @@ type searchModel struct {
 	cursor    int
 	offset    int
 	height    int
+	width     int
 	result    []int
 	cancelled bool
 	done      bool
@@ -505,11 +506,8 @@ func newSearchModel(message string, options []UIOption, locked []UIOption, selec
 }
 
 func (m *searchModel) visibleHeight() int {
-	// header + search box + locked section header + locked items + footer hint
-	overhead := 3 + len(m.locked)
-	if len(m.locked) > 0 {
-		overhead++ // section divider line
-	}
+	// header + search box + footer hint; locked items live in the right panel
+	overhead := 3
 	h := m.height - overhead
 	if h < minVisible {
 		h = minVisible
@@ -656,39 +654,120 @@ func (m *searchModel) viewOptionsList() string {
 	return sb.String()
 }
 
+// viewDone renders the final single-line summary shown after the user confirms
+// or cancels the prompt.
+func (m *searchModel) viewDone() string {
+	if m.cancelled {
+		return styleDimmed.Render(m.message) + "\n"
+	}
+	var labels []string
+	for _, lo := range m.locked {
+		labels = append(labels, lo.Label)
+	}
+	for _, i := range m.result {
+		labels = append(labels, m.options[i].Label)
+	}
+	return stylePrompt.Render(m.message) + "  " + styleDimmed.Render(strings.Join(labels, ", ")) + "\n"
+}
+
 func (m *searchModel) View() string {
 	if m.done {
-		if m.cancelled {
-			return styleDimmed.Render(m.message) + "\n"
+		return m.viewDone()
+	}
+
+	footer := styleDimmed.Render("type to filter · space to toggle · enter to confirm")
+
+	if len(m.locked) == 0 {
+		header := stylePrompt.Render(m.message) + "\n" + "  " + m.input.View() + "\n"
+		return header + m.viewOptionsList() + footer + "\n"
+	}
+
+	// Right panel: "always included:" header on the prompt line, items below.
+	rightHeader := styleDimmed.Render("always included:")
+	var rightItemLines []string
+	for _, lo := range m.locked {
+		rightItemLines = append(rightItemLines, styleDimmed.Render("◉ "+lo.Label))
+	}
+
+	// Measure right panel width.
+	rightW := lipgloss.Width(rightHeader)
+	for _, rl := range rightItemLines {
+		if w := lipgloss.Width(rl); w > rightW {
+			rightW = w
 		}
+	}
+	rightW += 2 // breathing room
+
+	// Left column lines: search box, list rows, footer.
+	leftContentLines := []string{"  " + m.input.View()}
+	leftContentLines = append(leftContentLines, splitLines(m.viewOptionsList())...)
+	leftContentLines = append(leftContentLines, footer)
+
+	// Measure left column width (include prompt line itself).
+	leftW := lipgloss.Width(stylePrompt.Render(m.message))
+	for _, ll := range leftContentLines {
+		if w := lipgloss.Width(ll); w > leftW {
+			leftW = w
+		}
+	}
+	leftW += 2 // breathing room
+
+	if m.width > 0 && leftW+5+rightW > m.width {
+		// Terminal too narrow: single-column fallback.
 		var labels []string
 		for _, lo := range m.locked {
 			labels = append(labels, lo.Label)
 		}
-		for _, i := range m.result {
-			labels = append(labels, m.options[i].Label)
-		}
-		return stylePrompt.Render(m.message) + "  " + styleDimmed.Render(strings.Join(labels, ", ")) + "\n"
+		header := stylePrompt.Render(m.message) + "\n" + "  " + m.input.View() + "\n"
+		return header + m.viewOptionsList() +
+			"  " + styleDimmed.Render("always included: "+strings.Join(labels, ", ")) + "\n" +
+			footer + "\n"
 	}
 
 	var sb strings.Builder
-	sb.WriteString(stylePrompt.Render(m.message) + "\n")
-	sb.WriteString("  " + m.input.View() + "\n")
 
-	if len(m.locked) > 0 {
-		sb.WriteString("  " + styleDimmed.Render("── always included ──") + "\n")
-		for _, lo := range m.locked {
-			sb.WriteString("    " + styleDimmed.Render("◉") + " " + styleDimmed.Render(lo.Label))
-			if lo.Hint != "" {
-				sb.WriteString("  " + styleDimmed.Render(lo.Hint))
-			}
-			sb.WriteString("\n")
+	// Prompt line: "always included:" header appears to the right.
+	sb.WriteString(padRight(stylePrompt.Render(m.message), leftW) + "  " + styleDimmed.Render("│") + "  " + rightHeader + "\n")
+
+	// Zip left content lines with right item lines.
+	rows := len(leftContentLines)
+	if len(rightItemLines) > rows {
+		rows = len(rightItemLines)
+	}
+	for i := 0; i < rows; i++ {
+		left, right := "", ""
+		if i < len(leftContentLines) {
+			left = leftContentLines[i]
+		}
+		if i < len(rightItemLines) {
+			right = rightItemLines[i]
+		}
+		if right != "" {
+			sb.WriteString(padRight(left, leftW) + "  " + styleDimmed.Render("│") + "  " + right + "\n")
+		} else {
+			sb.WriteString(left + "\n")
 		}
 	}
-
-	sb.WriteString(m.viewOptionsList())
-	sb.WriteString(styleDimmed.Render("type to filter · space to toggle · enter to confirm") + "\n")
 	return sb.String()
+}
+
+// splitLines splits a newline-delimited string into a slice, dropping the
+// trailing empty element that strings.Split produces for a trailing newline.
+func splitLines(s string) []string {
+	lines := strings.Split(s, "\n")
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	return lines
+}
+
+// padRight pads s with spaces on the right until its visible (ANSI-stripped)
+// width reaches the target. Uses lipgloss.Width for accurate measurement.
+func padRight(s string, width int) string {
+	if vis := lipgloss.Width(s); vis < width {
+		return s + strings.Repeat(" ", width-vis)
+	}
+	return s
 }
 
 // ─── SearchMultiselect ─────────────────────────────────────────────────────────

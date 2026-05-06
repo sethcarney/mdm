@@ -226,11 +226,7 @@ func auditEntryFromLocal(name string, entry lock.LocalSkillLockEntry) auditSkill
 // ── Enrichment ─────────────────────────────────────────────
 
 func enrichResult(r *auditSkillResult) {
-	isGitSource := r.SourceType == string(source.SourceTypeGitHub) ||
-		r.SourceType == string(source.SourceTypeGitLab) ||
-		r.SourceType == string(source.SourceTypeGit)
-
-	if !isGitSource {
+	if !isGitSourceType(r.SourceType) {
 		r.SyncStatus = "local"
 		return
 	}

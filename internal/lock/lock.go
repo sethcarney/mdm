@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -39,10 +38,10 @@ type DismissedPrompts struct {
 }
 
 type SkillLockFile struct {
-	Version            int                       `json:"version"`
-	Skills             map[string]SkillLockEntry `json:"skills"`
-	Dismissed          DismissedPrompts          `json:"dismissed,omitempty"`
-	LastSelectedAgents []string                  `json:"lastSelectedAgents,omitempty"`
+	Version          int                       `json:"version"`
+	Skills           map[string]SkillLockEntry `json:"skills"`
+	Dismissed        DismissedPrompts          `json:"dismissed,omitempty"`
+	ConfiguredAgents []string                  `json:"configuredAgents,omitempty"`
 }
 
 func GetSkillLockPath() string {
@@ -126,17 +125,6 @@ func DismissPrompt(key string) error {
 	return WriteSkillLock(lock)
 }
 
-func GetLastSelectedAgents() []string {
-	lock := ReadSkillLock()
-	return lock.LastSelectedAgents
-}
-
-func SaveSelectedAgents(agents []string) error {
-	lock := ReadSkillLock()
-	lock.LastSelectedAgents = agents
-	return WriteSkillLock(lock)
-}
-
 func GetGitHubToken() string {
 	return os.Getenv("GITHUB_TOKEN")
 }
@@ -163,8 +151,9 @@ type LocalSkillLockEntry struct {
 }
 
 type LocalSkillLockFile struct {
-	Version int                            `json:"version"`
-	Skills  map[string]LocalSkillLockEntry `json:"skills"`
+	Version          int                            `json:"version"`
+	Skills           map[string]LocalSkillLockEntry `json:"skills"`
+	ConfiguredAgents []string                       `json:"configuredAgents,omitempty"`
 }
 
 func GetLocalLockPath(cwd string) string {
@@ -191,7 +180,7 @@ func ReadLocalLock(cwd string) LocalSkillLockFile {
 
 func WriteLocalLock(lock LocalSkillLockFile, cwd string) error {
 	// Sort keys for deterministic output
-	sorted := LocalSkillLockFile{Version: lock.Version, Skills: map[string]LocalSkillLockEntry{}}
+	sorted := LocalSkillLockFile{Version: lock.Version, Skills: map[string]LocalSkillLockEntry{}, ConfiguredAgents: lock.ConfiguredAgents}
 	keys := make([]string, 0, len(lock.Skills))
 	for k := range lock.Skills {
 		keys = append(keys, k)
@@ -294,5 +283,55 @@ func HasProjectSkills(cwd string) bool {
 	return false
 }
 
-// Silence unused imports
-var _ = fmt.Sprintf
+// GetConfiguredAgents returns the configured agent list for the given scope.
+func GetConfiguredAgents(global bool, cwd string) []string {
+	if global {
+		return ReadSkillLock().ConfiguredAgents
+	}
+	return ReadLocalLock(cwd).ConfiguredAgents
+}
+
+// SetConfiguredAgents replaces the configured agent list for the given scope.
+func SetConfiguredAgents(agents []string, global bool, cwd string) error {
+	if global {
+		lk := ReadSkillLock()
+		lk.ConfiguredAgents = agents
+		return WriteSkillLock(lk)
+	}
+	lk := ReadLocalLock(cwd)
+	lk.ConfiguredAgents = agents
+	return WriteLocalLock(lk, cwd)
+}
+
+// AddToConfiguredAgents appends agents that aren't already in the list.
+func AddToConfiguredAgents(toAdd []string, global bool, cwd string) error {
+	current := GetConfiguredAgents(global, cwd)
+	existing := map[string]bool{}
+	for _, a := range current {
+		existing[a] = true
+	}
+	for _, a := range toAdd {
+		if !existing[a] {
+			current = append(current, a)
+			existing[a] = true
+		}
+	}
+	sort.Strings(current)
+	return SetConfiguredAgents(current, global, cwd)
+}
+
+// RemoveFromConfiguredAgents removes the given agents from the configured list.
+func RemoveFromConfiguredAgents(toRemove []string, global bool, cwd string) error {
+	current := GetConfiguredAgents(global, cwd)
+	removeSet := map[string]bool{}
+	for _, a := range toRemove {
+		removeSet[a] = true
+	}
+	result := current[:0]
+	for _, a := range current {
+		if !removeSet[a] {
+			result = append(result, a)
+		}
+	}
+	return SetConfiguredAgents(result, global, cwd)
+}

@@ -33,14 +33,13 @@ func buildListCmd() *cobra.Command {
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			var gFlag *bool
-			if cmd.Flags().Changed("global") {
+			if globalFlag {
 				t := true
 				gFlag = &t
-			} else if cmd.Flags().Changed("project") || projectFlag {
+			} else if projectFlag {
 				f := false
 				gFlag = &f
 			}
-			_ = globalFlag
 			runListWithOpts(gFlag, agentFilter, jsonMode)
 		},
 	}

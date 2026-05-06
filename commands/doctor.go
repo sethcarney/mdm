@@ -67,6 +67,8 @@ Checks performed:
   • Skills modified since install (hash mismatch; global installs with a recorded hash only)
   • Markdown files inside skill directories that are too large
   • Oversized agent instruction files (CLAUDE.md, AGENTS.md, .cursorrules, etc.)
+  • Configured agents whose instruction file is not yet linked to AGENTS.md
+  • Configured agents with linked rules but missing skill symlinks
   • Missing README in the project root
   • All other .md files in the project that may strain agent context windows
 
@@ -133,12 +135,16 @@ func runDoctor(opts DoctorOptions) {
 	}
 
 	var instrIssues []doctorIssue
+	var unlinkedRulesIssues []doctorIssue
+	var missingSkillLinkIssues []doctorIssue
 	var mdIssues []doctorIssue
 	var mdTruncated bool
 
 	var readmeIssue *doctorIssue
 	if checkProject {
 		instrIssues = checkInstructionFiles(cwd)
+		unlinkedRulesIssues = checkUnlinkedRulesAgents(cwd)
+		missingSkillLinkIssues = checkMissingAgentSkillLinks(cwd)
 		mdIssues, mdTruncated = checkProjectMarkdown(cwd, skipDirs, skipFiles)
 		readmeIssue = checkProjectReadme(cwd)
 	}
@@ -150,7 +156,7 @@ func runDoctor(opts DoctorOptions) {
 		return results[i].Name < results[j].Name
 	})
 
-	printDoctorResults(results, instrIssues, mdIssues, mdTruncated, readmeIssue, checkProject, cwd)
+	printDoctorResults(results, instrIssues, unlinkedRulesIssues, missingSkillLinkIssues, mdIssues, mdTruncated, readmeIssue, checkProject, cwd)
 }
 
 func buildProjectSkipPaths(cwd, canonicalBase string, skipDirs, skipFiles map[string]bool) {
@@ -233,7 +239,7 @@ func diagnoseSkill(r *doctorResult, storedHash string, global bool, cwd string) 
 func checkAgentLinks(r *doctorResult, global bool, cwd string) {
 	sName := sanitizeName(r.Name)
 	for agentName, agentCfg := range agent.AllAgents {
-		if agentCfg == nil || agent.IsUniversalAgent(agentName) {
+		if agentCfg == nil || agent.UsesSharedSkillsDir(agentName) {
 			continue
 		}
 		var agentBase string
@@ -307,6 +313,108 @@ func checkLargeMarkdown(r *doctorResult) {
 		}
 		return nil
 	})
+}
+
+// checkUnlinkedRulesAgents finds configured agents that have a unique
+// instructions file (e.g. CLAUDE.md, .cursorrules) which is not yet symlinked
+// to AGENTS.md. This means the agent has been added via skills add or agents
+// add but mdm rules link has not been run for it yet.
+func checkUnlinkedRulesAgents(cwd string) []doctorIssue {
+	configured := lock.GetConfiguredAgents(false, cwd)
+	if len(configured) == 0 {
+		return nil
+	}
+	agentsMDPath := filepath.Join(cwd, agentsMDFile)
+	// Only relevant when AGENTS.md exists as the source of truth.
+	if _, err := os.Stat(agentsMDPath); err != nil {
+		return nil
+	}
+
+	var issues []doctorIssue
+	for _, name := range configured {
+		cfg := agent.AllAgents[name]
+		if cfg == nil || cfg.NativeInstructions {
+			continue
+		}
+		instrPath := filepath.Join(cwd, cfg.InstructionsFile)
+		info, err := os.Lstat(instrPath)
+		if err != nil {
+			// File doesn't exist at all — not yet linked.
+			issues = append(issues, doctorIssue{
+				Level:   "warn",
+				Message: fmt.Sprintf("%s (%s) is configured but %s is missing — run `mdm rules link` to create it", cfg.DisplayName, name, cfg.InstructionsFile),
+			})
+			continue
+		}
+		if info.Mode()&os.ModeSymlink == 0 {
+			// Real file, not a symlink to AGENTS.md.
+			issues = append(issues, doctorIssue{
+				Level:   "warn",
+				Message: fmt.Sprintf("%s (%s) is configured but %s is not linked to AGENTS.md — run `mdm rules link`", cfg.DisplayName, name, cfg.InstructionsFile),
+			})
+		}
+		// If it is a symlink we assume it points to AGENTS.md (rules link created it).
+	}
+	return issues
+}
+
+// checkMissingAgentSkillLinks finds configured agents whose rules file is
+// properly linked but whose agent-specific skills directory is missing symlinks
+// for one or more installed project skills. This catches the case where rules
+// link was run but skills add was never run for that agent.
+func checkMissingAgentSkillLinks(cwd string) []doctorIssue {
+	configured := lock.GetConfiguredAgents(false, cwd)
+	if len(configured) == 0 {
+		return nil
+	}
+	localLock := lock.ReadLocalLock(cwd)
+	if len(localLock.Skills) == 0 {
+		return nil
+	}
+	canonicalBase := getCanonicalSkillsDir(false, cwd)
+
+	var issues []doctorIssue
+	for _, name := range configured {
+		cfg := agent.AllAgents[name]
+		if cfg == nil || agent.UsesSharedSkillsDir(name) {
+			// Shared-skills-dir agents don't need per-agent symlinks.
+			continue
+		}
+		// Only flag agents whose rules file IS already linked (or they have no
+		// rules file — e.g. a pure-skills-dir agent). Agents whose rules file
+		// is missing are already reported by checkUnlinkedRulesAgents.
+		if !cfg.NativeInstructions {
+			instrPath := filepath.Join(cwd, cfg.InstructionsFile)
+			info, err := os.Lstat(instrPath)
+			if err != nil || info.Mode()&os.ModeSymlink == 0 {
+				continue // rules not linked yet — covered by the other check
+			}
+		}
+
+		agentSkillsDir := filepath.Join(cwd, cfg.SkillsDir)
+		var missing []string
+		for skillName := range localLock.Skills {
+			sName := sanitizeName(skillName)
+			linkPath := filepath.Join(agentSkillsDir, sName)
+			if _, err := os.Lstat(linkPath); os.IsNotExist(err) {
+				canonicalPath := filepath.Join(canonicalBase, sName)
+				// Only flag if the canonical skill dir actually exists.
+				if _, err2 := os.Stat(canonicalPath); err2 == nil {
+					missing = append(missing, skillName)
+				}
+			}
+		}
+		if len(missing) > 0 {
+			sort.Strings(missing)
+			for _, skillName := range missing {
+				issues = append(issues, doctorIssue{
+					Level:   "warn",
+					Message: fmt.Sprintf("%s (%s) is configured but skill %q is not installed for it — run `mdm skills add` to include it", cfg.DisplayName, name, skillName),
+				})
+			}
+		}
+	}
+	return issues
 }
 
 // checkInstructionFiles scans the project root for known agent instruction
@@ -427,7 +535,7 @@ func checkProjectMarkdown(cwd string, skipDirs map[string]bool, skipFiles map[st
 
 // ── Output ─────────────────────────────────────────────────────────────────────
 
-func printDoctorResults(results []doctorResult, instrIssues, mdIssues []doctorIssue, mdTruncated bool, readmeIssue *doctorIssue, scannedProject bool, cwd string) {
+func printDoctorResults(results []doctorResult, instrIssues, unlinkedRulesIssues, missingSkillLinkIssues, mdIssues []doctorIssue, mdTruncated bool, readmeIssue *doctorIssue, scannedProject bool, cwd string) {
 	fmt.Println()
 
 	byScope := map[string][]doctorResult{}
@@ -450,6 +558,22 @@ func printDoctorResults(results []doctorResult, instrIssues, mdIssues []doctorIs
 	if len(instrIssues) > 0 {
 		fmt.Printf("%sInstruction files:%s\n\n", ansiText, ansiReset)
 		e, w := printAndCountDoctorIssues(instrIssues)
+		totalErrors += e
+		totalWarnings += w
+		fmt.Println()
+	}
+
+	if len(unlinkedRulesIssues) > 0 {
+		fmt.Printf("%sRules linking:%s\n\n", ansiText, ansiReset)
+		e, w := printAndCountDoctorIssues(unlinkedRulesIssues)
+		totalErrors += e
+		totalWarnings += w
+		fmt.Println()
+	}
+
+	if len(missingSkillLinkIssues) > 0 {
+		fmt.Printf("%sSkill coverage:%s\n\n", ansiText, ansiReset)
+		e, w := printAndCountDoctorIssues(missingSkillLinkIssues)
 		totalErrors += e
 		totalWarnings += w
 		fmt.Println()

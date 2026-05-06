@@ -11,8 +11,6 @@ import (
 	"github.com/sethcarney/mdm/internal/ui"
 )
 
-// experimental_install: restore skills from skills-lock.json
-
 func buildInstallFromLockCmd(ver string) *cobra.Command {
 	var yes bool
 

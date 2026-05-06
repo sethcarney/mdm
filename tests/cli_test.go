@@ -252,3 +252,47 @@ func min(a, b int) int {
 	}
 	return b
 }
+
+func TestLocalSkillLockUsesRelativePath(t *testing.T) {
+	// Create an isolated project dir and a sibling skill dir.
+	projectDir := t.TempDir()
+	skillDir := t.TempDir()
+	stateDir := t.TempDir()
+
+	// Write a minimal SKILL.md (with YAML frontmatter) in skillDir so mdm recognises it.
+	skillMd := filepath.Join(skillDir, "SKILL.md")
+	skillContent := "---\nname: test-local-skill\ndescription: a test skill for unit tests\n---\n\n# Test Local Skill\n"
+	if err := os.WriteFile(skillMd, []byte(skillContent), 0644); err != nil {
+		t.Fatalf("creating SKILL.md: %v", err)
+	}
+
+	env := []string{
+		"PATH=" + os.Getenv("PATH"),
+		"HOME=" + projectDir,
+		"XDG_STATE_HOME=" + stateDir,
+	}
+
+	// Install the local skill into the project scope, non-interactively.
+	stdout, stderr, code := runMdmInDir(t, projectDir, env,
+		"skills", "add", skillDir, "--agent", "claude-code", "--project", "-y")
+	if code != 0 {
+		t.Fatalf("mdm skills add failed (code %d):\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+
+	// Read the produced lock file.
+	lockPath := filepath.Join(projectDir, "skills-lock.json")
+	data, err := os.ReadFile(lockPath)
+	if err != nil {
+		t.Fatalf("reading skills-lock.json: %v", err)
+	}
+	content := string(data)
+
+	// The stored source must NOT be an absolute path — it should be relative.
+	if strings.Contains(content, skillDir) {
+		t.Errorf("skills-lock.json contains the absolute skill path %q; expected a relative path.\nlock file:\n%s", skillDir, content)
+	}
+	// It should start with "./" or "../" in the JSON.
+	if !strings.Contains(content, `"./`) && !strings.Contains(content, `"../`) {
+		t.Errorf("skills-lock.json does not contain a relative path (./ or ../).\nlock file:\n%s", content)
+	}
+}

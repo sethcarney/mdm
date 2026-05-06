@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/sethcarney/mdm/internal/lock"
+	"github.com/sethcarney/mdm/internal/source"
 	"github.com/sethcarney/mdm/internal/ui"
 )
 
@@ -113,31 +114,70 @@ func selectSkillsToRemove(installed []*InstalledSkill, skillFilter []string, opt
 	return selected, true
 }
 
+// resolveLocalSourceAbs returns the absolute path of the skill's source
+// directory when it was installed from a local path, or "" otherwise.
+func resolveLocalSourceAbs(sName string, global bool, cwd string) string {
+	if global {
+		if e, ok := lock.ReadSkillLock().Skills[sName]; ok && e.SourceType == string(source.SourceTypeLocal) {
+			abs, _ := filepath.Abs(e.Source)
+			return abs
+		}
+		return ""
+	}
+	le, ok := lock.ReadLocalLock(cwd).Skills[sName]
+	if !ok || le.SourceType != string(source.SourceTypeLocal) {
+		return ""
+	}
+	src := le.Source
+	if !filepath.IsAbs(src) {
+		src = filepath.Clean(filepath.Join(cwd, src))
+	}
+	return src
+}
+
+// removeAgentSkillDir deletes the skill directory for one candidate name under
+// an agent base, skipping paths that live inside the local source tree.
+func removeAgentSkillDir(agentBase, name, localSourceAbs string) {
+	agentSkillDir := filepath.Join(agentBase, name)
+	agentSkillAbs, _ := filepath.Abs(agentSkillDir)
+	if localSourceAbs != "" && isInsideOrEqual(agentSkillAbs, localSourceAbs) {
+		return
+	}
+	if !isPathSafe(agentBase, agentSkillDir) {
+		return
+	}
+	info, err := os.Lstat(agentSkillDir)
+	if err != nil {
+		return
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		os.Remove(agentSkillDir)
+	} else {
+		os.RemoveAll(agentSkillDir)
+	}
+}
+
 func removeSkillFromDisk(sk *InstalledSkill, agentsToRemove []string, global bool, cwd string) {
 	sName := sanitizeName(sk.Name)
+	localSourceAbs := resolveLocalSourceAbs(sName, global, cwd)
+
 	for _, agentName := range agentsToRemove {
 		agentBase := getAgentBaseDir(agentName, global, cwd)
 		if agentBase == "" {
 			continue
 		}
 		for _, name := range []string{sName, filepath.Base(sk.Path)} {
-			agentSkillDir := filepath.Join(agentBase, name)
-			if !isPathSafe(agentBase, agentSkillDir) {
-				continue
-			}
-			if info, err := os.Lstat(agentSkillDir); err == nil {
-				if info.Mode()&os.ModeSymlink != 0 {
-					os.Remove(agentSkillDir)
-				} else {
-					os.RemoveAll(agentSkillDir)
-				}
-			}
+			removeAgentSkillDir(agentBase, name, localSourceAbs)
 		}
 	}
+
 	canonicalDir := getCanonicalPath(sk.Name, global)
-	if canonicalDir != "" && isPathSafe(getCanonicalSkillsDir(global, cwd), canonicalDir) {
+	canonicalAbs, _ := filepath.Abs(canonicalDir)
+	skipCanonical := localSourceAbs != "" && isInsideOrEqual(canonicalAbs, localSourceAbs)
+	if !skipCanonical && canonicalDir != "" && isPathSafe(getCanonicalSkillsDir(global, cwd), canonicalDir) {
 		os.RemoveAll(canonicalDir)
 	}
+
 	if global {
 		_ = lock.RemoveSkillFromLock(sName)
 	} else {

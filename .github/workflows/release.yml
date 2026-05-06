@@ -50,6 +50,10 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Generate Windows resource (version info + committed icon)
+        if: steps.check.outputs.exists == 'false'
+        run: make syso
+
       - name: Build binaries
         if: steps.check.outputs.exists == 'false'
         run: |

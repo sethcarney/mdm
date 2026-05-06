@@ -29,6 +29,7 @@ Run with the debugger via `.vscode/launch.json` (Delve is configured).
 ```
 mdm
 ├── upgrade                          # Self-update the mdm binary from GitHub releases (aliases: update-cli, self-update)
+├── uninstall                        # Remove the mdm binary from your system (aliases: remove-cli)
 ├── doctor                           # Check installed skills and project markdown for health issues
 ├── completion [bash|zsh|fish|ps1]   # Generate shell completion script
 │   └── install                      # Write completion into shell rc file
@@ -67,6 +68,7 @@ mdm
 │   ├── sync.go          # `mdm skills sync`: syncs from node_modules
 │   ├── rules.go         # `mdm rules` group: link/status/unlink agent instruction files
 │   ├── selfupdate.go    # `mdm upgrade`: downloads and replaces the mdm binary from GitHub releases
+│   ├── uninstall.go     # `mdm uninstall`: removes the mdm binary from the system
 │   └── doctor.go        # `mdm doctor`: checks skill health, symlinks, hashes, README presence, and markdown sizes
 ├── internal/
     ├── agent/           # AllAgents registry (45+ agents); skill dir paths; detection
@@ -120,6 +122,41 @@ gocyclo -over 16 .
 ```
 
 All four checks must pass with no errors before a PR is opened. CI will run the same checks and block merge on failure.
+
+## Windows Executable Icon
+
+The Windows binary embeds an icon and version metadata via a `.syso` file that the Go linker picks up automatically when `GOOS=windows`.
+
+### How it works
+
+1. **`assets/mdm.svg`** — the canonical icon source (block-M + downward arrow, black on white).
+2. **`assets/mdm.ico`** — a committed multi-resolution ICO (16 / 32 / 48 / 64 / 128 / 256 px). Because it's committed, CI needs no external image tools.
+3. **`assets/versioninfo.json`** — goversioninfo config: file description, product name, icon path.
+4. **`resource_windows.syso`** — generated at build time by `make syso`; git-ignored. The `_windows` suffix is a Go build constraint so it's only linked into Windows targets.
+5. **`tools/gen-icon/`** — pure-Go program that renders the SVG shapes at all six sizes (4× supersampled for anti-aliasing) and writes `assets/mdm.ico`. No external tools required.
+
+### Updating the icon
+
+Edit `assets/mdm.svg`, regenerate the ICO, then commit it:
+
+```bash
+make icon   # runs go run ./tools/gen-icon/ → writes assets/mdm.ico
+```
+
+### Building the Windows exe locally (any platform)
+
+```bash
+make syso                                              # writes resource_windows.syso
+GOOS=windows GOARCH=amd64 go build -o mdm.exe .       # links syso into the exe
+```
+
+On Windows (no GOOS override needed): `make syso && go build -o mdm.exe .`
+
+Right-click `mdm.exe` → Properties → Details to verify the icon and version fields.
+
+### goversioninfo is a declared tool dependency
+
+`goversioninfo` is pinned in `go.mod` under the `tool` directive (Go 1.24+). `make syso` invokes it via `go tool goversioninfo` — no manual install required.
 
 ## Release Process
 

@@ -1,7 +1,6 @@
 package commands
 
 import (
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -62,6 +61,14 @@ func isPathSafe(basePath, targetPath string) bool {
 	return target == base || strings.HasPrefix(target, base+string(filepath.Separator))
 }
 
+// isInsideOrEqual reports whether target is equal to root or is a descendant
+// of root. Both paths must already be absolute and clean.
+func isInsideOrEqual(target, root string) bool {
+	root = filepath.Clean(root)
+	target = filepath.Clean(target)
+	return target == root || strings.HasPrefix(target, root+string(filepath.Separator))
+}
+
 func getCanonicalSkillsDir(global bool, cwd string) string {
 	if cwd == "" {
 		cwd, _ = os.Getwd()
@@ -83,7 +90,7 @@ func getAgentBaseDir(agentName string, global bool, cwd string) string {
 	if a == nil {
 		return ""
 	}
-	if agent.IsUniversalAgent(agentName) {
+	if agent.UsesSharedSkillsDir(agentName) {
 		return getCanonicalSkillsDir(global, cwd)
 	}
 	if global {
@@ -267,7 +274,7 @@ func performSymlinkInstall(canonicalDir, agentDir, agentName string, global bool
 	if err := cp(canonicalDir); err != nil {
 		return InstallResult{Success: false, Path: agentDir, Mode: mode, Error: err.Error()}
 	}
-	if global && agent.IsUniversalAgent(agentName) {
+	if global && agent.UsesSharedSkillsDir(agentName) {
 		return InstallResult{Success: true, Path: canonicalDir, CanonicalPath: canonicalDir, Mode: InstallModeSymlink}
 	}
 	if createSymlink(canonicalDir, agentDir) {
@@ -392,13 +399,6 @@ func getCanonicalPath(skillName string, global bool) string {
 	return filepath.Join(canonicalBase, sName)
 }
 
-func getInstallPath(skillName, agentName string, global bool) string {
-	cwd, _ := os.Getwd()
-	sName := sanitizeName(skillName)
-	agentBase := getAgentBaseDir(agentName, global, cwd)
-	return filepath.Join(agentBase, sName)
-}
-
 type InstalledSkill struct {
 	Name          string
 	Description   string
@@ -464,9 +464,16 @@ func appendDetectedAgentScopes(scopes []scopeEntry, agentsToCheck []string, isGl
 	return scopes
 }
 
-func appendUndetectedAgentScopes(scopes []scopeEntry, agentsToCheck []string, isGlobal bool, cwd string) []scopeEntry {
+func appendUndetectedAgentScopes(scopes []scopeEntry, agentsToCheck []string, configured []string, isGlobal bool, cwd string) []scopeEntry {
 	for agentName, a := range agent.AllAgents {
 		if contains(agentsToCheck, agentName) {
+			continue
+		}
+		// Only consider agents that were explicitly configured (saved in the
+		// lock file). Without this guard, any agent whose SkillsDir coincides
+		// with a directory that happens to exist on disk (e.g. openclaw →
+		// "./skills") would be mistakenly treated as an install target.
+		if !contains(configured, agentName) {
 			continue
 		}
 		if isGlobal && a.GlobalSkillsDir == "" {
@@ -486,9 +493,10 @@ func appendUndetectedAgentScopes(scopes []scopeEntry, agentsToCheck []string, is
 func buildScopeEntries(agentsToCheck []string, scopeTypes []bool, cwd string) []scopeEntry {
 	var scopes []scopeEntry
 	for _, isGlobal := range scopeTypes {
+		configured := lock.GetConfiguredAgents(isGlobal, cwd)
 		scopes = append(scopes, scopeEntry{isGlobal: isGlobal, path: getCanonicalSkillsDir(isGlobal, cwd)})
 		scopes = appendDetectedAgentScopes(scopes, agentsToCheck, isGlobal, cwd)
-		scopes = appendUndetectedAgentScopes(scopes, agentsToCheck, isGlobal, cwd)
+		scopes = appendUndetectedAgentScopes(scopes, agentsToCheck, configured, isGlobal, cwd)
 	}
 	return scopes
 }
@@ -649,6 +657,32 @@ func installWellKnownSkillForAgent(sk *registry.WellKnownSkill, agentName string
 	return installSkillFilesForAgent(sk.InstallName, files, agentName, global, mode)
 }
 
-// Silence unused imports
-var _ = fmt.Sprintf
-var _ = lock.ReadSkillLock
+// linkInstalledSkillToAgent symlinks (or copies) an already-installed skill's
+// canonical directory into the given agent's own skills directory.
+// Returns true when the agent's skill directory now exists (created or was already present).
+func linkInstalledSkillToAgent(skillName, agentName string, global bool, cwd string) bool {
+	a := agent.AllAgents[agentName]
+	if a == nil || (global && a.GlobalSkillsDir == "") {
+		return false
+	}
+	canonicalBase := getCanonicalSkillsDir(global, cwd)
+	canonicalDir := filepath.Join(canonicalBase, skillName)
+	if _, err := os.Stat(canonicalDir); err != nil {
+		return false
+	}
+	agentBase := getAgentBaseDir(agentName, global, cwd)
+	agentDir := filepath.Join(agentBase, skillName)
+	if !isPathSafe(canonicalBase, canonicalDir) || !isPathSafe(agentBase, agentDir) {
+		return false
+	}
+	if _, err := os.Stat(agentDir); err == nil {
+		return true // already present
+	}
+	if createSymlink(canonicalDir, agentDir) {
+		return true
+	}
+	if err := os.MkdirAll(agentBase, 0755); err != nil {
+		return false
+	}
+	return copyDirectory(canonicalDir, agentDir) == nil
+}

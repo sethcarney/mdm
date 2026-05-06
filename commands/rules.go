@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/sethcarney/mdm/internal/agent"
+	"github.com/sethcarney/mdm/internal/lock"
 	"github.com/sethcarney/mdm/internal/ui"
 )
 
@@ -105,7 +106,7 @@ func scanForExistingRuleFiles(cwd string) []ruleFile {
 	fileContent := map[string][]byte{}
 
 	for name, a := range agent.AllAgents {
-		if a.InstructionsFile == "" || a.InstructionsFile == agentsMDFile {
+		if a.NativeInstructions {
 			continue
 		}
 		fullPath := filepath.Join(cwd, a.InstructionsFile)
@@ -213,7 +214,7 @@ func buildLinkableCandidates() ([]agentCandidate, []ui.UIOption) {
 		if a.InstructionsFile == "" {
 			continue
 		}
-		if a.InstructionsFile == agentsMDFile {
+		if a.NativeInstructions {
 			lockedOptions = append(lockedOptions, ui.UIOption{Label: a.DisplayName, Value: name, Hint: "reads AGENTS.md natively"})
 			continue
 		}
@@ -224,7 +225,7 @@ func buildLinkableCandidates() ([]agentCandidate, []ui.UIOption) {
 	return linkable, lockedOptions
 }
 
-func selectAgentsToLink(agentFilter []string, linkable []agentCandidate, lockedOptions []ui.UIOption) ([]agentCandidate, bool) {
+func selectAgentsToLink(agentFilter []string, linkable []agentCandidate, lockedOptions []ui.UIOption, cwd string) ([]agentCandidate, bool) {
 	if len(agentFilter) > 0 {
 		var selected []agentCandidate
 		for _, c := range linkable {
@@ -239,11 +240,30 @@ func selectAgentsToLink(agentFilter []string, linkable []agentCandidate, lockedO
 		return selected, true
 	}
 
+	// Configured agents (project then global) take precedence over auto-detection.
+	// If the user has explicitly configured their agents, pre-select only those;
+	// otherwise fall back to whatever is detected as installed.
+	configuredSet := make(map[string]bool)
+	for _, a := range lock.GetConfiguredAgents(false, cwd) {
+		configuredSet[a] = true
+	}
+	for _, a := range lock.GetConfiguredAgents(true, cwd) {
+		configuredSet[a] = true
+	}
+
 	preSelected := make([]int, 0)
-	for i, c := range linkable {
-		a := agent.AllAgents[c.name]
-		if a.DetectInstalled != nil && a.DetectInstalled() {
-			preSelected = append(preSelected, i)
+	if len(configuredSet) > 0 {
+		for i, c := range linkable {
+			if configuredSet[c.name] {
+				preSelected = append(preSelected, i)
+			}
+		}
+	} else {
+		for i, c := range linkable {
+			a := agent.AllAgents[c.name]
+			if a.DetectInstalled != nil && a.DetectInstalled() {
+				preSelected = append(preSelected, i)
+			}
 		}
 	}
 	options := make([]ui.UIOption, len(linkable))
@@ -336,13 +356,24 @@ func runRulesLink(agentFilter []string, yes bool) {
 	}
 
 	linkable, lockedOptions := buildLinkableCandidates()
-	selected, ok := selectAgentsToLink(agentFilter, linkable, lockedOptions)
+	selected, ok := selectAgentsToLink(agentFilter, linkable, lockedOptions, cwd)
 	if !ok {
 		return
 	}
 	if len(selected) == 0 {
 		fmt.Printf("%sNo agents selected.%s\n", ansiDim, ansiReset)
 		return
+	}
+
+	// Persist the selection into configuredAgents so skills add and other
+	// commands default to the same set. Only applies when the user went
+	// through the interactive picker (not --agent flag).
+	if len(agentFilter) == 0 {
+		var names []string
+		for _, c := range selected {
+			names = append(names, c.name)
+		}
+		_ = lock.AddToConfiguredAgents(names, false, cwd)
 	}
 
 	fmt.Println()
@@ -500,14 +531,37 @@ func collectSymlinkedFiles(cwd string, agentFilter []string) []symlinkedFile {
 
 func runRulesUnlink(agentFilter []string, yes bool) {
 	cwd, _ := os.Getwd()
-	toRemove := collectSymlinkedFiles(cwd, agentFilter)
+	found := collectSymlinkedFiles(cwd, agentFilter)
 
-	if len(toRemove) == 0 {
+	if len(found) == 0 {
 		fmt.Printf("%sNo symlinked instruction files found.%s\n", ansiDim, ansiReset)
 		return
 	}
 
-	sort.Slice(toRemove, func(i, j int) bool { return toRemove[i].file < toRemove[j].file })
+	sort.Slice(found, func(i, j int) bool { return found[i].file < found[j].file })
+
+	// When no --agent filter and not --yes, let the user pick which symlinks to remove.
+	var toRemove []symlinkedFile
+	if len(agentFilter) == 0 && !yes {
+		options := make([]ui.UIOption, len(found))
+		for i, r := range found {
+			options[i] = ui.UIOption{Label: r.file, Value: r.file, Hint: "→ " + r.dest}
+		}
+		indices, ok := ui.UiMultiselect("Which symlinks would you like to remove?", options, false, nil, nil)
+		if !ok {
+			fmt.Println("Cancelled.")
+			return
+		}
+		if len(indices) == 0 {
+			fmt.Printf("%sNo files selected.%s\n", ansiDim, ansiReset)
+			return
+		}
+		for _, i := range indices {
+			toRemove = append(toRemove, found[i])
+		}
+	} else {
+		toRemove = found
+	}
 
 	fmt.Println()
 	for _, r := range toRemove {
