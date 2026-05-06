@@ -272,6 +272,11 @@ func runAddLocal(parsed source.ParsedSource, opts AddOptions, cwd string) {
 		return
 	}
 
+	// Pre-tick skills already installed from this source in the interactive picker.
+	if len(opts.Skills) == 0 {
+		opts.PreselectedSkills = mergeUnique(opts.PreselectedSkills, alreadyInstalledFromSource(parsed.URL, cwd))
+	}
+
 	selectedSkills, ok := selectSkills(skills, opts)
 	if !ok {
 		return
