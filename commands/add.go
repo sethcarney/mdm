@@ -754,7 +754,7 @@ func validateNamedAgents(names []string) ([]string, bool) {
 	return validated, true
 }
 
-func buildInstalledNonUniversal(detected []string) []string {
+func buildDetectedUniqueAgents(detected []string) []string {
 	var result []string
 	for _, a := range agent.GetUniqueSkillsDirAgents() {
 		for _, d := range detected {
@@ -767,9 +767,9 @@ func buildInstalledNonUniversal(detected []string) []string {
 	return result
 }
 
-func buildNonUniversalOptions(installedNonUniversal []string, global bool) []ui.UIOption {
+func buildUniqueAgentOptions(detectedUnique []string, global bool) []ui.UIOption {
 	var options []ui.UIOption
-	for _, a := range installedNonUniversal {
+	for _, a := range detectedUnique {
 		cfg := agent.AllAgents[a]
 		if cfg == nil || (global && cfg.GlobalSkillsDir == "") {
 			continue
@@ -806,7 +806,7 @@ func buildLockedAgentOptions(global bool) []ui.UIOption {
 	return lockedOptions
 }
 
-func computeAgentInitSel(options []ui.UIOption, installedNonUniversal []string, lastSelected []string) []int {
+func computeAgentInitSel(options []ui.UIOption, detectedUnique []string, lastSelected []string) []int {
 	lastSelectedSet := map[string]bool{}
 	for _, a := range lastSelected {
 		lastSelectedSet[a] = true
@@ -819,7 +819,7 @@ func computeAgentInitSel(options []ui.UIOption, installedNonUniversal []string, 
 	}
 	if len(initSel) == 0 {
 		for i, opt := range options {
-			for _, d := range installedNonUniversal {
+			for _, d := range detectedUnique {
 				if opt.Value == d {
 					initSel = append(initSel, i)
 					break
@@ -879,8 +879,8 @@ func promptAgents(opts AddOptions, global bool, cwd string) ([]string, bool) {
 	}
 
 	detected := agent.DetectInstalledAgents()
-	installedNonUniversal := buildInstalledNonUniversal(detected)
-	options := buildNonUniversalOptions(installedNonUniversal, global)
+	detectedUnique := buildDetectedUniqueAgents(detected)
+	options := buildUniqueAgentOptions(detectedUnique, global)
 	lockedOptions := buildLockedAgentOptions(global)
 
 	// If the user has a configured agent list for this scope, use it as the
@@ -903,7 +903,7 @@ func promptAgents(opts AddOptions, global bool, cwd string) ([]string, bool) {
 		return result, true
 	}
 
-	initSel := computeAgentInitSel(options, installedNonUniversal, configured)
+	initSel := computeAgentInitSel(options, detectedUnique, configured)
 	selectedIndices, ok := ui.UiSearchMultiselect("Which agents would you like to install to?", options, lockedOptions, initSel)
 	if !ok {
 		return nil, false

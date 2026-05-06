@@ -333,7 +333,7 @@ func checkUnlinkedRulesAgents(cwd string) []doctorIssue {
 	var issues []doctorIssue
 	for _, name := range configured {
 		cfg := agent.AllAgents[name]
-		if cfg == nil || cfg.InstructionsFile == "" || cfg.InstructionsFile == agentsMDFile {
+		if cfg == nil || cfg.NativeInstructions {
 			continue
 		}
 		instrPath := filepath.Join(cwd, cfg.InstructionsFile)
@@ -383,7 +383,7 @@ func checkMissingAgentSkillLinks(cwd string) []doctorIssue {
 		// Only flag agents whose rules file IS already linked (or they have no
 		// rules file — e.g. a pure-skills-dir agent). Agents whose rules file
 		// is missing are already reported by checkUnlinkedRulesAgents.
-		if cfg.InstructionsFile != "" && cfg.InstructionsFile != agentsMDFile {
+		if !cfg.NativeInstructions {
 			instrPath := filepath.Join(cwd, cfg.InstructionsFile)
 			info, err := os.Lstat(instrPath)
 			if err != nil || info.Mode()&os.ModeSymlink == 0 {

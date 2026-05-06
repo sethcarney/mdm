@@ -649,6 +649,36 @@ func installWellKnownSkillForAgent(sk *registry.WellKnownSkill, agentName string
 	return installSkillFilesForAgent(sk.InstallName, files, agentName, global, mode)
 }
 
+// linkInstalledSkillToAgent symlinks (or copies) an already-installed skill's
+// canonical directory into the given agent's own skills directory.
+// Returns true when the agent's skill directory now exists (created or was already present).
+func linkInstalledSkillToAgent(skillName, agentName string, global bool, cwd string) bool {
+	a := agent.AllAgents[agentName]
+	if a == nil || (global && a.GlobalSkillsDir == "") {
+		return false
+	}
+	canonicalBase := getCanonicalSkillsDir(global, cwd)
+	canonicalDir := filepath.Join(canonicalBase, skillName)
+	if _, err := os.Stat(canonicalDir); err != nil {
+		return false
+	}
+	agentBase := getAgentBaseDir(agentName, global, cwd)
+	agentDir := filepath.Join(agentBase, skillName)
+	if !isPathSafe(canonicalBase, canonicalDir) || !isPathSafe(agentBase, agentDir) {
+		return false
+	}
+	if _, err := os.Stat(agentDir); err == nil {
+		return true // already present
+	}
+	if createSymlink(canonicalDir, agentDir) {
+		return true
+	}
+	if err := os.MkdirAll(agentBase, 0755); err != nil {
+		return false
+	}
+	return copyDirectory(canonicalDir, agentDir) == nil
+}
+
 // Silence unused imports
 var _ = fmt.Sprintf
 var _ = lock.ReadSkillLock
