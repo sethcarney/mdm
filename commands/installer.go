@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/sethcarney/mdm/internal/agent"
+	"github.com/sethcarney/mdm/internal/lock"
 	"github.com/sethcarney/mdm/internal/registry"
 	"github.com/sethcarney/mdm/internal/skill"
 )
@@ -58,6 +59,14 @@ func isPathSafe(basePath, targetPath string) bool {
 	base = filepath.Clean(base)
 	target = filepath.Clean(target)
 	return target == base || strings.HasPrefix(target, base+string(filepath.Separator))
+}
+
+// isInsideOrEqual reports whether target is equal to root or is a descendant
+// of root. Both paths must already be absolute and clean.
+func isInsideOrEqual(target, root string) bool {
+	root = filepath.Clean(root)
+	target = filepath.Clean(target)
+	return target == root || strings.HasPrefix(target, root+string(filepath.Separator))
 }
 
 func getCanonicalSkillsDir(global bool, cwd string) string {
@@ -455,9 +464,16 @@ func appendDetectedAgentScopes(scopes []scopeEntry, agentsToCheck []string, isGl
 	return scopes
 }
 
-func appendUndetectedAgentScopes(scopes []scopeEntry, agentsToCheck []string, isGlobal bool, cwd string) []scopeEntry {
+func appendUndetectedAgentScopes(scopes []scopeEntry, agentsToCheck []string, configured []string, isGlobal bool, cwd string) []scopeEntry {
 	for agentName, a := range agent.AllAgents {
 		if contains(agentsToCheck, agentName) {
+			continue
+		}
+		// Only consider agents that were explicitly configured (saved in the
+		// lock file). Without this guard, any agent whose SkillsDir coincides
+		// with a directory that happens to exist on disk (e.g. openclaw →
+		// "./skills") would be mistakenly treated as an install target.
+		if !contains(configured, agentName) {
 			continue
 		}
 		if isGlobal && a.GlobalSkillsDir == "" {
@@ -477,9 +493,10 @@ func appendUndetectedAgentScopes(scopes []scopeEntry, agentsToCheck []string, is
 func buildScopeEntries(agentsToCheck []string, scopeTypes []bool, cwd string) []scopeEntry {
 	var scopes []scopeEntry
 	for _, isGlobal := range scopeTypes {
+		configured := lock.GetConfiguredAgents(isGlobal, cwd)
 		scopes = append(scopes, scopeEntry{isGlobal: isGlobal, path: getCanonicalSkillsDir(isGlobal, cwd)})
 		scopes = appendDetectedAgentScopes(scopes, agentsToCheck, isGlobal, cwd)
-		scopes = appendUndetectedAgentScopes(scopes, agentsToCheck, isGlobal, cwd)
+		scopes = appendUndetectedAgentScopes(scopes, agentsToCheck, configured, isGlobal, cwd)
 	}
 	return scopes
 }
