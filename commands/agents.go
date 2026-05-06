@@ -353,8 +353,9 @@ func cleanUpRemovedAgentFiles(toRemove []string, global bool, cwd string) {
 			}
 		}
 
-		// Remove the agent's instructions file (project scope only; skip shared AGENTS.md).
-		if !global && cfg.InstructionsFile != "" && cfg.InstructionsFile != "AGENTS.md" {
+		// Remove the agent's instructions file (project scope only; skip when
+		// the agent has no unique instructions file or reads AGENTS.md natively).
+		if !global && !cfg.NativeInstructions {
 			instrPath := filepath.Join(cwd, cfg.InstructionsFile)
 			if _, err := os.Lstat(instrPath); err == nil {
 				os.Remove(instrPath)
@@ -386,7 +387,7 @@ func linkNewAgentRules(agentNames []string, cwd string) {
 	var toLink []agentCandidate
 	for _, name := range agentNames {
 		cfg := agent.AllAgents[name]
-		if cfg == nil || cfg.InstructionsFile == "" || cfg.InstructionsFile == agentsMDFile {
+		if cfg == nil || cfg.NativeInstructions {
 			continue
 		}
 		toLink = append(toLink, agentCandidate{name: name, displayName: cfg.DisplayName, file: cfg.InstructionsFile})

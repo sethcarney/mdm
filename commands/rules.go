@@ -106,7 +106,7 @@ func scanForExistingRuleFiles(cwd string) []ruleFile {
 	fileContent := map[string][]byte{}
 
 	for name, a := range agent.AllAgents {
-		if a.InstructionsFile == "" || a.InstructionsFile == agentsMDFile {
+		if a.NativeInstructions {
 			continue
 		}
 		fullPath := filepath.Join(cwd, a.InstructionsFile)
@@ -214,7 +214,7 @@ func buildLinkableCandidates() ([]agentCandidate, []ui.UIOption) {
 		if a.InstructionsFile == "" {
 			continue
 		}
-		if a.InstructionsFile == agentsMDFile {
+		if a.NativeInstructions {
 			lockedOptions = append(lockedOptions, ui.UIOption{Label: a.DisplayName, Value: name, Hint: "reads AGENTS.md natively"})
 			continue
 		}
