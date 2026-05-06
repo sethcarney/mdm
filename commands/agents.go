@@ -199,7 +199,16 @@ func pickAndSaveAgents(global bool, scope, cwd string) ([]string, error) {
 		return nil, fmt.Errorf("saving agents: %w", err)
 	}
 	printAgentsSaved(newList, scope)
-	return newList, nil
+
+	// Return only newly added agents so setup only runs for them, not for
+	// agents that were already configured before this invocation.
+	var newlyAdded []string
+	for _, name := range newList {
+		if !currentSet[name] {
+			newlyAdded = append(newlyAdded, name)
+		}
+	}
+	return newlyAdded, nil
 }
 
 func promptAgentScope() (isGlobal bool, ok bool) {
@@ -377,21 +386,40 @@ func runAgentSetup(agentNames []string, cwd string) {
 
 // linkNewAgentRules links each agent's instruction file to AGENTS.md when
 // AGENTS.md already exists as a real (non-symlink) file in the project directory.
+// Instruction files that already exist as real files are skipped with a hint to
+// run `mdm rules link` instead, to avoid silent data loss.
 func linkNewAgentRules(agentNames []string, cwd string) {
 	agentsMDPath := filepath.Join(cwd, agentsMDFile)
 	info, err := os.Lstat(agentsMDPath)
-	if err != nil || info.Mode()&os.ModeSymlink != 0 {
+	if err != nil || !info.Mode().IsRegular() {
 		return
 	}
 
 	var toLink []agentCandidate
+	var skippedFiles []string
 	for _, name := range agentNames {
 		cfg := agent.AllAgents[name]
 		if cfg == nil || cfg.NativeInstructions {
 			continue
 		}
+		targetPath := filepath.Join(cwd, cfg.InstructionsFile)
+		targetInfo, statErr := os.Lstat(targetPath)
+		if statErr == nil && targetInfo.Mode()&os.ModeSymlink == 0 {
+			// Existing real file — skip to avoid silent data loss.
+			skippedFiles = append(skippedFiles, cfg.InstructionsFile)
+			continue
+		}
 		toLink = append(toLink, agentCandidate{name: name, displayName: cfg.DisplayName, file: cfg.InstructionsFile})
 	}
+
+	if len(skippedFiles) > 0 {
+		fmt.Println()
+		for _, f := range skippedFiles {
+			fmt.Printf("  %s~%s %-35s %sskipped (existing file — run `mdm rules link` to replace)%s\n",
+				ansiYellow, ansiReset, f, ansiDim, ansiReset)
+		}
+	}
+
 	if len(toLink) == 0 {
 		return
 	}
