@@ -47,7 +47,7 @@ func buildUpdateCmd() *cobra.Command {
 	return cmd
 }
 
-type updateStats struct{ updated, skipped, failed int }
+type updateStats struct{ updated, skipped int }
 
 func resolveUpdateScope(opts UpdateOptions) (global, project bool, ok bool) {
 	global = opts.Global
@@ -146,15 +146,11 @@ func runUpdateWithOpts(skillFilter []string, opts UpdateOptions) {
 		updateProjectSkills(skillFilter, cwd, &stats)
 	}
 	fmt.Println()
-	if stats.updated == 0 && stats.skipped == 0 && stats.failed == 0 {
+	if stats.updated == 0 && stats.skipped == 0 {
 		fmt.Printf("%sNo skills to update.%s\n", ansiDim, ansiReset)
 		return
 	}
-	fmt.Printf("%sUpdate complete:%s %d updated, %d already up to date", ansiText, ansiReset, stats.updated, stats.skipped)
-	if stats.failed > 0 {
-		fmt.Printf(", %d failed", stats.failed)
-	}
-	fmt.Println()
+	fmt.Printf("%sUpdate complete:%s %d updated, %d already up to date\n", ansiText, ansiReset, stats.updated, stats.skipped)
 	fmt.Println()
 }
 

@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -333,6 +332,3 @@ func RemoveFromConfiguredAgents(toRemove []string, global bool, cwd string) erro
 	}
 	return SetConfiguredAgents(result, global, cwd)
 }
-
-// Silence unused imports
-var _ = fmt.Sprintf

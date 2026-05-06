@@ -1,7 +1,6 @@
 package commands
 
 import (
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -9,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/sethcarney/mdm/internal/agent"
-	"github.com/sethcarney/mdm/internal/lock"
 	"github.com/sethcarney/mdm/internal/registry"
 	"github.com/sethcarney/mdm/internal/skill"
 )
@@ -392,13 +390,6 @@ func getCanonicalPath(skillName string, global bool) string {
 	return filepath.Join(canonicalBase, sName)
 }
 
-func getInstallPath(skillName, agentName string, global bool) string {
-	cwd, _ := os.Getwd()
-	sName := sanitizeName(skillName)
-	agentBase := getAgentBaseDir(agentName, global, cwd)
-	return filepath.Join(agentBase, sName)
-}
-
 type InstalledSkill struct {
 	Name          string
 	Description   string
@@ -678,7 +669,3 @@ func linkInstalledSkillToAgent(skillName, agentName string, global bool, cwd str
 	}
 	return copyDirectory(canonicalDir, agentDir) == nil
 }
-
-// Silence unused imports
-var _ = fmt.Sprintf
-var _ = lock.ReadSkillLock
