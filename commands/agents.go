@@ -106,7 +106,14 @@ Use %s--global%s / %s-g%s to configure agents at the user level.`, ansiBold, ans
 				if global {
 					scope = "global"
 				}
-				return pickAndSaveAgents(global, scope, cwd)
+				selected, err := pickAndSaveAgents(global, scope, cwd)
+				if err != nil {
+					return err
+				}
+				if len(selected) > 0 {
+					runAgentSetup(selected, cwd)
+				}
+				return nil
 			}
 
 			scope := "project"
@@ -129,6 +136,7 @@ Use %s--global%s / %s-g%s to configure agents at the user level.`, ansiBold, ans
 				fmt.Printf("%s✓%s Added %s%s%s to %s configured agents\n",
 					ansiGreen, ansiReset, ansiBold, displayName, ansiReset, scope)
 			}
+			runAgentSetup(toAdd, cwd)
 			return nil
 		},
 	}
@@ -140,8 +148,8 @@ Use %s--global%s / %s-g%s to configure agents at the user level.`, ansiBold, ans
 // configured list and replaces the entire list with the user's selection.
 // Truly universal agents (share .agents/skills AND have no unique instruction
 // file) are excluded from the picker — they are always supported and need no
-// configuration.
-func pickAndSaveAgents(global bool, scope, cwd string) error {
+// configuration. Returns the saved agent names so the caller can act on them.
+func pickAndSaveAgents(global bool, scope, cwd string) ([]string, error) {
 	current := lock.GetConfiguredAgents(global, cwd)
 	currentSet := map[string]bool{}
 	for _, a := range current {
@@ -176,7 +184,7 @@ func pickAndSaveAgents(global bool, scope, cwd string) error {
 
 	selected, ok := ui.UiSearchMultiselect("Which agents do you want to configure?", options, lockedOptions, initSel)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 	var newList []string
 	for _, i := range selected {
@@ -184,14 +192,14 @@ func pickAndSaveAgents(global bool, scope, cwd string) error {
 	}
 	if len(newList) == 0 {
 		fmt.Printf("%sNo agents selected.%s\n", ansiDim, ansiReset)
-		return nil
+		return nil, nil
 	}
 	sort.Strings(newList)
 	if err := lock.SetConfiguredAgents(newList, global, cwd); err != nil {
-		return fmt.Errorf("saving agents: %w", err)
+		return nil, fmt.Errorf("saving agents: %w", err)
 	}
 	printAgentsSaved(newList, scope)
-	return nil
+	return newList, nil
 }
 
 func promptAgentScope() (isGlobal bool, ok bool) {
@@ -353,6 +361,126 @@ func cleanUpRemovedAgentFiles(toRemove []string, global bool, cwd string) {
 				ui.LogInfo("Removed " + cfg.InstructionsFile)
 			}
 		}
+	}
+}
+
+// ─── Agent setup (auto-link rules + install locked skills) ────────────────────
+
+// runAgentSetup links instruction files to AGENTS.md and installs any already-
+// locked skills for the newly configured agents. It is intentionally silent when
+// there is nothing to do so the happy-path output stays clean.
+func runAgentSetup(agentNames []string, cwd string) {
+	linkNewAgentRules(agentNames, cwd)
+	installLockedSkillsForAgents(agentNames, cwd)
+}
+
+// linkNewAgentRules links each agent's instruction file to AGENTS.md when
+// AGENTS.md already exists as a real (non-symlink) file in the project directory.
+func linkNewAgentRules(agentNames []string, cwd string) {
+	agentsMDPath := filepath.Join(cwd, agentsMDFile)
+	info, err := os.Lstat(agentsMDPath)
+	if err != nil || info.Mode()&os.ModeSymlink != 0 {
+		return
+	}
+
+	var toLink []agentCandidate
+	for _, name := range agentNames {
+		cfg := agent.AllAgents[name]
+		if cfg == nil || cfg.InstructionsFile == "" || cfg.InstructionsFile == agentsMDFile {
+			continue
+		}
+		toLink = append(toLink, agentCandidate{name: name, displayName: cfg.DisplayName, file: cfg.InstructionsFile})
+	}
+	if len(toLink) == 0 {
+		return
+	}
+
+	fmt.Println()
+	fmt.Printf("%sLinking instruction files → %s%s\n", ansiText, agentsMDFile, ansiReset)
+	fmt.Println()
+	createAgentSymlinks(toLink, cwd, agentsMDPath, true)
+}
+
+type skillLinkSpec struct {
+	skillName string
+	agentName string
+	global    bool
+}
+
+// agentsNeedingSkillLinks returns agents from agentNames that have a unique
+// (non-shared) skills directory and therefore need explicit skill linking.
+func agentsNeedingSkillLinks(agentNames []string) []string {
+	var result []string
+	for _, name := range agentNames {
+		if !agent.UsesSharedSkillsDir(name) && agent.AllAgents[name] != nil {
+			result = append(result, name)
+		}
+	}
+	return result
+}
+
+// collectSkillLinkSpecs gathers (skill, agent, global) triples for skills that
+// are recorded in either the project or global lock file but not yet installed
+// for the given target agents.
+func collectSkillLinkSpecs(targets []string, cwd string) []skillLinkSpec {
+	var specs []skillLinkSpec
+	localLk := lock.ReadLocalLock(cwd)
+	for skillName := range localLk.Skills {
+		for _, agentName := range targets {
+			if !isSkillInstalled(skillName, agentName, false) {
+				specs = append(specs, skillLinkSpec{skillName, agentName, false})
+			}
+		}
+	}
+	globalLk := lock.ReadSkillLock()
+	for skillName := range globalLk.Skills {
+		for _, agentName := range targets {
+			a := agent.AllAgents[agentName]
+			if a == nil || a.GlobalSkillsDir == "" {
+				continue
+			}
+			if !isSkillInstalled(skillName, agentName, true) {
+				specs = append(specs, skillLinkSpec{skillName, agentName, true})
+			}
+		}
+	}
+	return specs
+}
+
+// installLockedSkillsForAgents installs all locked skills (from the project and
+// global lock files) for agents that have a unique skills directory. Agents that
+// use the shared .agents/skills directory already have access to every installed
+// skill automatically and are skipped.
+func installLockedSkillsForAgents(agentNames []string, cwd string) {
+	targets := agentsNeedingSkillLinks(agentNames)
+	if len(targets) == 0 {
+		return
+	}
+	specs := collectSkillLinkSpecs(targets, cwd)
+	if len(specs) == 0 {
+		return
+	}
+
+	fmt.Println()
+	fmt.Printf("%sLinking skills from lock file...%s\n", ansiText, ansiReset)
+	fmt.Println()
+
+	succeeded := 0
+	for _, spec := range specs {
+		if !linkInstalledSkillToAgent(spec.skillName, spec.agentName, spec.global, cwd) {
+			continue
+		}
+		succeeded++
+		agentDisplay := spec.agentName
+		if cfg := agent.AllAgents[spec.agentName]; cfg != nil {
+			agentDisplay = cfg.DisplayName
+		}
+		fmt.Printf("  %s✓%s %-35s → %s\n", ansiGreen, ansiReset, spec.skillName, agentDisplay)
+	}
+	if succeeded > 0 {
+		fmt.Println()
+		ui.LogSuccess(fmt.Sprintf("Linked %d skill(s)", succeeded))
+		fmt.Println()
 	}
 }
 
