@@ -43,3 +43,16 @@ mdm skills update --allow-hidden-chars
 ## Out of scope
 
 This scan does not attempt semantic prompt-injection detection, homoglyph scoring, base64 decoding, natural-language classification, or reputation checks. Those checks are intentionally outside v1 so the local install path stays fast, reproducible, and offline.
+
+## Test fixtures
+
+The repo includes intentionally unsafe fixtures for regression and manual smoke testing:
+
+- `internal/security/markdownscan/testdata/bad-hidden.md`
+- `tests/testdata/hidden-skill/`
+
+To manually verify install blocking from the repo root:
+
+```bash
+mdm skills add ./tests/testdata/hidden-skill --project --agent claude-code -y
+```

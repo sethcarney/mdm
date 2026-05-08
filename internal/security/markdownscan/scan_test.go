@@ -114,6 +114,44 @@ func TestScanMarkdownFiles(t *testing.T) {
 	}
 }
 
+func TestScanMarkdownFilesTestdata(t *testing.T) {
+	cleanFindings, err := ScanMarkdownFiles(filepath.Join("testdata"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var badFindings []Finding
+	var cleanOnlyFindings []Finding
+	for _, f := range cleanFindings {
+		switch f.File {
+		case "bad-hidden.md":
+			badFindings = append(badFindings, f)
+		case "clean.md":
+			cleanOnlyFindings = append(cleanOnlyFindings, f)
+		}
+	}
+	if len(cleanOnlyFindings) != 0 {
+		t.Fatalf("expected clean.md to have no findings, got %#v", cleanOnlyFindings)
+	}
+	if len(badFindings) < 3 {
+		t.Fatalf("expected bad-hidden.md to have several findings, got %#v", badFindings)
+	}
+	wantCategories := map[Category]bool{
+		CategoryZeroWidth:     false,
+		CategoryBidirectional: false,
+		CategorySoftHyphen:    false,
+	}
+	for _, f := range badFindings {
+		if _, ok := wantCategories[f.Category]; ok {
+			wantCategories[f.Category] = true
+		}
+	}
+	for cat, found := range wantCategories {
+		if !found {
+			t.Fatalf("expected category %q in testdata findings, got %#v", cat, badFindings)
+		}
+	}
+}
+
 func tagText(s string) string {
 	var b strings.Builder
 	for _, r := range s {

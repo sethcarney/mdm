@@ -42,6 +42,13 @@ type NamedContent struct {
 	Contents string
 }
 
+type scanPosition struct {
+	line   int
+	column int
+	offset int
+	prevCR bool
+}
+
 var skipDirNames = map[string]bool{
 	".git":         true,
 	"node_modules": true,
@@ -96,76 +103,89 @@ func ScanMarkdownPayloads(files []NamedContent) []Finding {
 
 func ScanMarkdownText(path, content string) []Finding {
 	var findings []Finding
-	line, col := 1, 1
-	offset := 0
-	prevCR := false
+	pos := scanPosition{line: 1, column: 1}
 
-	for offset < len(content) {
-		r, size := utf8.DecodeRuneInString(content[offset:])
-		if r == utf8.RuneError && size == 1 && !utf8.ValidString(content[offset:offset+size]) {
-			findings = append(findings, newFinding(path, line, col, r, CategoryReplacementRune, "invalid UTF-8 byte sequence"))
-			offset += size
-			col++
-			prevCR = false
+	for pos.offset < len(content) {
+		r, size := utf8.DecodeRuneInString(content[pos.offset:])
+		if isInvalidUTF8Rune(content, pos.offset, r, size) {
+			findings = append(findings, newFinding(path, pos.line, pos.column, r, CategoryReplacementRune, "invalid UTF-8 byte sequence"))
+			advanceColumn(&pos, size)
 			continue
 		}
-		if r == '\n' {
-			if !prevCR {
-				line++
-				col = 1
-			}
-			offset += size
-			prevCR = false
-			continue
-		}
-		if r == '\r' {
-			line++
-			col = 1
-			offset += size
-			prevCR = true
-			continue
-		}
-		prevCR = false
-
-		if isUnicodeTag(r) {
-			startOffset, startLine, startCol := offset, line, col
-			decoded := strings.Builder{}
-			firstRune := r
-			for offset < len(content) {
-				next, nextSize := utf8.DecodeRuneInString(content[offset:])
-				if !isUnicodeTag(next) {
-					break
-				}
-				if printable, ok := decodeTagRune(next); ok {
-					decoded.WriteRune(printable)
-				}
-				offset += nextSize
-				col++
-			}
-			detail := "Unicode tag characters can hide ASCII instructions"
-			if decoded.Len() > 0 {
-				detail = fmt.Sprintf("decoded tag text: %q", truncate(decoded.String(), 80))
-			}
-			findings = append(findings, newFinding(path, startLine, startCol, firstRune, CategoryUnicodeTag, detail))
-			if offset == startOffset {
-				offset += size
-				col++
-			}
+		if advanceNewline(&pos, r, size) {
 			continue
 		}
 
-		if offset == 0 && r == '\ufeff' {
-			offset += size
-			col++
+		if isUnicodeTag(r) {
+			findings = append(findings, scanTagSequence(path, content, &pos, r, size))
+			continue
+		}
+
+		if pos.offset == 0 && r == '\ufeff' {
+			advanceColumn(&pos, size)
 			continue
 		}
 		if cat, detail, ok := classifyRune(r); ok {
-			findings = append(findings, newFinding(path, line, col, r, cat, detail))
+			findings = append(findings, newFinding(path, pos.line, pos.column, r, cat, detail))
 		}
-		offset += size
-		col++
+		advanceColumn(&pos, size)
 	}
 	return findings
+}
+
+func isInvalidUTF8Rune(content string, offset int, r rune, size int) bool {
+	return r == utf8.RuneError && size == 1 && !utf8.ValidString(content[offset:offset+size])
+}
+
+func advanceColumn(pos *scanPosition, size int) {
+	pos.offset += size
+	pos.column++
+	pos.prevCR = false
+}
+
+func advanceNewline(pos *scanPosition, r rune, size int) bool {
+	switch r {
+	case '\n':
+		if !pos.prevCR {
+			pos.line++
+			pos.column = 1
+		}
+		pos.offset += size
+		pos.prevCR = false
+		return true
+	case '\r':
+		pos.line++
+		pos.column = 1
+		pos.offset += size
+		pos.prevCR = true
+		return true
+	default:
+		pos.prevCR = false
+		return false
+	}
+}
+
+func scanTagSequence(path, content string, pos *scanPosition, firstRune rune, firstSize int) Finding {
+	startOffset, startLine, startColumn := pos.offset, pos.line, pos.column
+	decoded := strings.Builder{}
+	for pos.offset < len(content) {
+		next, nextSize := utf8.DecodeRuneInString(content[pos.offset:])
+		if !isUnicodeTag(next) {
+			break
+		}
+		if printable, ok := decodeTagRune(next); ok {
+			decoded.WriteRune(printable)
+		}
+		advanceColumn(pos, nextSize)
+	}
+	detail := "Unicode tag characters can hide ASCII instructions"
+	if decoded.Len() > 0 {
+		detail = fmt.Sprintf("decoded tag text: %q", truncate(decoded.String(), 80))
+	}
+	if pos.offset == startOffset {
+		advanceColumn(pos, firstSize)
+	}
+	return newFinding(path, startLine, startColumn, firstRune, CategoryUnicodeTag, detail)
 }
 
 func newFinding(path string, line, col int, r rune, cat Category, detail string) Finding {

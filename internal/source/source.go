@@ -3,6 +3,7 @@ package source
 import (
 	"fmt"
 	"net/url"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -259,7 +260,7 @@ func parseGitHubShorthand(input, fragmentRef, fragmentSkillFilter string) (Parse
 }
 
 func ParseSource(input string) ParsedSource {
-	if IsLocalPath(input) {
+	if IsLocalPath(input) || existingRelativePath(input) {
 		resolved, _ := filepath.Abs(input)
 		return ParsedSource{Type: SourceTypeLocal, URL: resolved, LocalPath: resolved}
 	}
@@ -296,6 +297,16 @@ func ParseSource(input string) ParsedSource {
 		return ParsedSource{Type: SourceTypeWellKnown, URL: input}
 	}
 	return ParsedSource{Type: SourceTypeGit, URL: input, Ref: fragmentRef}
+}
+
+func existingRelativePath(input string) bool {
+	if input == "" || filepath.IsAbs(input) || strings.Contains(input, "://") || strings.Contains(input, ":") {
+		return false
+	}
+	if _, err := os.Stat(input); err == nil {
+		return true
+	}
+	return false
 }
 
 func GetOwnerRepo(parsed ParsedSource) string {
