@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -42,8 +43,16 @@ Configured agents are used as the default selection when running
 	return cmd
 }
 
+type agentListItem struct {
+	Name        string `json:"name"`
+	DisplayName string `json:"displayName"`
+	Scope       string `json:"scope"`
+	Installed   bool   `json:"installed"`
+}
+
 func buildAgentsListCmd() *cobra.Command {
 	var global bool
+	var jsonMode bool
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
@@ -55,6 +64,25 @@ func buildAgentsListCmd() *cobra.Command {
 			if global {
 				scope = "global"
 			}
+
+			if jsonMode {
+				items := make([]agentListItem, 0, len(configured))
+				for _, name := range configured {
+					cfg := agent.AllAgents[name]
+					item := agentListItem{Name: name, Scope: scope}
+					if cfg != nil {
+						item.DisplayName = cfg.DisplayName
+						item.Installed = cfg.DetectInstalled != nil && cfg.DetectInstalled()
+					} else {
+						item.DisplayName = name
+					}
+					items = append(items, item)
+				}
+				out, _ := json.MarshalIndent(items, "", "  ")
+				fmt.Println(string(out))
+				return nil
+			}
+
 			if len(configured) == 0 {
 				fmt.Printf("%sNo agents configured for %s scope.%s\n", ansiDim, scope, ansiReset)
 				fmt.Printf("Run %smdm agents add%s to configure your agents.\n", ansiBold, ansiReset)
@@ -78,6 +106,7 @@ func buildAgentsListCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVarP(&global, "global", "g", false, "List global configured agents")
+	cmd.Flags().BoolVar(&jsonMode, "json", false, "Output as JSON")
 	return cmd
 }
 
