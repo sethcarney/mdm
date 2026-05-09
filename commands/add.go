@@ -1046,8 +1046,9 @@ func maybeShowFindPrompt(cwd string) {
 // ─── Install-time security audit ──────────────────────────────────────────────
 
 type installAuditEntry struct {
-	Name   string
-	Audits []auditProvider
+	Name    string
+	SkillID string // e.g. "owner/repo/skill-slug" or "owner/repo" for OSV
+	Audits  []auditProvider
 }
 
 func startInstallAudit(ownerRepo string, srcType source.SourceType, skipAudit bool, skills []*skill.Skill) chan []installAuditEntry {
@@ -1065,8 +1066,9 @@ func startInstallAudit(ownerRepo string, srcType source.SourceType, skipAudit bo
 		var results []installAuditEntry
 		for _, s := range skills {
 			slug := blob.ToSkillSlug(s.Name)
-			audits, _ := fetchSkillAudits(ownerRepo + "/" + slug)
-			results = append(results, installAuditEntry{Name: s.Name, Audits: audits})
+			skillID := ownerRepo + "/" + slug
+			audits, _ := fetchSkillAudits(skillID)
+			results = append(results, installAuditEntry{Name: s.Name, SkillID: skillID, Audits: audits})
 		}
 		if osv := <-osvCh; osv != nil && osv.Count > 0 {
 			results = append(results, osvToInstallAuditEntry(ownerRepo, osv))
@@ -1089,8 +1091,9 @@ func startBlobInstallAudit(ownerRepo string, skipAudit bool, skills []*blob.Blob
 		var results []installAuditEntry
 		for _, s := range skills {
 			slug := blob.ToSkillSlug(s.Name)
-			audits, _ := fetchSkillAudits(ownerRepo + "/" + slug)
-			results = append(results, installAuditEntry{Name: s.Name, Audits: audits})
+			skillID := ownerRepo + "/" + slug
+			audits, _ := fetchSkillAudits(skillID)
+			results = append(results, installAuditEntry{Name: s.Name, SkillID: skillID, Audits: audits})
 		}
 		if osv := <-osvCh; osv != nil && osv.Count > 0 {
 			results = append(results, osvToInstallAuditEntry(ownerRepo, osv))
@@ -1113,16 +1116,18 @@ func osvToInstallAuditEntry(ownerRepo string, osv *registry.OSVResult) installAu
 		}
 		audits = append(audits, auditProvider{
 			Provider:  "OSV",
+			Slug:      a.ID,
 			Status:    status,
 			RiskLevel: string(a.Severity),
 			Summary:   summary,
 		})
 	}
-	return installAuditEntry{Name: ownerRepo, Audits: audits}
+	return installAuditEntry{Name: ownerRepo, SkillID: ownerRepo, Audits: audits}
 }
 
 type auditIssue struct {
 	skillName string
+	skillID   string
 	provider  auditProvider
 }
 
@@ -1131,28 +1136,55 @@ func collectAuditIssues(entries []installAuditEntry) []auditIssue {
 	for _, e := range entries {
 		for _, a := range e.Audits {
 			if a.Status == "warn" || a.Status == "fail" {
-				issues = append(issues, auditIssue{e.Name, a})
+				issues = append(issues, auditIssue{e.Name, e.SkillID, a})
 			}
 		}
 	}
 	return issues
 }
 
-func printAuditIssueEntry(iss auditIssue) {
+func auditIssueURL(iss auditIssue) string {
+	if iss.provider.Provider == "OSV" && iss.provider.Slug != "" {
+		return "https://osv.dev/vulnerability/" + iss.provider.Slug
+	}
+	if iss.skillID != "" && iss.provider.Slug != "" {
+		return "https://skills.sh/" + iss.skillID + "/security/" + iss.provider.Slug
+	}
+	return ""
+}
+
+func formatAuditIssueEntry(iss auditIssue) string {
 	color := auditStatusColor(iss.provider.Status)
 	badge := auditStatusBadge(iss.provider.Status)
 	rl := ""
 	if iss.provider.RiskLevel != "" && iss.provider.RiskLevel != "NONE" {
 		rl = fmt.Sprintf("  %s%s%s", riskLevelColor(iss.provider.RiskLevel), iss.provider.RiskLevel, ansiReset)
 	}
-	fmt.Printf("  %s%s%s %s%s%s  %s%s%s%s\n",
+	s := fmt.Sprintf("  %s%s%s %s%s%s  %s%s%s%s\n",
 		color, badge, ansiReset,
 		ansiDim, iss.provider.Provider, ansiReset,
 		ansiText, iss.skillName, ansiReset,
 		rl)
 	if iss.provider.Summary != "" {
-		fmt.Printf("    %s%s%s\n", ansiDim, iss.provider.Summary, ansiReset)
+		s += fmt.Sprintf("    %s%s%s\n", ansiDim, iss.provider.Summary, ansiReset)
 	}
+	if url := auditIssueURL(iss); url != "" {
+		s += fmt.Sprintf("    %s%s%s\n", ansiDim, url, ansiReset)
+	}
+	return s
+}
+
+func formatAuditIssueBlock(label string, issues []auditIssue) string {
+	s := fmt.Sprintf("%s⚠  %s found:%s\n\n", ansiYellow, label, ansiReset)
+	for _, iss := range issues {
+		s += formatAuditIssueEntry(iss)
+	}
+	s += "\n"
+	return s
+}
+
+func printAuditIssueEntry(iss auditIssue) {
+	fmt.Print(formatAuditIssueEntry(iss))
 }
 
 func confirmInstallAfterAudit(entries []installAuditEntry, autoYes, failOnAudit bool) bool {
@@ -1175,13 +1207,10 @@ func confirmInstallAfterAudit(entries []installAuditEntry, autoYes, failOnAudit 
 	if hasFail {
 		label = "Security issues"
 	}
-	fmt.Printf("%s⚠  %s found:%s\n\n", ansiYellow, label, ansiReset)
-	for _, iss := range issues {
-		printAuditIssueEntry(iss)
-	}
-	fmt.Println()
+	header := formatAuditIssueBlock(label, issues)
 
 	if autoYes {
+		fmt.Print(header)
 		if failOnAudit {
 			fmt.Fprintf(os.Stderr, "mdm: audit-blocked\n")
 			os.Exit(1)
@@ -1189,12 +1218,15 @@ func confirmInstallAfterAudit(entries []installAuditEntry, autoYes, failOnAudit 
 		fmt.Printf("%sContinuing with --yes flag.%s\n\n", ansiDim, ansiReset)
 		return true
 	}
-	idx, ok := ui.UiSelect("Security findings detected. Continue?", []ui.UIOption{
+
+	idx, ok := ui.UiSelectWithContext("Security findings detected. Continue?", header, []ui.UIOption{
 		{Label: "Cancel installation"},
 		{Label: "Install anyway", Hint: "proceed despite findings"},
 	})
+	fmt.Println()
+	fmt.Print(header)
 	if !ok || idx == 0 {
-		fmt.Println("Installation cancelled.")
+		fmt.Printf("%s⚠  Installation cancelled due to security findings.%s\n\n", ansiYellow, ansiReset)
 		return false
 	}
 	return true

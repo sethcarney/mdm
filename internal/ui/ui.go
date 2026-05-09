@@ -158,6 +158,7 @@ type UIOption struct {
 
 type selectModel struct {
 	message   string
+	header    string // optional static text rendered above the prompt
 	options   []UIOption
 	cursor    int
 	offset    int // scroll offset
@@ -234,6 +235,9 @@ func (m *selectModel) View() string {
 		return stylePrompt.Render(m.message) + "  " + styleDimmed.Render(m.options[m.choice].Label) + "\n"
 	}
 	var sb strings.Builder
+	if m.header != "" {
+		sb.WriteString(m.header)
+	}
 	sb.WriteString(stylePrompt.Render(m.message) + "\n")
 
 	vis := m.visibleHeight()
@@ -266,10 +270,14 @@ func (m *selectModel) View() string {
 // ─── Select / Confirm ─────────────────────────────────────────────────────────
 
 func UiSelect(message string, options []UIOption) (int, bool) {
+	return UiSelectWithContext(message, "", options)
+}
+
+func UiSelectWithContext(message, header string, options []UIOption) (int, bool) {
 	if len(options) == 0 {
 		return -1, false
 	}
-	result, err := tea.NewProgram(&selectModel{message: message, options: options},
+	result, err := tea.NewProgram(&selectModel{message: message, header: header, options: options},
 		tea.WithAltScreen(),
 	).Run()
 	if err != nil {
