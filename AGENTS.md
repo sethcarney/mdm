@@ -6,6 +6,39 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **MDM** (Markdown Management) is a Go CLI tool for managing "skills" — reusable markdown-based prompt libraries for AI agents (Claude Code, Cursor, Cline, Copilot, and 40+ others). Skills are installed from GitHub repos, GitLab, URLs, or local paths and placed into each agent's skills directory.
 
+## Git Conventions
+
+### Commit messages
+
+Use semantic (Conventional Commits) format:
+
+```
+<type>(<scope>): <short description>
+
+[optional body]
+```
+
+Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `ci`
+
+Examples:
+```
+feat(skills): add --dry-run flag to mdm skills add
+fix(audit): handle nil response from OSV API
+chore: bump Go toolchain to 1.26.3
+docs(agents): add pre-PR checklist guidance
+```
+
+### Branch naming
+
+Use a `<type>/<short-description>` prefix matching the commit type:
+
+```
+feat/dry-run-flag
+fix/osv-nil-panic
+chore/go1.26.3-toolchain
+docs/pre-pr-checklist
+```
+
 ## Commands
 
 All commands run from the repo root:
