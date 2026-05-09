@@ -417,6 +417,71 @@ or is missing.
 	return cmd
 }
 
+// resolveFileState returns the state string and symlink target (if any) for an instruction file.
+func resolveFileState(path, file string) (state, target string) {
+	info, err := os.Lstat(path)
+	if os.IsNotExist(err) {
+		return "missing", ""
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		dest, _ := os.Readlink(path)
+		if _, e2 := os.Stat(path); e2 != nil {
+			return "broken", dest
+		}
+		return "linked", dest
+	}
+	if file == agentsMDFile {
+		return "real", ""
+	}
+	return "standalone", ""
+}
+
+func printRulesStatusJSON(cwd string, files []string, fileAgentKeys map[string][]string) {
+	entries := make([]ruleStatusEntry, 0, len(files))
+	for _, file := range files {
+		keys := fileAgentKeys[file]
+		sort.Strings(keys)
+		state, target := resolveFileState(filepath.Join(cwd, file), file)
+		entries = append(entries, ruleStatusEntry{File: file, State: state, Target: target, Agents: keys})
+	}
+	out, _ := json.MarshalIndent(entries, "", "  ")
+	fmt.Println(string(out))
+}
+
+func printRulesStatusTable(cwd string, files []string, fileDisplayAgents map[string][]string) {
+	fmt.Println()
+	fmt.Printf("  %s%-38s %-12s %s%s\n", ansiBold, "File", "State", "Details", ansiReset)
+	fmt.Printf("  %s%s%s\n", ansiDim, strings.Repeat("─", 72), ansiReset)
+
+	for _, file := range files {
+		agents := fileDisplayAgents[file]
+		sort.Strings(agents)
+		state, target := resolveFileState(filepath.Join(cwd, file), file)
+
+		var stateLabel, hint string
+		switch state {
+		case "missing":
+			stateLabel = fmt.Sprintf("%smissing%s", ansiDim, ansiReset)
+		case "broken":
+			stateLabel = fmt.Sprintf("%sbroken%s", ansiRed, ansiReset)
+			hint = fmt.Sprintf("→ %s (target missing)", target)
+		case "linked":
+			stateLabel = fmt.Sprintf("%slinked%s", ansiGreen, ansiReset)
+			hint = fmt.Sprintf("→ %s%s%s", ansiCyan, target, ansiReset)
+		default:
+			stateLabel = fmt.Sprintf("%sreal file%s", ansiYellow, ansiReset)
+		}
+
+		agentList := strings.Join(agents, ", ")
+		if len(agentList) > 30 {
+			agentList = agentList[:27] + "..."
+		}
+
+		fmt.Printf("  %-38s %-22s %s\n", file, stateLabel, hint)
+		fmt.Printf("  %sagents: %s%s\n\n", ansiDim, agentList, ansiReset)
+	}
+}
+
 func runRulesStatus(agentFilter []string, jsonOutput bool) {
 	cwd, _ := os.Getwd()
 
@@ -452,70 +517,10 @@ func runRulesStatus(agentFilter []string, jsonOutput bool) {
 	sort.Strings(files)
 
 	if jsonOutput {
-		entries := make([]ruleStatusEntry, 0, len(files))
-		for _, file := range files {
-			keys := fileAgentKeys[file]
-			sort.Strings(keys)
-			targetPath := filepath.Join(cwd, file)
-
-			entry := ruleStatusEntry{File: file, Agents: keys}
-			info, err := os.Lstat(targetPath)
-			if os.IsNotExist(err) {
-				entry.State = "missing"
-			} else if info.Mode()&os.ModeSymlink != 0 {
-				dest, _ := os.Readlink(targetPath)
-				entry.Target = dest
-				if _, e2 := os.Stat(targetPath); e2 != nil {
-					entry.State = "broken"
-				} else {
-					entry.State = "linked"
-				}
-			} else if file == agentsMDFile {
-				entry.State = "real"
-			} else {
-				entry.State = "standalone"
-			}
-			entries = append(entries, entry)
-		}
-		out, _ := json.MarshalIndent(entries, "", "  ")
-		fmt.Println(string(out))
+		printRulesStatusJSON(cwd, files, fileAgentKeys)
 		return
 	}
-
-	fmt.Println()
-	fmt.Printf("  %s%-38s %-12s %s%s\n", ansiBold, "File", "State", "Details", ansiReset)
-	fmt.Printf("  %s%s%s\n", ansiDim, strings.Repeat("─", 72), ansiReset)
-
-	for _, file := range files {
-		agents := fileDisplayAgents[file]
-		sort.Strings(agents)
-		targetPath := filepath.Join(cwd, file)
-
-		var stateLabel, hint string
-		info, err := os.Lstat(targetPath)
-		if os.IsNotExist(err) {
-			stateLabel = fmt.Sprintf("%smissing%s", ansiDim, ansiReset)
-		} else if info.Mode()&os.ModeSymlink != 0 {
-			dest, _ := os.Readlink(targetPath)
-			if _, e2 := os.Stat(targetPath); e2 != nil {
-				stateLabel = fmt.Sprintf("%sbroken%s", ansiRed, ansiReset)
-				hint = fmt.Sprintf("→ %s (target missing)", dest)
-			} else {
-				stateLabel = fmt.Sprintf("%slinked%s", ansiGreen, ansiReset)
-				hint = fmt.Sprintf("→ %s%s%s", ansiCyan, dest, ansiReset)
-			}
-		} else {
-			stateLabel = fmt.Sprintf("%sreal file%s", ansiYellow, ansiReset)
-		}
-
-		agentList := strings.Join(agents, ", ")
-		if len(agentList) > 30 {
-			agentList = agentList[:27] + "..."
-		}
-
-		fmt.Printf("  %-38s %-22s %s\n", file, stateLabel, hint)
-		fmt.Printf("  %sagents: %s%s\n\n", ansiDim, agentList, ansiReset)
-	}
+	printRulesStatusTable(cwd, files, fileDisplayAgents)
 }
 
 // ─── unlink ───────────────────────────────────────────────────────────────────
