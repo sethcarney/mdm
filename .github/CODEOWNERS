@@ -1,2 +1,9 @@
 # Default owner for all files
 * @sethcarney
+
+# Hidden character scanning — scanner library, CLI integration, docs, and test fixtures
+internal/security/           @sethcarney @GhostScientist
+commands/hidden_scan.go      @sethcarney @GhostScientist
+commands/hidden_scan_test.go @sethcarney @GhostScientist
+docs/security/               @sethcarney @GhostScientist
+tests/testdata/hidden-skill/ @sethcarney @GhostScientist
