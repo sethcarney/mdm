@@ -32,6 +32,7 @@ type AddOptions struct {
 	All               bool // --all: skill '*', agent '*', -y
 	FullDepth         bool
 	SkipAudit         bool
+	FailOnAudit       bool
 	AllowHiddenChars  bool
 }
 
@@ -85,6 +86,7 @@ pass them space-separated after the flag or repeat the flag for each value
 	f.BoolVar(&opts.All, "all", false, "Shorthand for --skill '*' --agent '*' -y")
 	f.BoolVar(&opts.FullDepth, "full-depth", false, "Search all subdirectories")
 	f.BoolVar(&opts.SkipAudit, "skip-audit", false, "Skip security audit check for public skills")
+	f.BoolVar(&opts.FailOnAudit, "fail-on-audit", false, "Exit non-zero when security findings are detected instead of prompting")
 	f.BoolVar(&opts.AllowHiddenChars, "allow-hidden-chars", false, "Allow markdown files with hidden Unicode characters")
 
 	_ = cmd.RegisterFlagCompletionFunc("agent", agentFlagCompletion)
@@ -398,7 +400,7 @@ func runAddGitOrHub(parsed source.ParsedSource, opts AddOptions, cwd, sourceInpu
 		return
 	}
 
-	if !confirmInstallAfterAudit(<-auditCh, opts.Yes) {
+	if !confirmInstallAfterAudit(<-auditCh, opts.Yes, opts.FailOnAudit) {
 		return
 	}
 
@@ -563,7 +565,7 @@ func runAddBlob(result *blob.BlobInstallResult, parsed source.ParsedSource, opts
 	if !ok {
 		return
 	}
-	if !confirmInstallAfterAudit(<-auditCh, opts.Yes) {
+	if !confirmInstallAfterAudit(<-auditCh, opts.Yes, opts.FailOnAudit) {
 		return
 	}
 
@@ -1153,7 +1155,7 @@ func printAuditIssueEntry(iss auditIssue) {
 	}
 }
 
-func confirmInstallAfterAudit(entries []installAuditEntry, autoYes bool) bool {
+func confirmInstallAfterAudit(entries []installAuditEntry, autoYes, failOnAudit bool) bool {
 	if len(entries) == 0 {
 		return true
 	}
@@ -1180,6 +1182,10 @@ func confirmInstallAfterAudit(entries []installAuditEntry, autoYes bool) bool {
 	fmt.Println()
 
 	if autoYes {
+		if failOnAudit {
+			fmt.Fprintf(os.Stderr, "mdm: audit-blocked\n")
+			os.Exit(1)
+		}
 		fmt.Printf("%sContinuing with --yes flag.%s\n\n", ansiDim, ansiReset)
 		return true
 	}

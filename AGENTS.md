@@ -1,10 +1,43 @@
-# CLAUDE.md
+# AGENTS.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## What This Project Is
 
 **MDM** (Markdown Management) is a Go CLI tool for managing "skills" — reusable markdown-based prompt libraries for AI agents (Claude Code, Cursor, Cline, Copilot, and 40+ others). Skills are installed from GitHub repos, GitLab, URLs, or local paths and placed into each agent's skills directory.
+
+## Git Conventions
+
+### Commit messages
+
+Use semantic (Conventional Commits) format:
+
+```
+<type>(<scope>): <short description>
+
+[optional body]
+```
+
+Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `ci`
+
+Examples:
+```
+feat(skills): add --dry-run flag to mdm skills add
+fix(audit): handle nil response from OSV API
+chore: bump Go toolchain to 1.26.3
+docs(agents): add pre-PR checklist guidance
+```
+
+### Branch naming
+
+Use a `<type>/<short-description>` prefix matching the commit type:
+
+```
+feat/dry-run-flag
+fix/osv-nil-panic
+chore/go1.26.3-toolchain
+docs/pre-pr-checklist
+```
 
 ## Commands
 
@@ -102,7 +135,15 @@ Create a file in `commands/`, define a `cobra.Command`, and register it either o
 
 ## Pre-PR Checklist
 
-Before opening a pull request, run all CI checks locally and fix any failures:
+Before opening a pull request, run the `/go-report-card` skill — it runs all four CI checks in order and reports results:
+
+```
+/go-report-card
+```
+
+This runs: `gofmt` (auto-fixes in place), `go test ./...`, `govulncheck`, and `gocyclo -over 16`. All four must pass before a PR is opened. CI will run the same checks and block merge on failure.
+
+If you need to run the checks manually:
 
 ```bash
 # 1. Tests
@@ -120,8 +161,6 @@ gofmt -s -l .
 go install github.com/fzipp/gocyclo/cmd/gocyclo@v0.6.0
 gocyclo -over 16 .
 ```
-
-All four checks must pass with no errors before a PR is opened. CI will run the same checks and block merge on failure.
 
 ## Windows Executable Icon
 

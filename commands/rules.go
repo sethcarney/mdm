@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -382,8 +383,16 @@ func runRulesLink(agentFilter []string, yes bool) {
 
 // ─── status ───────────────────────────────────────────────────────────────────
 
+type ruleStatusEntry struct {
+	File   string   `json:"file"`
+	State  string   `json:"state"`
+	Target string   `json:"target,omitempty"`
+	Agents []string `json:"agents"`
+}
+
 func buildRulesStatusCmd() *cobra.Command {
 	var agentFilter []string
+	var jsonOutput bool
 
 	cmd := &cobra.Command{
 		Use:   "status",
@@ -393,68 +402,73 @@ or is missing.
 
 %sExamples:%s
   mdm rules status
-  mdm rules status --agent claude-code cursor`, ansiBold, ansiReset),
+  mdm rules status --agent claude-code cursor
+  mdm rules status --json`, ansiBold, ansiReset),
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			runRulesStatus(agentFilter)
+			runRulesStatus(agentFilter, jsonOutput)
 		},
 	}
 
 	cmd.Flags().StringArrayVarP(&agentFilter, "agent", "a", nil, "Limit to specific agents (repeatable)")
+	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output status as a JSON array")
 	_ = cmd.RegisterFlagCompletionFunc("agent", agentFlagCompletion)
 
 	return cmd
 }
 
-func runRulesStatus(agentFilter []string) {
-	cwd, _ := os.Getwd()
-
-	// Group by instruction file so shared entries (e.g. AGENTS.md) appear once.
-	fileAgents := map[string][]string{}
-	for name, a := range agent.AllAgents {
-		if a.InstructionsFile == "" {
-			continue
+// resolveFileState returns the state string and symlink target (if any) for an instruction file.
+func resolveFileState(path, file string) (state, target string) {
+	info, err := os.Lstat(path)
+	if os.IsNotExist(err) {
+		return "missing", ""
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		dest, _ := os.Readlink(path)
+		if _, e2 := os.Stat(path); e2 != nil {
+			return "broken", dest
 		}
-		if len(agentFilter) > 0 && !contains(agentFilter, name) {
-			continue
-		}
-		fileAgents[a.InstructionsFile] = append(fileAgents[a.InstructionsFile], a.DisplayName)
+		return "linked", dest
 	}
-
-	if len(fileAgents) == 0 {
-		fmt.Printf("%sNo agents with known instruction files.%s\n", ansiDim, ansiReset)
-		return
+	if file == agentsMDFile {
+		return "real", ""
 	}
+	return "standalone", ""
+}
 
-	files := make([]string, 0, len(fileAgents))
-	for f := range fileAgents {
-		files = append(files, f)
+func printRulesStatusJSON(cwd string, files []string, fileAgentKeys map[string][]string) {
+	entries := make([]ruleStatusEntry, 0, len(files))
+	for _, file := range files {
+		keys := fileAgentKeys[file]
+		sort.Strings(keys)
+		state, target := resolveFileState(filepath.Join(cwd, file), file)
+		entries = append(entries, ruleStatusEntry{File: file, State: state, Target: target, Agents: keys})
 	}
-	sort.Strings(files)
+	out, _ := json.MarshalIndent(entries, "", "  ")
+	fmt.Println(string(out))
+}
 
+func printRulesStatusTable(cwd string, files []string, fileDisplayAgents map[string][]string) {
 	fmt.Println()
 	fmt.Printf("  %s%-38s %-12s %s%s\n", ansiBold, "File", "State", "Details", ansiReset)
 	fmt.Printf("  %s%s%s\n", ansiDim, strings.Repeat("─", 72), ansiReset)
 
 	for _, file := range files {
-		agents := fileAgents[file]
+		agents := fileDisplayAgents[file]
 		sort.Strings(agents)
-		targetPath := filepath.Join(cwd, file)
+		state, target := resolveFileState(filepath.Join(cwd, file), file)
 
 		var stateLabel, hint string
-		info, err := os.Lstat(targetPath)
-		if os.IsNotExist(err) {
+		switch state {
+		case "missing":
 			stateLabel = fmt.Sprintf("%smissing%s", ansiDim, ansiReset)
-		} else if info.Mode()&os.ModeSymlink != 0 {
-			dest, _ := os.Readlink(targetPath)
-			if _, e2 := os.Stat(targetPath); e2 != nil {
-				stateLabel = fmt.Sprintf("%sbroken%s", ansiRed, ansiReset)
-				hint = fmt.Sprintf("→ %s (target missing)", dest)
-			} else {
-				stateLabel = fmt.Sprintf("%slinked%s", ansiGreen, ansiReset)
-				hint = fmt.Sprintf("→ %s%s%s", ansiCyan, dest, ansiReset)
-			}
-		} else {
+		case "broken":
+			stateLabel = fmt.Sprintf("%sbroken%s", ansiRed, ansiReset)
+			hint = fmt.Sprintf("→ %s (target missing)", target)
+		case "linked":
+			stateLabel = fmt.Sprintf("%slinked%s", ansiGreen, ansiReset)
+			hint = fmt.Sprintf("→ %s%s%s", ansiCyan, target, ansiReset)
+		default:
 			stateLabel = fmt.Sprintf("%sreal file%s", ansiYellow, ansiReset)
 		}
 
@@ -466,6 +480,47 @@ func runRulesStatus(agentFilter []string) {
 		fmt.Printf("  %-38s %-22s %s\n", file, stateLabel, hint)
 		fmt.Printf("  %sagents: %s%s\n\n", ansiDim, agentList, ansiReset)
 	}
+}
+
+func runRulesStatus(agentFilter []string, jsonOutput bool) {
+	cwd, _ := os.Getwd()
+
+	// Group by instruction file so shared entries (e.g. AGENTS.md) appear once.
+	// fileDisplayAgents: display names for ANSI table
+	// fileAgentKeys: agent keys for JSON output
+	fileDisplayAgents := map[string][]string{}
+	fileAgentKeys := map[string][]string{}
+	for name, a := range agent.AllAgents {
+		if a.InstructionsFile == "" {
+			continue
+		}
+		if len(agentFilter) > 0 && !contains(agentFilter, name) {
+			continue
+		}
+		fileDisplayAgents[a.InstructionsFile] = append(fileDisplayAgents[a.InstructionsFile], a.DisplayName)
+		fileAgentKeys[a.InstructionsFile] = append(fileAgentKeys[a.InstructionsFile], name)
+	}
+
+	if len(fileDisplayAgents) == 0 {
+		if jsonOutput {
+			fmt.Println("[]")
+		} else {
+			fmt.Printf("%sNo agents with known instruction files.%s\n", ansiDim, ansiReset)
+		}
+		return
+	}
+
+	files := make([]string, 0, len(fileDisplayAgents))
+	for f := range fileDisplayAgents {
+		files = append(files, f)
+	}
+	sort.Strings(files)
+
+	if jsonOutput {
+		printRulesStatusJSON(cwd, files, fileAgentKeys)
+		return
+	}
+	printRulesStatusTable(cwd, files, fileDisplayAgents)
 }
 
 // ─── unlink ───────────────────────────────────────────────────────────────────
