@@ -1,4 +1,4 @@
-# CLAUDE.md
+# AGENTS.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -102,7 +102,15 @@ Create a file in `commands/`, define a `cobra.Command`, and register it either o
 
 ## Pre-PR Checklist
 
-Before opening a pull request, run all CI checks locally and fix any failures:
+Before opening a pull request, run the `/go-report-card` skill — it runs all four CI checks in order and reports results:
+
+```
+/go-report-card
+```
+
+This runs: `gofmt` (auto-fixes in place), `go test ./...`, `govulncheck`, and `gocyclo -over 16`. All four must pass before a PR is opened. CI will run the same checks and block merge on failure.
+
+If you need to run the checks manually:
 
 ```bash
 # 1. Tests
@@ -120,8 +128,6 @@ gofmt -s -l .
 go install github.com/fzipp/gocyclo/cmd/gocyclo@v0.6.0
 gocyclo -over 16 .
 ```
-
-All four checks must pass with no errors before a PR is opened. CI will run the same checks and block merge on failure.
 
 ## Windows Executable Icon
 
