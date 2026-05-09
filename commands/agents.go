@@ -53,11 +53,16 @@ type agentListItem struct {
 func buildAgentsListCmd() *cobra.Command {
 	var global bool
 	var jsonMode bool
+	var available bool
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
 		Short:   "List configured agents",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if available {
+				return runAgentsListAvailable(jsonMode)
+			}
+
 			cwd, _ := os.Getwd()
 			configured := lock.GetConfiguredAgents(global, cwd)
 			scope := "project"
@@ -107,7 +112,48 @@ func buildAgentsListCmd() *cobra.Command {
 	}
 	cmd.Flags().BoolVarP(&global, "global", "g", false, "List global configured agents")
 	cmd.Flags().BoolVar(&jsonMode, "json", false, "Output as JSON")
+	cmd.Flags().BoolVar(&available, "available", false, "List all agents known to mdm (not just configured ones)")
 	return cmd
+}
+
+func runAgentsListAvailable(jsonMode bool) error {
+	type availableItem struct {
+		Name        string `json:"name"`
+		DisplayName string `json:"displayName"`
+		Installed   bool   `json:"installed"`
+	}
+
+	items := make([]availableItem, 0, len(agent.AllAgents))
+	for name, cfg := range agent.AllAgents {
+		if cfg.ExcludeFromPicker {
+			continue
+		}
+		items = append(items, availableItem{
+			Name:        name,
+			DisplayName: cfg.DisplayName,
+			Installed:   cfg.DetectInstalled != nil && cfg.DetectInstalled(),
+		})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].DisplayName < items[j].DisplayName
+	})
+
+	if jsonMode {
+		out, _ := json.MarshalIndent(items, "", "  ")
+		fmt.Println(string(out))
+		return nil
+	}
+
+	fmt.Printf("%sAll available agents:%s\n\n", ansiBold, ansiReset)
+	for _, item := range items {
+		detected := ""
+		if item.Installed {
+			detected = fmt.Sprintf("  %s✓ installed%s", ansiGreen, ansiReset)
+		}
+		fmt.Printf("  %s%-28s%s %s%s%s%s\n", ansiText, item.DisplayName, ansiReset, ansiDim, item.Name, ansiReset, detected)
+	}
+	fmt.Println()
+	return nil
 }
 
 func buildAgentsAddCmd() *cobra.Command {
