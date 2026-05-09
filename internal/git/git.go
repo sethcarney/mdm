@@ -101,6 +101,33 @@ func GetLocalCommitSHA(dir string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+// DefaultBranch returns the default branch name of a remote git repository by running
+// "git ls-remote --symref <url> HEAD" and parsing the symbolic ref line.
+// Falls back to "main" if the default branch cannot be determined.
+func DefaultBranch(gitURL string) string {
+	cmd := exec.Command("git", "ls-remote", "--symref", gitURL, "HEAD")
+	cmd.Env = append(os.Environ(),
+		"GIT_TERMINAL_PROMPT=0",
+		"GIT_LFS_SKIP_SMUDGE=1",
+	)
+	out, err := cmd.Output()
+	if err != nil {
+		return "main"
+	}
+	// Output format: "ref: refs/heads/<branch>\tHEAD\n<sha>\tHEAD\n"
+	const prefix = "ref: refs/heads/"
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.HasPrefix(line, prefix) {
+			branch := strings.TrimPrefix(line, prefix)
+			branch = strings.Fields(branch)[0]
+			if branch != "" {
+				return branch
+			}
+		}
+	}
+	return "main"
+}
+
 // FetchRemoteCommitSHA fetches the commit SHA for the given ref on a remote git URL using
 // "git ls-remote", which works for any git host (GitHub, GitLab, Bitbucket, self-hosted)
 // without performing a full clone.  If ref is empty it resolves HEAD.

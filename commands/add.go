@@ -409,7 +409,7 @@ func runAddGitOrHub(parsed source.ParsedSource, opts AddOptions, cwd, sourceInpu
 	// Build lock entry
 	lockRef := ref
 	if lockRef == "" {
-		lockRef = "main"
+		lockRef = git.DefaultBranch(parsed.URL)
 	}
 	commitSHA, _ := git.GetLocalCommitSHA(tmpDir)
 	baseLockEntry := lock.SkillLockEntry{
