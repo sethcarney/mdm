@@ -225,6 +225,7 @@ func promptAgentScope() (isGlobal bool, ok bool) {
 
 func buildAgentsRemoveCmd() *cobra.Command {
 	var global bool
+	var yes bool
 	cmd := &cobra.Command{
 		Use:     "remove [agents...]",
 		Aliases: []string{"rm", "r"},
@@ -232,7 +233,7 @@ func buildAgentsRemoveCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cwd, _ := os.Getwd()
 
-			if len(args) == 0 && !cmd.Flags().Changed("global") {
+			if len(args) == 0 && !cmd.Flags().Changed("global") && !yes {
 				isGlobal, ok := promptAgentScope()
 				if !ok {
 					return nil
@@ -258,6 +259,8 @@ func buildAgentsRemoveCmd() *cobra.Command {
 					return fmt.Errorf("no valid agents specified")
 				}
 				toRemove = validated
+			} else if yes {
+				return fmt.Errorf("agent names are required when using --yes")
 			} else {
 				picked, ok := pickAgentsToRemove(configured)
 				if !ok {
@@ -266,20 +269,21 @@ func buildAgentsRemoveCmd() *cobra.Command {
 				toRemove = picked
 			}
 
-			// Confirm before acting.
-			var displayNames []string
-			for _, name := range toRemove {
-				cfg := agent.AllAgents[name]
-				if cfg != nil {
-					displayNames = append(displayNames, cfg.DisplayName)
-				} else {
-					displayNames = append(displayNames, name)
+			if !yes {
+				var displayNames []string
+				for _, name := range toRemove {
+					cfg := agent.AllAgents[name]
+					if cfg != nil {
+						displayNames = append(displayNames, cfg.DisplayName)
+					} else {
+						displayNames = append(displayNames, name)
+					}
 				}
-			}
-			confirmed, ok := ui.UiConfirm(fmt.Sprintf("Remove %d agent(s): %s?", len(toRemove), strings.Join(displayNames, ", ")))
-			if !ok || !confirmed {
-				fmt.Println("Cancelled.")
-				return nil
+				confirmed, ok := ui.UiConfirm(fmt.Sprintf("Remove %d agent(s): %s?", len(toRemove), strings.Join(displayNames, ", ")))
+				if !ok || !confirmed {
+					fmt.Println("Cancelled.")
+					return nil
+				}
 			}
 
 			if err := lock.RemoveFromConfiguredAgents(toRemove, global, cwd); err != nil {
@@ -300,6 +304,7 @@ func buildAgentsRemoveCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVarP(&global, "global", "g", false, "Remove from global configured agents")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Skip confirmation prompts")
 	return cmd
 }
 
