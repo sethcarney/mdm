@@ -46,13 +46,34 @@ This scan does not attempt semantic prompt-injection detection, homoglyph scorin
 
 ## Test fixtures
 
+### Local fixtures (no network required)
+
 The repo includes intentionally unsafe fixtures for regression and manual smoke testing:
 
-- `internal/security/markdownscan/testdata/bad-hidden.md`
-- `tests/testdata/hidden-skill/`
+- `internal/security/markdownscan/testdata/bad-hidden.md` — raw scanner unit-test input
+- `tests/testdata/hidden-skill/` — a full skill directory with hidden chars in `README.md`
 
-To manually verify install blocking from the repo root:
+Verify install blocking from the repo root:
 
 ```bash
 mdm skills add ./tests/testdata/hidden-skill --project --agent claude-code -y
 ```
+
+Expected output: scan failure with file/line/column/codepoint details, installation blocked.
+
+Verify the bypass flag allows installation to proceed:
+
+```bash
+mdm skills add ./tests/testdata/hidden-skill --project --agent claude-code -y --allow-hidden-chars
+```
+
+Expected output: yellow warnings printed, installation continues.
+
+### Remote fixture (tests the GitHub clone path)
+
+The `hidden-chars` branch of `https://github.com/sethcarney/custom-plugins.git` contains skills with intentionally malformed hidden characters, exercising the blob/clone install path rather than the local disk path.
+
+Verify blocking via GitHub install:
+
+```bash
+mdm skills add https://github.com/sethcarney/custom-plugins.git#hidden-chars
