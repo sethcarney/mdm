@@ -32,6 +32,7 @@ type AddOptions struct {
 	All               bool // --all: skill '*', agent '*', -y
 	FullDepth         bool
 	SkipAudit         bool
+	AllowHiddenChars  bool
 }
 
 func buildAddCmd(ver string) *cobra.Command {
@@ -84,6 +85,7 @@ pass them space-separated after the flag or repeat the flag for each value
 	f.BoolVar(&opts.All, "all", false, "Shorthand for --skill '*' --agent '*' -y")
 	f.BoolVar(&opts.FullDepth, "full-depth", false, "Search all subdirectories")
 	f.BoolVar(&opts.SkipAudit, "skip-audit", false, "Skip security audit check for public skills")
+	f.BoolVar(&opts.AllowHiddenChars, "allow-hidden-chars", false, "Allow markdown files with hidden Unicode characters")
 
 	_ = cmd.RegisterFlagCompletionFunc("agent", agentFlagCompletion)
 
@@ -235,6 +237,9 @@ func runAddWellKnown(parsed source.ParsedSource, opts AddOptions, cwd string) {
 	if !ok {
 		return
 	}
+	if !checkWellKnownSkillsMarkdownForHiddenChars(selectedSkills, opts.AllowHiddenChars) {
+		os.Exit(1)
+	}
 
 	global, mode, agents, ok := promptScopeAndAgents(opts, cwd)
 	if !ok {
@@ -280,6 +285,9 @@ func runAddLocal(parsed source.ParsedSource, opts AddOptions, cwd string) {
 	selectedSkills, ok := selectSkills(skills, opts)
 	if !ok {
 		return
+	}
+	if !checkDiskSkillsMarkdownForHiddenChars(selectedSkills, opts.AllowHiddenChars) {
+		os.Exit(1)
 	}
 
 	global, mode, agents, ok := promptScopeAndAgents(opts, cwd)
@@ -377,6 +385,9 @@ func runAddGitOrHub(parsed source.ParsedSource, opts AddOptions, cwd, sourceInpu
 	selectedSkills, ok := selectSkills(skills, opts)
 	if !ok {
 		return
+	}
+	if !checkDiskSkillsMarkdownForHiddenChars(selectedSkills, opts.AllowHiddenChars) {
+		os.Exit(1)
 	}
 
 	// Start audit concurrently while scope/agent prompts run
@@ -542,6 +553,9 @@ func runAddBlob(result *blob.BlobInstallResult, parsed source.ParsedSource, opts
 	selectedBlob, ok := selectBlobSkills(skills, opts)
 	if !ok {
 		return
+	}
+	if !checkBlobSkillsMarkdownForHiddenChars(selectedBlob, opts.AllowHiddenChars) {
+		os.Exit(1)
 	}
 
 	auditCh := startBlobInstallAudit(ownerRepo, opts.SkipAudit, selectedBlob)

@@ -15,9 +15,10 @@ import (
 )
 
 type UpdateOptions struct {
-	Global  bool
-	Project bool
-	Yes     bool
+	Global           bool
+	Project          bool
+	Yes              bool
+	AllowHiddenChars bool
 }
 
 func buildUpdateCmd() *cobra.Command {
@@ -43,6 +44,7 @@ func buildUpdateCmd() *cobra.Command {
 	f.BoolVarP(&opts.Global, "global", "g", false, "Update global skills only")
 	f.BoolVarP(&opts.Project, "project", "p", false, "Update project skills only")
 	f.BoolVarP(&opts.Yes, "yes", "y", false, "Skip scope prompt")
+	f.BoolVar(&opts.AllowHiddenChars, "allow-hidden-chars", false, "Allow markdown files with hidden Unicode characters")
 
 	return cmd
 }
@@ -85,7 +87,7 @@ func isGitSourceType(st string) bool {
 		st == string(source.SourceTypeGit)
 }
 
-func updateGlobalSkills(skillFilter []string, stats *updateStats) {
+func updateGlobalSkills(skillFilter []string, stats *updateStats, allowHiddenChars bool) {
 	l := lock.ReadSkillLock()
 	for sName, entry := range l.Skills {
 		if !matchesFilter(sName, entry.PluginName, skillFilter) {
@@ -107,12 +109,12 @@ func updateGlobalSkills(skillFilter []string, stats *updateStats) {
 			stats.skipped++
 			continue
 		}
-		runAdd(entry.Source, AddOptions{Global: true, Yes: true, Skills: []string{entry.PluginName}})
+		runAdd(entry.Source, AddOptions{Global: true, Yes: true, Skills: []string{entry.PluginName}, AllowHiddenChars: allowHiddenChars})
 		stats.updated++
 	}
 }
 
-func updateProjectSkills(skillFilter []string, cwd string, stats *updateStats) {
+func updateProjectSkills(skillFilter []string, cwd string, stats *updateStats, allowHiddenChars bool) {
 	localLock := lock.ReadLocalLock(cwd)
 	for sName, entry := range localLock.Skills {
 		if !matchesFilter(sName, "", skillFilter) {
@@ -127,7 +129,7 @@ func updateProjectSkills(skillFilter []string, cwd string, stats *updateStats) {
 		if entry.Ref != "" && !strings.Contains(src, "#") {
 			src = src + "#" + entry.Ref
 		}
-		runAdd(src, AddOptions{Project: true, Yes: true, Skills: []string{sName}})
+		runAdd(src, AddOptions{Project: true, Yes: true, Skills: []string{sName}, AllowHiddenChars: allowHiddenChars})
 		stats.updated++
 	}
 }
@@ -139,11 +141,11 @@ func runUpdateWithOpts(skillFilter []string, opts UpdateOptions) {
 	}
 	var stats updateStats
 	if global {
-		updateGlobalSkills(skillFilter, &stats)
+		updateGlobalSkills(skillFilter, &stats, opts.AllowHiddenChars)
 	}
 	if project {
 		cwd, _ := os.Getwd()
-		updateProjectSkills(skillFilter, cwd, &stats)
+		updateProjectSkills(skillFilter, cwd, &stats, opts.AllowHiddenChars)
 	}
 	fmt.Println()
 	if stats.updated == 0 && stats.skipped == 0 {

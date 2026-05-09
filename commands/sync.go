@@ -15,7 +15,8 @@ import (
 )
 
 type SyncOptions struct {
-	Yes bool
+	Yes              bool
+	AllowHiddenChars bool
 }
 
 func buildSyncCmd(ver string) *cobra.Command {
@@ -32,6 +33,7 @@ func buildSyncCmd(ver string) *cobra.Command {
 	}
 
 	cmd.Flags().BoolVarP(&opts.Yes, "yes", "y", false, "Skip confirmation prompts")
+	cmd.Flags().BoolVar(&opts.AllowHiddenChars, "allow-hidden-chars", false, "Allow markdown files with hidden Unicode characters")
 	return cmd
 }
 
@@ -131,6 +133,9 @@ func runSync(opts SyncOptions) {
 	selectedSkills, ok := selectSkillsToSync(skills, opts.Yes)
 	if !ok {
 		return
+	}
+	if !checkDiskSkillsMarkdownForHiddenChars(selectedSkills, opts.AllowHiddenChars) {
+		os.Exit(1)
 	}
 
 	global, mode, agents, ok := promptScopeAndAgents(AddOptions{Yes: opts.Yes}, cwd)

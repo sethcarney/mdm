@@ -24,12 +24,14 @@ mdm looks for skills in both the project lock (`skills-lock.json`) and the globa
 With `--yes`, the project lock is preferred and no prompts are shown.
 
 Skills are re-installed by calling `mdm skills add` for each recorded source, grouped by origin so repos are only fetched once.
+Each restored skill is scanned for hidden Unicode characters before files are copied or symlinked.
 
 ## Flags
 
 | Flag | Description |
 |---|---|
 | `--yes, -y` | Skip prompts; default to project lock when both exist |
+| `--allow-hidden-chars` | Allow markdown files with hidden Unicode characters |
 
 ## Examples
 
@@ -39,6 +41,9 @@ mdm skills install
 
 # CI — restore without any prompts
 mdm skills install -y
+
+# Restore even if a skill intentionally contains hidden characters
+mdm skills install -y --allow-hidden-chars
 ```
 
 ## CI usage

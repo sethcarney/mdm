@@ -13,6 +13,7 @@ import (
 
 func buildInstallFromLockCmd(ver string) *cobra.Command {
 	var yes bool
+	var allowHiddenChars bool
 
 	cmd := &cobra.Command{
 		Use:   "install",
@@ -20,15 +21,16 @@ func buildInstallFromLockCmd(ver string) *cobra.Command {
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			showLogo(ver)
-			runInstallFromLock(yes)
+			runInstallFromLock(yes, allowHiddenChars)
 		},
 	}
 
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Skip confirmation prompts")
+	cmd.Flags().BoolVar(&allowHiddenChars, "allow-hidden-chars", false, "Allow markdown files with hidden Unicode characters")
 	return cmd
 }
 
-func runInstallFromLock(yes bool) {
+func runInstallFromLock(yes bool, allowHiddenChars bool) {
 	cwd, _ := os.Getwd()
 
 	localL := lock.ReadLocalLock(cwd)
@@ -44,7 +46,7 @@ func runInstallFromLock(yes bool) {
 
 	case hasLocal && !hasGlobal:
 		// Only local lock has skills — restore silently
-		restoreFromLocalLock(localL, yes)
+		restoreFromLocalLock(localL, yes, allowHiddenChars)
 
 	case !hasLocal && hasGlobal:
 		// Only global lock has skills — explain and ask
@@ -58,12 +60,12 @@ func runInstallFromLock(yes bool) {
 				return
 			}
 		}
-		restoreFromGlobalLock(globalL, yes)
+		restoreFromGlobalLock(globalL, yes, allowHiddenChars)
 
 	default: // both have skills
 		if yes {
 			// Default to local when -y flag is used
-			restoreFromLocalLock(localL, yes)
+			restoreFromLocalLock(localL, yes, allowHiddenChars)
 		} else {
 			idx, ok := ui.UiSelect("Install from which skills-lock.json?", []ui.UIOption{
 				{Label: fmt.Sprintf("Local  — %d skill(s)", len(localL.Skills)), Hint: lock.GetLocalLockPath(cwd)},
@@ -74,16 +76,16 @@ func runInstallFromLock(yes bool) {
 				return
 			}
 			if idx == 1 {
-				restoreFromGlobalLock(globalL, yes)
+				restoreFromGlobalLock(globalL, yes, allowHiddenChars)
 			} else {
-				restoreFromLocalLock(localL, yes)
+				restoreFromLocalLock(localL, yes, allowHiddenChars)
 			}
 		}
 	}
 }
 
 // restoreFromLocalLock installs all skills recorded in the project-level lock file.
-func restoreFromLocalLock(l lock.LocalSkillLockFile, yes bool) {
+func restoreFromLocalLock(l lock.LocalSkillLockFile, yes bool, allowHiddenChars bool) {
 	fmt.Printf("\n%sRestoring %d skill(s) from local skills-lock.json...%s\n\n", ansiText, len(l.Skills), ansiReset)
 
 	// Convert local entries to a common source/ref map.
@@ -91,18 +93,18 @@ func restoreFromLocalLock(l lock.LocalSkillLockFile, yes bool) {
 	for name, e := range l.Skills {
 		entries[name] = sourceRef{source: e.Source, ref: e.Ref}
 	}
-	restoreSkills(entries, AddOptions{Project: true, Yes: yes})
+	restoreSkills(entries, AddOptions{Project: true, Yes: yes, AllowHiddenChars: allowHiddenChars})
 }
 
 // restoreFromGlobalLock installs all skills recorded in the global lock file.
-func restoreFromGlobalLock(l lock.SkillLockFile, yes bool) {
+func restoreFromGlobalLock(l lock.SkillLockFile, yes bool, allowHiddenChars bool) {
 	fmt.Printf("\n%sRestoring %d skill(s) from global skills-lock.json...%s\n\n", ansiText, len(l.Skills), ansiReset)
 
 	entries := make(map[string]sourceRef, len(l.Skills))
 	for name, e := range l.Skills {
 		entries[name] = sourceRef{source: e.Source, ref: e.Ref}
 	}
-	restoreSkills(entries, AddOptions{Global: true, Yes: yes})
+	restoreSkills(entries, AddOptions{Global: true, Yes: yes, AllowHiddenChars: allowHiddenChars})
 }
 
 // sourceRef holds the source URL/path and optional ref for a lock entry.

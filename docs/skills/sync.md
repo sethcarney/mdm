@@ -18,7 +18,8 @@ This is the workflow for skill packages distributed through npm, yarn, or pnpm â
 2. Found skills are listed with their names, descriptions, and paths.
 3. A multiselect lets you pick which skills to sync (all pre-checked by default).
 4. You choose a scope (project or global) and which agents to install to.
-5. Skills are copied or symlinked into agent directories and recorded in the lock file.
+5. Markdown files are scanned for hidden Unicode characters.
+6. Skills are copied or symlinked into agent directories and recorded in the lock file.
 
 ```
 Scanning node_modules for skills...
@@ -37,6 +38,7 @@ Found 2 skill(s) in node_modules:
 | Flag | Description |
 |---|---|
 | `--yes, -y` | Skip confirmation prompts; sync all found skills |
+| `--allow-hidden-chars` | Allow markdown files with hidden Unicode characters |
 
 ## Examples
 
@@ -47,6 +49,9 @@ mdm skills sync
 
 # Sync without prompts
 mdm skills sync -y
+
+# Sync even if a package intentionally contains hidden characters
+mdm skills sync -y --allow-hidden-chars
 ```
 
 ## Lock file

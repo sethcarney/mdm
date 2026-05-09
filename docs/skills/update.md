@@ -9,6 +9,7 @@ mdm skills update [skills...]
 ```
 
 Re-fetches each skill from its recorded source and ref in the lock file. Skills that are already up to date are skipped. Local skills (installed from a path rather than a git remote) are always skipped.
+Updated skills are scanned for hidden Unicode characters before files are copied or symlinked.
 
 Alias: `check`
 
@@ -43,6 +44,7 @@ With `--yes`, both scopes are updated without prompting.
 | `--global, -g` | Update global skills only |
 | `--project, -p` | Update project skills only |
 | `--yes, -y` | Skip scope prompt, update both scopes |
+| `--allow-hidden-chars` | Allow markdown files with hidden Unicode characters |
 
 ## Examples
 
@@ -58,4 +60,7 @@ mdm skills update -g
 
 # Update both scopes without prompting
 mdm skills update -y
+
+# Update even if a skill intentionally contains hidden characters
+mdm skills update -y --allow-hidden-chars
 ```
