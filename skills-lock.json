@@ -3,7 +3,7 @@
   "skills": {
     "go-report-card": {
       "source": "sethcarney/custom-plugins",
-      "ref": "main",
+      "ref": "master",
       "sourceType": "github"
     }
   },
