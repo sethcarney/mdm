@@ -80,9 +80,8 @@ jobs:
         if: steps.check.outputs.exists == 'false'
         run: |
           for f in dist/mdm-linux-x64 dist/mdm-linux-arm64 dist/mdm-macos-x64 dist/mdm-macos-arm64 dist/mdm-windows-x64.exe; do
-            cosign sign-blob --yes "$f" \
-              --output-signature "${f}.sig" \
-              --output-certificate "${f}.pem"
+            cosign sign-blob --yes "$f" --bundle "${f}.bundle"
+            jq -r '.messageSignature.signature // .base64Signature' "${f}.bundle" > "${f}.sig"
           done
 
       - name: Create GitHub Release
@@ -96,16 +95,16 @@ jobs:
             dist/mdm-macos-x64 \
             dist/mdm-macos-arm64 \
             dist/mdm-windows-x64.exe \
+            dist/mdm-linux-x64.bundle \
+            dist/mdm-linux-arm64.bundle \
+            dist/mdm-macos-x64.bundle \
+            dist/mdm-macos-arm64.bundle \
+            dist/mdm-windows-x64.exe.bundle \
             dist/mdm-linux-x64.sig \
-            dist/mdm-linux-x64.pem \
             dist/mdm-linux-arm64.sig \
-            dist/mdm-linux-arm64.pem \
             dist/mdm-macos-x64.sig \
-            dist/mdm-macos-x64.pem \
             dist/mdm-macos-arm64.sig \
-            dist/mdm-macos-arm64.pem \
             dist/mdm-windows-x64.exe.sig \
-            dist/mdm-windows-x64.exe.pem \
             dist/sha256sums.txt
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
