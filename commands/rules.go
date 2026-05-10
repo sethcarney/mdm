@@ -374,7 +374,9 @@ func runRulesLink(agentFilter []string, yes bool) {
 		for _, c := range selected {
 			names = append(names, c.name)
 		}
-		_ = lock.AddToConfiguredAgents(names, false, cwd)
+		if err := lock.AddToConfiguredAgents(names, false, cwd); err != nil {
+			ui.LogWarn(fmt.Sprintf("could not save agent preferences: %v", err))
+		}
 	}
 
 	fmt.Println()
