@@ -81,7 +81,6 @@ jobs:
         run: |
           for f in dist/mdm-linux-x64 dist/mdm-linux-arm64 dist/mdm-macos-x64 dist/mdm-macos-arm64 dist/mdm-windows-x64.exe; do
             cosign sign-blob --yes "$f" \
-              --bundle "${f}.bundle" \
               --output-signature "${f}.sig" \
               --output-certificate "${f}.pem"
           done
@@ -107,11 +106,6 @@ jobs:
             dist/mdm-macos-arm64.pem \
             dist/mdm-windows-x64.exe.sig \
             dist/mdm-windows-x64.exe.pem \
-            dist/mdm-linux-x64.bundle \
-            dist/mdm-linux-arm64.bundle \
-            dist/mdm-macos-x64.bundle \
-            dist/mdm-macos-arm64.bundle \
-            dist/mdm-windows-x64.exe.bundle \
             dist/sha256sums.txt
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
