@@ -76,9 +76,15 @@ jobs:
         if: steps.check.outputs.exists == 'false'
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
-      - name: Sign checksums
+      - name: Sign binaries
         if: steps.check.outputs.exists == 'false'
-        run: cosign sign-blob --yes dist/sha256sums.txt --bundle dist/sha256sums.txt.bundle
+        run: |
+          for f in dist/mdm-linux-x64 dist/mdm-linux-arm64 dist/mdm-macos-x64 dist/mdm-macos-arm64 dist/mdm-windows-x64.exe; do
+            cosign sign-blob --yes "$f" \
+              --output-signature "${f}.sig" \
+              --output-certificate "${f}.pem"
+            sleep 5
+          done
 
       - name: Create GitHub Release
         if: steps.check.outputs.exists == 'false'
@@ -91,8 +97,17 @@ jobs:
             dist/mdm-macos-x64 \
             dist/mdm-macos-arm64 \
             dist/mdm-windows-x64.exe \
-            dist/sha256sums.txt \
-            dist/sha256sums.txt.bundle
+            dist/mdm-linux-x64.sig \
+            dist/mdm-linux-x64.pem \
+            dist/mdm-linux-arm64.sig \
+            dist/mdm-linux-arm64.pem \
+            dist/mdm-macos-x64.sig \
+            dist/mdm-macos-x64.pem \
+            dist/mdm-macos-arm64.sig \
+            dist/mdm-macos-arm64.pem \
+            dist/mdm-windows-x64.exe.sig \
+            dist/mdm-windows-x64.exe.pem \
+            dist/sha256sums.txt
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
