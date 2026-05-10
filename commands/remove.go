@@ -179,9 +179,13 @@ func removeSkillFromDisk(sk *InstalledSkill, agentsToRemove []string, global boo
 	}
 
 	if global {
-		_ = lock.RemoveSkillFromLock(sName)
+		if err := lock.RemoveSkillFromLock(sName); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not update lock file: %v\n", err)
+		}
 	} else {
-		_ = lock.RemoveSkillFromLocalLock(sName, cwd)
+		if err := lock.RemoveSkillFromLocalLock(sName, cwd); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not update lock file: %v\n", err)
+		}
 	}
 	ui.LogSuccess("Removed " + sk.Name)
 }
@@ -277,7 +281,9 @@ func cleanOrphanedLockEntries(cwd string) int {
 		}
 	}
 	for _, name := range removed {
-		_ = lock.RemoveSkillFromLock(sanitizeName(name))
+		if err := lock.RemoveSkillFromLock(sanitizeName(name)); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not update lock file: %v\n", err)
+		}
 	}
 	return len(removed)
 }
@@ -299,7 +305,9 @@ func cleanOrphanedLocalLockEntries(cwd string) int {
 		}
 	}
 	for _, name := range removed {
-		_ = lock.RemoveSkillFromLocalLock(sanitizeName(name), cwd)
+		if err := lock.RemoveSkillFromLocalLock(sanitizeName(name), cwd); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not update lock file: %v\n", err)
+		}
 	}
 	return len(removed)
 }
