@@ -27,6 +27,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0 # GoReleaser needs full history for changelog and validation
 
       - name: Get version
         id: version
@@ -50,64 +52,36 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Generate Windows resource (version info + committed icon)
-        if: steps.check.outputs.exists == 'false'
-        run: make syso
-
-      - name: Build binaries
-        if: steps.check.outputs.exists == 'false'
-        run: |
-          mkdir -p dist
-          GOOS=linux   GOARCH=amd64 go build -ldflags="-s -w" -o dist/mdm-linux-x64
-          GOOS=linux   GOARCH=arm64 go build -ldflags="-s -w" -o dist/mdm-linux-arm64
-          GOOS=darwin  GOARCH=amd64 go build -ldflags="-s -w" -o dist/mdm-macos-x64
-          GOOS=darwin  GOARCH=arm64 go build -ldflags="-s -w" -o dist/mdm-macos-arm64
-          GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o dist/mdm-windows-x64.exe
-
-      - name: Generate checksums
-        id: hash
-        if: steps.check.outputs.exists == 'false'
-        run: |
-          cd dist
-          sha256sum mdm-linux-x64 mdm-linux-arm64 mdm-macos-x64 mdm-macos-arm64 mdm-windows-x64.exe > sha256sums.txt
-          echo "hashes=$(sha256sum mdm-linux-x64 mdm-linux-arm64 mdm-macos-x64 mdm-macos-arm64 mdm-windows-x64.exe | base64 -w0)" >> $GITHUB_OUTPUT
-
       - name: Install cosign
         if: steps.check.outputs.exists == 'false'
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: 'v2.5.3'
 
-      - name: Sign binaries
+      - name: Install Syft (for SBOM generation)
+        if: steps.check.outputs.exists == 'false'
+        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+
+      - name: Create release tag
         if: steps.check.outputs.exists == 'false'
         run: |
-          for f in dist/mdm-linux-x64 dist/mdm-linux-arm64 dist/mdm-macos-x64 dist/mdm-macos-arm64 dist/mdm-windows-x64.exe; do
-            cosign sign-blob --yes "$f" --bundle "${f}.bundle"
-            jq -r '.messageSignature.signature // .base64Signature' "${f}.bundle" > "${f}.sig"
-          done
+          git tag "v${{ steps.version.outputs.version }}"
+          git push origin "v${{ steps.version.outputs.version }}"
 
-      - name: Create GitHub Release
+      - name: Run GoReleaser
         if: steps.check.outputs.exists == 'false'
-        run: |
-          gh release create "v${{ steps.version.outputs.version }}" \
-            --title "v${{ steps.version.outputs.version }}" \
-            --generate-notes \
-            dist/mdm-linux-x64 \
-            dist/mdm-linux-arm64 \
-            dist/mdm-macos-x64 \
-            dist/mdm-macos-arm64 \
-            dist/mdm-windows-x64.exe \
-            dist/mdm-linux-x64.bundle \
-            dist/mdm-linux-arm64.bundle \
-            dist/mdm-macos-x64.bundle \
-            dist/mdm-macos-arm64.bundle \
-            dist/mdm-windows-x64.exe.bundle \
-            dist/mdm-linux-x64.sig \
-            dist/mdm-linux-arm64.sig \
-            dist/mdm-macos-x64.sig \
-            dist/mdm-macos-arm64.sig \
-            dist/mdm-windows-x64.exe.sig \
-            dist/sha256sums.txt
+        uses: goreleaser/goreleaser-action@1a80836c5c9d9e5755a25cb59ec6f45a3b5f41a8 # v7.2.1
+        with:
+          distribution: goreleaser
+          version: 'v2.15.4'
+          args: release --clean
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute hashes for SLSA provenance
+        id: hash
+        if: steps.check.outputs.exists == 'false'
+        run: echo "hashes=$(base64 -w0 < dist/sha256sums.txt)" >> $GITHUB_OUTPUT
 
   provenance:
     needs: [ release ]

@@ -1,0 +1,72 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+#
+# GoReleaser config for mdm.
+# https://goreleaser.com
+
+version: 2
+
+project_name: mdm
+
+before:
+  hooks:
+    - go mod tidy
+    # generate Windows version-info + icon resource so the windows build picks it up
+    - make syso
+
+builds:
+  - id: mdm
+    main: .
+    binary: mdm
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+# bare-binary release artifacts named to match the historical scheme:
+#   mdm-linux-x64, mdm-linux-arm64, mdm-macos-x64, mdm-macos-arm64, mdm-windows-x64.exe
+archives:
+  - id: mdm
+    formats: [binary]
+    name_template: 'mdm-{{ if eq .Os "darwin" }}macos{{ else }}{{ .Os }}{{ end }}-{{ if eq .Arch "amd64" }}x64{{ else }}{{ .Arch }}{{ end }}'
+
+# self-update reads sha256sums.txt by name, so keep that filename
+checksum:
+  name_template: "sha256sums.txt"
+  algorithm: sha256
+
+sboms:
+  - artifacts: archive
+
+# sign the checksum manifest once with keyless cosign; the bundle is
+# named .sigstore.json which the OpenSSF Scorecard signed-releases
+# probe recognizes natively (ossf/scorecard#3772).
+signs:
+  - cmd: cosign
+    artifacts: checksum
+    output: true
+    signature: "${artifact}.sigstore.json"
+    args:
+      - sign-blob
+      - "--bundle=${signature}"
+      - "${artifact}"
+      - "--yes"
+
+release:
+  github:
+    owner: sethcarney
+    name: mdm
+  mode: keep-existing
+  draft: false
