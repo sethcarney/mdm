@@ -92,14 +92,14 @@ func syncAndLockSkill(s *skill.Skill, agents []string, global bool, mode Install
 			SourceURL:  relPath,
 			PluginName: sName,
 		}); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: could not update lock file: %v\n", err)
+			ui.LogWarn(fmt.Sprintf("could not update lock file: %v", err))
 		}
 	} else {
 		if err := lock.AddSkillToLocalLock(sName, lock.LocalSkillLockEntry{
 			Source:     relPath,
 			SourceType: string(source.SourceTypeLocal),
 		}, cwd); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: could not update lock file: %v\n", err)
+			ui.LogWarn(fmt.Sprintf("could not update lock file: %v", err))
 		}
 	}
 }

@@ -203,14 +203,14 @@ func installWellKnownForAgents(selectedSkills []*registry.WellKnownSkill, agents
 				SourceURL:  parsed.URL,
 				PluginName: s.InstallName,
 			}); err != nil {
-				fmt.Fprintf(os.Stderr, "warning: could not update lock file: %v\n", err)
+				ui.LogWarn(fmt.Sprintf("could not update lock file: %v", err))
 			}
 		} else {
 			if err := lock.AddSkillToLocalLock(sName, lock.LocalSkillLockEntry{
 				Source:     parsed.URL,
 				SourceType: string(source.SourceTypeWellKnown),
 			}, cwd); err != nil {
-				fmt.Fprintf(os.Stderr, "warning: could not update lock file: %v\n", err)
+				ui.LogWarn(fmt.Sprintf("could not update lock file: %v", err))
 			}
 		}
 	}
@@ -517,7 +517,7 @@ func installBlobSkillsForAgents(selectedBlob []*blob.BlobSkill, agents []string,
 				SkillFolderHash: folderHash,
 				PluginName:      sName,
 			}); err != nil {
-				fmt.Fprintf(os.Stderr, "warning: could not update lock file: %v\n", err)
+				ui.LogWarn(fmt.Sprintf("could not update lock file: %v", err))
 			}
 		} else {
 			if err := lock.AddSkillToLocalLock(sName, lock.LocalSkillLockEntry{
@@ -525,7 +525,7 @@ func installBlobSkillsForAgents(selectedBlob []*blob.BlobSkill, agents []string,
 				Ref:        ref,
 				SourceType: string(source.SourceTypeGitHub),
 			}, cwd); err != nil {
-				fmt.Fprintf(os.Stderr, "warning: could not update lock file: %v\n", err)
+				ui.LogWarn(fmt.Sprintf("could not update lock file: %v", err))
 			}
 		}
 	}
@@ -620,7 +620,7 @@ func installSkillsForAgents(skills []*skill.Skill, agents []string, global bool,
 
 		if global {
 			if err := lock.AddSkillToLock(sName, lockEntry); err != nil {
-				fmt.Fprintf(os.Stderr, "warning: could not update lock file: %v\n", err)
+				ui.LogWarn(fmt.Sprintf("could not update lock file: %v", err))
 			}
 		} else {
 			localSrc := baseLockEntry.Source
@@ -632,7 +632,7 @@ func installSkillsForAgents(skills []*skill.Skill, agents []string, global bool,
 				Ref:        baseLockEntry.Ref,
 				SourceType: baseLockEntry.SourceType,
 			}, cwd); err != nil {
-				fmt.Fprintf(os.Stderr, "warning: could not update lock file: %v\n", err)
+				ui.LogWarn(fmt.Sprintf("could not update lock file: %v", err))
 			}
 		}
 	}
@@ -987,7 +987,7 @@ func promptAgents(opts AddOptions, global bool, cwd string) ([]string, bool) {
 	// Only save the user's explicit non-universal selections. Universal agents
 	// (.agents/skills) are always supported — no need to track them.
 	if err := lock.SetConfiguredAgents(userSelected, global, cwd); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: could not save agent preferences: %v\n", err)
+		ui.LogWarn(fmt.Sprintf("could not save agent preferences: %v", err))
 	}
 	return result, true
 }

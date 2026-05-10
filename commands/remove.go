@@ -157,7 +157,7 @@ func removeAgentSkillDir(agentBase, name, localSourceAbs string) {
 	}
 }
 
-func removeSkillFromDisk(sk *InstalledSkill, agentsToRemove []string, global bool, cwd string) {
+func removeSkillFromDisk(sk *InstalledSkill, agentsToRemove []string, global bool, cwd string) error {
 	sName := sanitizeName(sk.Name)
 	localSourceAbs := resolveLocalSourceAbs(sName, global, cwd)
 
@@ -178,16 +178,12 @@ func removeSkillFromDisk(sk *InstalledSkill, agentsToRemove []string, global boo
 		os.RemoveAll(canonicalDir)
 	}
 
-	if global {
-		if err := lock.RemoveSkillFromLock(sName); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: could not update lock file: %v\n", err)
-		}
-	} else {
-		if err := lock.RemoveSkillFromLocalLock(sName, cwd); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: could not update lock file: %v\n", err)
-		}
-	}
 	ui.LogSuccess("Removed " + sk.Name)
+
+	if global {
+		return lock.RemoveSkillFromLock(sName)
+	}
+	return lock.RemoveSkillFromLocalLock(sName, cwd)
 }
 
 func runRemove(positional []string, opts RemoveOptions) {
@@ -214,10 +210,15 @@ func runRemove(positional []string, opts RemoveOptions) {
 	installed, err := listInstalledSkills(scopeGlobal, opts.Agents)
 	if err != nil || len(installed) == 0 {
 		var cleaned int
+		var lockErr error
 		if global {
-			cleaned = cleanOrphanedLockEntries(cwd)
+			cleaned, lockErr = cleanOrphanedLockEntries(cwd)
 		} else {
-			cleaned = cleanOrphanedLocalLockEntries(cwd)
+			cleaned, lockErr = cleanOrphanedLocalLockEntries(cwd)
+		}
+		if lockErr != nil {
+			ui.LogWarn(fmt.Sprintf("skills-lock.json could not be updated: %v", lockErr))
+			fmt.Println()
 		}
 		if cleaned > 0 {
 			fmt.Printf("%sCleaned up %d orphaned lock entr%s with no files on disk.%s\n",
@@ -238,17 +239,26 @@ func runRemove(positional []string, opts RemoveOptions) {
 	}
 
 	fmt.Println()
+	var lockErr error
 	for _, sk := range toRemove {
 		agentsToRemove := sk.Agents
 		if len(opts.Agents) > 0 {
 			agentsToRemove = opts.Agents
 		}
-		removeSkillFromDisk(sk, agentsToRemove, global, cwd)
+		if err := removeSkillFromDisk(sk, agentsToRemove, global, cwd); err != nil && lockErr == nil {
+			lockErr = err
+		}
 	}
-	if !global {
-		cleanOrphanedLocalLockEntries(cwd)
+	if !global && lockErr == nil {
+		if _, err := cleanOrphanedLocalLockEntries(cwd); err != nil {
+			lockErr = err
+		}
 	}
 	fmt.Println()
+	if lockErr != nil {
+		ui.LogWarn(fmt.Sprintf("skills-lock.json could not be updated: %v", lockErr))
+		fmt.Println()
+	}
 }
 
 func confirmRemove(toRemove []*InstalledSkill) bool {
@@ -265,11 +275,11 @@ func confirmRemove(toRemove []*InstalledSkill) bool {
 }
 
 // cleanOrphanedLockEntries removes global lock entries whose skill files no
-// longer exist on disk. Returns the number of entries removed.
-func cleanOrphanedLockEntries(cwd string) int {
+// longer exist on disk. Returns the number of entries removed and any lock write error.
+func cleanOrphanedLockEntries(cwd string) (int, error) {
 	globalLock := lock.ReadSkillLock()
 	if len(globalLock.Skills) == 0 {
-		return 0
+		return 0, nil
 	}
 	canonicalBase := getCanonicalSkillsDir(true, cwd)
 	var removed []string
@@ -280,20 +290,21 @@ func cleanOrphanedLockEntries(cwd string) int {
 			removed = append(removed, name)
 		}
 	}
+	var firstErr error
 	for _, name := range removed {
-		if err := lock.RemoveSkillFromLock(sanitizeName(name)); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: could not update lock file: %v\n", err)
+		if err := lock.RemoveSkillFromLock(sanitizeName(name)); err != nil && firstErr == nil {
+			firstErr = err
 		}
 	}
-	return len(removed)
+	return len(removed), firstErr
 }
 
 // cleanOrphanedLocalLockEntries removes project lock entries whose skill files
-// no longer exist on disk. Returns the number of entries removed.
-func cleanOrphanedLocalLockEntries(cwd string) int {
+// no longer exist on disk. Returns the number of entries removed and any lock write error.
+func cleanOrphanedLocalLockEntries(cwd string) (int, error) {
 	localLock := lock.ReadLocalLock(cwd)
 	if len(localLock.Skills) == 0 {
-		return 0
+		return 0, nil
 	}
 	canonicalBase := getCanonicalSkillsDir(false, cwd)
 	var removed []string
@@ -304,10 +315,11 @@ func cleanOrphanedLocalLockEntries(cwd string) int {
 			removed = append(removed, name)
 		}
 	}
+	var firstErr error
 	for _, name := range removed {
-		if err := lock.RemoveSkillFromLocalLock(sanitizeName(name), cwd); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: could not update lock file: %v\n", err)
+		if err := lock.RemoveSkillFromLocalLock(sanitizeName(name), cwd); err != nil && firstErr == nil {
+			firstErr = err
 		}
 	}
-	return len(removed)
+	return len(removed), firstErr
 }
