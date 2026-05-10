@@ -200,7 +200,8 @@ Use %s--global%s / %s-g%s to configure agents at the user level.`, ansiBold, ans
 				return fmt.Errorf("no valid agents specified")
 			}
 			if err := lock.AddToConfiguredAgents(toAdd, global, cwd); err != nil {
-				return fmt.Errorf("saving agents: %w", err)
+				ui.LogError(fmt.Sprintf("could not save agent configuration: %v", err))
+				return nil
 			}
 			for _, name := range toAdd {
 				cfg := agent.AllAgents[name]
@@ -271,7 +272,8 @@ func pickAndSaveAgents(global bool, scope, cwd string) ([]string, error) {
 	}
 	sort.Strings(newList)
 	if err := lock.SetConfiguredAgents(newList, global, cwd); err != nil {
-		return nil, fmt.Errorf("saving agents: %w", err)
+		ui.LogError(fmt.Sprintf("could not save agent configuration: %v", err))
+		return nil, nil
 	}
 	printAgentsSaved(newList, scope)
 
@@ -351,7 +353,8 @@ func runAgentsRemove(cmd *cobra.Command, args []string, global, yes bool) error 
 	}
 
 	if err := lock.RemoveFromConfiguredAgents(toRemove, global, cwd); err != nil {
-		return fmt.Errorf("saving agents: %w", err)
+		ui.LogError(fmt.Sprintf("could not save agent configuration: %v", err))
+		return nil
 	}
 	for _, name := range toRemove {
 		cfg := agent.AllAgents[name]
