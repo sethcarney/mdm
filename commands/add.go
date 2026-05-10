@@ -197,17 +197,21 @@ func installWellKnownForAgents(selectedSkills []*registry.WellKnownSkill, agents
 			ui.LogWarn(fmt.Sprintf("%s (failed for: %s)", s.Name, strings.Join(failedAgents, ", ")))
 		}
 		if global {
-			_ = lock.AddSkillToLock(sName, lock.SkillLockEntry{
+			if err := lock.AddSkillToLock(sName, lock.SkillLockEntry{
 				Source:     sourceID,
 				SourceType: string(source.SourceTypeWellKnown),
 				SourceURL:  parsed.URL,
 				PluginName: s.InstallName,
-			})
+			}); err != nil {
+				fmt.Fprintf(os.Stderr, "warning: could not update lock file: %v\n", err)
+			}
 		} else {
-			_ = lock.AddSkillToLocalLock(sName, lock.LocalSkillLockEntry{
+			if err := lock.AddSkillToLocalLock(sName, lock.LocalSkillLockEntry{
 				Source:     parsed.URL,
 				SourceType: string(source.SourceTypeWellKnown),
-			}, cwd)
+			}, cwd); err != nil {
+				fmt.Fprintf(os.Stderr, "warning: could not update lock file: %v\n", err)
+			}
 		}
 	}
 }
@@ -504,7 +508,7 @@ func installBlobSkillsForAgents(selectedBlob []*blob.BlobSkill, agents []string,
 			folderHash = blob.GetSkillFolderHashFromTree(result.Tree, bSkill.RepoPath)
 		}
 		if global {
-			_ = lock.AddSkillToLock(sName, lock.SkillLockEntry{
+			if err := lock.AddSkillToLock(sName, lock.SkillLockEntry{
 				Source:          stripSourceRef(sourceInput),
 				SourceType:      string(source.SourceTypeGitHub),
 				SourceURL:       parsed.URL,
@@ -512,13 +516,17 @@ func installBlobSkillsForAgents(selectedBlob []*blob.BlobSkill, agents []string,
 				SkillPath:       bSkill.RepoPath,
 				SkillFolderHash: folderHash,
 				PluginName:      sName,
-			})
+			}); err != nil {
+				fmt.Fprintf(os.Stderr, "warning: could not update lock file: %v\n", err)
+			}
 		} else {
-			_ = lock.AddSkillToLocalLock(sName, lock.LocalSkillLockEntry{
+			if err := lock.AddSkillToLocalLock(sName, lock.LocalSkillLockEntry{
 				Source:     stripSourceRef(sourceInput),
 				Ref:        ref,
 				SourceType: string(source.SourceTypeGitHub),
-			}, cwd)
+			}, cwd); err != nil {
+				fmt.Fprintf(os.Stderr, "warning: could not update lock file: %v\n", err)
+			}
 		}
 	}
 }
@@ -611,17 +619,21 @@ func installSkillsForAgents(skills []*skill.Skill, agents []string, global bool,
 		}
 
 		if global {
-			_ = lock.AddSkillToLock(sName, lockEntry)
+			if err := lock.AddSkillToLock(sName, lockEntry); err != nil {
+				fmt.Fprintf(os.Stderr, "warning: could not update lock file: %v\n", err)
+			}
 		} else {
 			localSrc := baseLockEntry.Source
 			if baseLockEntry.SourceType == string(source.SourceTypeLocal) {
 				localSrc = toRelSourcePath(localSrc, cwd)
 			}
-			_ = lock.AddSkillToLocalLock(sName, lock.LocalSkillLockEntry{
+			if err := lock.AddSkillToLocalLock(sName, lock.LocalSkillLockEntry{
 				Source:     localSrc,
 				Ref:        baseLockEntry.Ref,
 				SourceType: baseLockEntry.SourceType,
-			}, cwd)
+			}, cwd); err != nil {
+				fmt.Fprintf(os.Stderr, "warning: could not update lock file: %v\n", err)
+			}
 		}
 	}
 
@@ -974,7 +986,9 @@ func promptAgents(opts AddOptions, global bool, cwd string) ([]string, bool) {
 	}
 	// Only save the user's explicit non-universal selections. Universal agents
 	// (.agents/skills) are always supported — no need to track them.
-	_ = lock.SetConfiguredAgents(userSelected, global, cwd)
+	if err := lock.SetConfiguredAgents(userSelected, global, cwd); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not save agent preferences: %v\n", err)
+	}
 	return result, true
 }
 
