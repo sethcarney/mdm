@@ -29,10 +29,11 @@ icon:
 # Run this before building the Windows release binary.
 # Version is read automatically from internal/version/version.go.
 syso: assets/mdm.ico
-	$(eval VERSION := $(shell grep 'const Version' internal/version/version.go | sed 's/.*"\(.*\)".*/\1/'))
-	$(eval VMAJOR  := $(word 1,$(subst ., ,$(VERSION))))
-	$(eval VMINOR  := $(word 2,$(subst ., ,$(VERSION))))
-	$(eval VPATCH  := $(word 3,$(subst ., ,$(VERSION))))
+	$(eval _TAG    := $(or $(GORELEASER_CURRENT_TAG),$(shell grep 'Version =' internal/version/version.go | sed 's/.*"\(.*\)".*/\1/')))
+	$(eval _SEMVER := $(shell printf '%s' '$(_TAG)' | sed 's/^v//; s/-.*//' ))
+	$(eval VMAJOR  := $(shell printf '%s' '$(_SEMVER)' | cut -d. -f1 | grep -E '^[0-9]+$$' || echo 0))
+	$(eval VMINOR  := $(shell printf '%s' '$(_SEMVER)' | cut -d. -f2 | grep -E '^[0-9]+$$' || echo 0))
+	$(eval VPATCH  := $(shell printf '%s' '$(_SEMVER)' | cut -d. -f3 | grep -E '^[0-9]+$$' || echo 0))
 	go tool goversioninfo \
 	    -64 \
 	    -ver-major $(VMAJOR) -ver-minor $(VMINOR) -ver-patch $(VPATCH) -ver-build 0 \
