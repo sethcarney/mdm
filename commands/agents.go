@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -42,19 +43,51 @@ Configured agents are used as the default selection when running
 	return cmd
 }
 
+type agentListItem struct {
+	Name        string `json:"name"`
+	DisplayName string `json:"displayName"`
+	Scope       string `json:"scope"`
+	Installed   bool   `json:"installed"`
+}
+
 func buildAgentsListCmd() *cobra.Command {
 	var global bool
+	var jsonMode bool
+	var available bool
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
 		Short:   "List configured agents",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if available {
+				return runAgentsListAvailable(jsonMode)
+			}
+
 			cwd, _ := os.Getwd()
 			configured := lock.GetConfiguredAgents(global, cwd)
 			scope := "project"
 			if global {
 				scope = "global"
 			}
+
+			if jsonMode {
+				items := make([]agentListItem, 0, len(configured))
+				for _, name := range configured {
+					cfg := agent.AllAgents[name]
+					item := agentListItem{Name: name, Scope: scope}
+					if cfg != nil {
+						item.DisplayName = cfg.DisplayName
+						item.Installed = cfg.DetectInstalled != nil && cfg.DetectInstalled()
+					} else {
+						item.DisplayName = name
+					}
+					items = append(items, item)
+				}
+				out, _ := json.MarshalIndent(items, "", "  ")
+				fmt.Println(string(out))
+				return nil
+			}
+
 			if len(configured) == 0 {
 				fmt.Printf("%sNo agents configured for %s scope.%s\n", ansiDim, scope, ansiReset)
 				fmt.Printf("Run %smdm agents add%s to configure your agents.\n", ansiBold, ansiReset)
@@ -78,7 +111,49 @@ func buildAgentsListCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVarP(&global, "global", "g", false, "List global configured agents")
+	cmd.Flags().BoolVar(&jsonMode, "json", false, "Output as JSON")
+	cmd.Flags().BoolVar(&available, "available", false, "List all agents known to mdm (not just configured ones)")
 	return cmd
+}
+
+func runAgentsListAvailable(jsonMode bool) error {
+	type availableItem struct {
+		Name        string `json:"name"`
+		DisplayName string `json:"displayName"`
+		Installed   bool   `json:"installed"`
+	}
+
+	items := make([]availableItem, 0, len(agent.AllAgents))
+	for name, cfg := range agent.AllAgents {
+		if cfg.ExcludeFromPicker {
+			continue
+		}
+		items = append(items, availableItem{
+			Name:        name,
+			DisplayName: cfg.DisplayName,
+			Installed:   cfg.DetectInstalled != nil && cfg.DetectInstalled(),
+		})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].DisplayName < items[j].DisplayName
+	})
+
+	if jsonMode {
+		out, _ := json.MarshalIndent(items, "", "  ")
+		fmt.Println(string(out))
+		return nil
+	}
+
+	fmt.Printf("%sAll available agents:%s\n\n", ansiBold, ansiReset)
+	for _, item := range items {
+		detected := ""
+		if item.Installed {
+			detected = fmt.Sprintf("  %s✓ installed%s", ansiGreen, ansiReset)
+		}
+		fmt.Printf("  %s%-28s%s %s%s%s%s\n", ansiText, item.DisplayName, ansiReset, ansiDim, item.Name, ansiReset, detected)
+	}
+	fmt.Println()
+	return nil
 }
 
 func buildAgentsAddCmd() *cobra.Command {
@@ -125,7 +200,8 @@ Use %s--global%s / %s-g%s to configure agents at the user level.`, ansiBold, ans
 				return fmt.Errorf("no valid agents specified")
 			}
 			if err := lock.AddToConfiguredAgents(toAdd, global, cwd); err != nil {
-				return fmt.Errorf("saving agents: %w", err)
+				ui.LogError(fmt.Sprintf("could not save agent configuration: %v", err))
+				return nil
 			}
 			for _, name := range toAdd {
 				cfg := agent.AllAgents[name]
@@ -196,7 +272,8 @@ func pickAndSaveAgents(global bool, scope, cwd string) ([]string, error) {
 	}
 	sort.Strings(newList)
 	if err := lock.SetConfiguredAgents(newList, global, cwd); err != nil {
-		return nil, fmt.Errorf("saving agents: %w", err)
+		ui.LogError(fmt.Sprintf("could not save agent configuration: %v", err))
+		return nil, nil
 	}
 	printAgentsSaved(newList, scope)
 
@@ -225,82 +302,101 @@ func promptAgentScope() (isGlobal bool, ok bool) {
 
 func buildAgentsRemoveCmd() *cobra.Command {
 	var global bool
+	var yes bool
 	cmd := &cobra.Command{
 		Use:     "remove [agents...]",
 		Aliases: []string{"rm", "r"},
 		Short:   "Remove agents from your configured list",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cwd, _ := os.Getwd()
-
-			if len(args) == 0 && !cmd.Flags().Changed("global") {
-				isGlobal, ok := promptAgentScope()
-				if !ok {
-					return nil
-				}
-				global = isGlobal
-			}
-
-			scope := "project"
-			if global {
-				scope = "global"
-			}
-
-			configured := lock.GetConfiguredAgents(global, cwd)
-			if len(configured) == 0 {
-				fmt.Printf("%sNo agents configured for %s scope.%s\n", ansiDim, scope, ansiReset)
-				return nil
-			}
-
-			var toRemove []string
-			if len(args) > 0 {
-				validated, ok := validateNamedAgents(args)
-				if !ok {
-					return fmt.Errorf("no valid agents specified")
-				}
-				toRemove = validated
-			} else {
-				picked, ok := pickAgentsToRemove(configured)
-				if !ok {
-					return nil
-				}
-				toRemove = picked
-			}
-
-			// Confirm before acting.
-			var displayNames []string
-			for _, name := range toRemove {
-				cfg := agent.AllAgents[name]
-				if cfg != nil {
-					displayNames = append(displayNames, cfg.DisplayName)
-				} else {
-					displayNames = append(displayNames, name)
-				}
-			}
-			confirmed, ok := ui.UiConfirm(fmt.Sprintf("Remove %d agent(s): %s?", len(toRemove), strings.Join(displayNames, ", ")))
-			if !ok || !confirmed {
-				fmt.Println("Cancelled.")
-				return nil
-			}
-
-			if err := lock.RemoveFromConfiguredAgents(toRemove, global, cwd); err != nil {
-				return fmt.Errorf("saving agents: %w", err)
-			}
-			for _, name := range toRemove {
-				cfg := agent.AllAgents[name]
-				displayName := name
-				if cfg != nil {
-					displayName = cfg.DisplayName
-				}
-				fmt.Printf("%s✓%s Removed %s%s%s from %s configured agents\n",
-					ansiGreen, ansiReset, ansiBold, displayName, ansiReset, scope)
-			}
-			fmt.Println()
-			cleanUpRemovedAgentFiles(toRemove, global, cwd)
-			return nil
+			return runAgentsRemove(cmd, args, global, yes)
 		},
 	}
 	cmd.Flags().BoolVarP(&global, "global", "g", false, "Remove from global configured agents")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Skip confirmation prompts")
 	return cmd
+}
+
+func runAgentsRemove(cmd *cobra.Command, args []string, global, yes bool) error {
+	cwd, _ := os.Getwd()
+
+	if len(args) == 0 && !cmd.Flags().Changed("global") && !yes {
+		isGlobal, ok := promptAgentScope()
+		if !ok {
+			return nil
+		}
+		global = isGlobal
+	}
+
+	scope := "project"
+	if global {
+		scope = "global"
+	}
+
+	configured := lock.GetConfiguredAgents(global, cwd)
+	if len(configured) == 0 {
+		fmt.Printf("%sNo agents configured for %s scope.%s\n", ansiDim, scope, ansiReset)
+		return nil
+	}
+
+	if yes && len(args) == 0 {
+		return fmt.Errorf("agent names are required when using --yes")
+	}
+
+	toRemove, ok := resolveAgentsToRemove(args, configured)
+	if !ok {
+		return nil
+	}
+
+	if !yes && !confirmAgentsRemoval(toRemove) {
+		fmt.Println("Cancelled.")
+		return nil
+	}
+
+	if err := lock.RemoveFromConfiguredAgents(toRemove, global, cwd); err != nil {
+		ui.LogError(fmt.Sprintf("could not save agent configuration: %v", err))
+		return nil
+	}
+	for _, name := range toRemove {
+		cfg := agent.AllAgents[name]
+		displayName := name
+		if cfg != nil {
+			displayName = cfg.DisplayName
+		}
+		fmt.Printf("%s✓%s Removed %s%s%s from %s configured agents\n",
+			ansiGreen, ansiReset, ansiBold, displayName, ansiReset, scope)
+	}
+	fmt.Println()
+	cleanUpRemovedAgentFiles(toRemove, global, cwd)
+	return nil
+}
+
+// resolveAgentsToRemove returns agents from explicit args or via interactive
+// picker when no args are provided.
+func resolveAgentsToRemove(args []string, configured []string) ([]string, bool) {
+	if len(args) > 0 {
+		validated, ok := validateNamedAgents(args)
+		if !ok {
+			return nil, false
+		}
+		return validated, true
+	}
+	return pickAgentsToRemove(configured)
+}
+
+// confirmAgentsRemoval shows a confirmation prompt listing the agents to be
+// removed. Returns true when the user confirms.
+func confirmAgentsRemoval(toRemove []string) bool {
+	var displayNames []string
+	for _, name := range toRemove {
+		cfg := agent.AllAgents[name]
+		if cfg != nil {
+			displayNames = append(displayNames, cfg.DisplayName)
+		} else {
+			displayNames = append(displayNames, name)
+		}
+	}
+	confirmed, ok := ui.UiConfirm(fmt.Sprintf("Remove %d agent(s): %s?", len(toRemove), strings.Join(displayNames, ", ")))
+	return ok && confirmed
 }
 
 // pickAgentsToRemove shows an interactive picker with nothing pre-selected;

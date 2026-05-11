@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-const Version = "1.5.0"
+var Version = "dev" // overridden by ldflags at release build time
 const AppName = "mdm"
 
 // IsNewer reports whether latest is strictly greater than current (semver strings, "v" prefix optional).

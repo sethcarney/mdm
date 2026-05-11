@@ -32,6 +32,7 @@ type AddOptions struct {
 	All               bool // --all: skill '*', agent '*', -y
 	FullDepth         bool
 	SkipAudit         bool
+	FailOnAudit       bool
 	AllowHiddenChars  bool
 }
 
@@ -85,6 +86,7 @@ pass them space-separated after the flag or repeat the flag for each value
 	f.BoolVar(&opts.All, "all", false, "Shorthand for --skill '*' --agent '*' -y")
 	f.BoolVar(&opts.FullDepth, "full-depth", false, "Search all subdirectories")
 	f.BoolVar(&opts.SkipAudit, "skip-audit", false, "Skip security audit check for public skills")
+	f.BoolVar(&opts.FailOnAudit, "fail-on-audit", false, "Exit non-zero when security findings are detected instead of prompting")
 	f.BoolVar(&opts.AllowHiddenChars, "allow-hidden-chars", false, "Allow markdown files with hidden Unicode characters")
 
 	_ = cmd.RegisterFlagCompletionFunc("agent", agentFlagCompletion)
@@ -195,17 +197,21 @@ func installWellKnownForAgents(selectedSkills []*registry.WellKnownSkill, agents
 			ui.LogWarn(fmt.Sprintf("%s (failed for: %s)", s.Name, strings.Join(failedAgents, ", ")))
 		}
 		if global {
-			_ = lock.AddSkillToLock(sName, lock.SkillLockEntry{
+			if err := lock.AddSkillToLock(sName, lock.SkillLockEntry{
 				Source:     sourceID,
 				SourceType: string(source.SourceTypeWellKnown),
 				SourceURL:  parsed.URL,
 				PluginName: s.InstallName,
-			})
+			}); err != nil {
+				ui.LogWarn(fmt.Sprintf("could not update lock file: %v", err))
+			}
 		} else {
-			_ = lock.AddSkillToLocalLock(sName, lock.LocalSkillLockEntry{
+			if err := lock.AddSkillToLocalLock(sName, lock.LocalSkillLockEntry{
 				Source:     parsed.URL,
 				SourceType: string(source.SourceTypeWellKnown),
-			}, cwd)
+			}, cwd); err != nil {
+				ui.LogWarn(fmt.Sprintf("could not update lock file: %v", err))
+			}
 		}
 	}
 }
@@ -398,7 +404,7 @@ func runAddGitOrHub(parsed source.ParsedSource, opts AddOptions, cwd, sourceInpu
 		return
 	}
 
-	if !confirmInstallAfterAudit(<-auditCh, opts.Yes) {
+	if !confirmInstallAfterAudit(<-auditCh, opts.Yes, opts.FailOnAudit) {
 		return
 	}
 
@@ -407,7 +413,7 @@ func runAddGitOrHub(parsed source.ParsedSource, opts AddOptions, cwd, sourceInpu
 	// Build lock entry
 	lockRef := ref
 	if lockRef == "" {
-		lockRef = "main"
+		lockRef = git.DefaultBranch(parsed.URL)
 	}
 	commitSHA, _ := git.GetLocalCommitSHA(tmpDir)
 	baseLockEntry := lock.SkillLockEntry{
@@ -502,7 +508,7 @@ func installBlobSkillsForAgents(selectedBlob []*blob.BlobSkill, agents []string,
 			folderHash = blob.GetSkillFolderHashFromTree(result.Tree, bSkill.RepoPath)
 		}
 		if global {
-			_ = lock.AddSkillToLock(sName, lock.SkillLockEntry{
+			if err := lock.AddSkillToLock(sName, lock.SkillLockEntry{
 				Source:          stripSourceRef(sourceInput),
 				SourceType:      string(source.SourceTypeGitHub),
 				SourceURL:       parsed.URL,
@@ -510,13 +516,17 @@ func installBlobSkillsForAgents(selectedBlob []*blob.BlobSkill, agents []string,
 				SkillPath:       bSkill.RepoPath,
 				SkillFolderHash: folderHash,
 				PluginName:      sName,
-			})
+			}); err != nil {
+				ui.LogWarn(fmt.Sprintf("could not update lock file: %v", err))
+			}
 		} else {
-			_ = lock.AddSkillToLocalLock(sName, lock.LocalSkillLockEntry{
+			if err := lock.AddSkillToLocalLock(sName, lock.LocalSkillLockEntry{
 				Source:     stripSourceRef(sourceInput),
 				Ref:        ref,
 				SourceType: string(source.SourceTypeGitHub),
-			}, cwd)
+			}, cwd); err != nil {
+				ui.LogWarn(fmt.Sprintf("could not update lock file: %v", err))
+			}
 		}
 	}
 }
@@ -563,7 +573,7 @@ func runAddBlob(result *blob.BlobInstallResult, parsed source.ParsedSource, opts
 	if !ok {
 		return
 	}
-	if !confirmInstallAfterAudit(<-auditCh, opts.Yes) {
+	if !confirmInstallAfterAudit(<-auditCh, opts.Yes, opts.FailOnAudit) {
 		return
 	}
 
@@ -609,17 +619,21 @@ func installSkillsForAgents(skills []*skill.Skill, agents []string, global bool,
 		}
 
 		if global {
-			_ = lock.AddSkillToLock(sName, lockEntry)
+			if err := lock.AddSkillToLock(sName, lockEntry); err != nil {
+				ui.LogWarn(fmt.Sprintf("could not update lock file: %v", err))
+			}
 		} else {
 			localSrc := baseLockEntry.Source
 			if baseLockEntry.SourceType == string(source.SourceTypeLocal) {
 				localSrc = toRelSourcePath(localSrc, cwd)
 			}
-			_ = lock.AddSkillToLocalLock(sName, lock.LocalSkillLockEntry{
+			if err := lock.AddSkillToLocalLock(sName, lock.LocalSkillLockEntry{
 				Source:     localSrc,
 				Ref:        baseLockEntry.Ref,
 				SourceType: baseLockEntry.SourceType,
-			}, cwd)
+			}, cwd); err != nil {
+				ui.LogWarn(fmt.Sprintf("could not update lock file: %v", err))
+			}
 		}
 	}
 
@@ -972,7 +986,9 @@ func promptAgents(opts AddOptions, global bool, cwd string) ([]string, bool) {
 	}
 	// Only save the user's explicit non-universal selections. Universal agents
 	// (.agents/skills) are always supported — no need to track them.
-	_ = lock.SetConfiguredAgents(userSelected, global, cwd)
+	if err := lock.SetConfiguredAgents(userSelected, global, cwd); err != nil {
+		ui.LogWarn(fmt.Sprintf("could not save agent preferences: %v", err))
+	}
 	return result, true
 }
 
@@ -1044,8 +1060,9 @@ func maybeShowFindPrompt(cwd string) {
 // ─── Install-time security audit ──────────────────────────────────────────────
 
 type installAuditEntry struct {
-	Name   string
-	Audits []auditProvider
+	Name    string
+	SkillID string // e.g. "owner/repo/skill-slug" or "owner/repo" for OSV
+	Audits  []auditProvider
 }
 
 func startInstallAudit(ownerRepo string, srcType source.SourceType, skipAudit bool, skills []*skill.Skill) chan []installAuditEntry {
@@ -1063,8 +1080,9 @@ func startInstallAudit(ownerRepo string, srcType source.SourceType, skipAudit bo
 		var results []installAuditEntry
 		for _, s := range skills {
 			slug := blob.ToSkillSlug(s.Name)
-			audits, _ := fetchSkillAudits(ownerRepo + "/" + slug)
-			results = append(results, installAuditEntry{Name: s.Name, Audits: audits})
+			skillID := ownerRepo + "/" + slug
+			audits, _ := fetchSkillAudits(skillID)
+			results = append(results, installAuditEntry{Name: s.Name, SkillID: skillID, Audits: audits})
 		}
 		if osv := <-osvCh; osv != nil && osv.Count > 0 {
 			results = append(results, osvToInstallAuditEntry(ownerRepo, osv))
@@ -1087,8 +1105,9 @@ func startBlobInstallAudit(ownerRepo string, skipAudit bool, skills []*blob.Blob
 		var results []installAuditEntry
 		for _, s := range skills {
 			slug := blob.ToSkillSlug(s.Name)
-			audits, _ := fetchSkillAudits(ownerRepo + "/" + slug)
-			results = append(results, installAuditEntry{Name: s.Name, Audits: audits})
+			skillID := ownerRepo + "/" + slug
+			audits, _ := fetchSkillAudits(skillID)
+			results = append(results, installAuditEntry{Name: s.Name, SkillID: skillID, Audits: audits})
 		}
 		if osv := <-osvCh; osv != nil && osv.Count > 0 {
 			results = append(results, osvToInstallAuditEntry(ownerRepo, osv))
@@ -1111,16 +1130,18 @@ func osvToInstallAuditEntry(ownerRepo string, osv *registry.OSVResult) installAu
 		}
 		audits = append(audits, auditProvider{
 			Provider:  "OSV",
+			Slug:      a.ID,
 			Status:    status,
 			RiskLevel: string(a.Severity),
 			Summary:   summary,
 		})
 	}
-	return installAuditEntry{Name: ownerRepo, Audits: audits}
+	return installAuditEntry{Name: ownerRepo, SkillID: ownerRepo, Audits: audits}
 }
 
 type auditIssue struct {
 	skillName string
+	skillID   string
 	provider  auditProvider
 }
 
@@ -1129,31 +1150,58 @@ func collectAuditIssues(entries []installAuditEntry) []auditIssue {
 	for _, e := range entries {
 		for _, a := range e.Audits {
 			if a.Status == "warn" || a.Status == "fail" {
-				issues = append(issues, auditIssue{e.Name, a})
+				issues = append(issues, auditIssue{e.Name, e.SkillID, a})
 			}
 		}
 	}
 	return issues
 }
 
-func printAuditIssueEntry(iss auditIssue) {
+func auditIssueURL(iss auditIssue) string {
+	if iss.provider.Provider == "OSV" && iss.provider.Slug != "" {
+		return "https://osv.dev/vulnerability/" + iss.provider.Slug
+	}
+	if iss.skillID != "" && iss.provider.Slug != "" {
+		return "https://skills.sh/" + iss.skillID + "/security/" + iss.provider.Slug
+	}
+	return ""
+}
+
+func formatAuditIssueEntry(iss auditIssue) string {
 	color := auditStatusColor(iss.provider.Status)
 	badge := auditStatusBadge(iss.provider.Status)
 	rl := ""
 	if iss.provider.RiskLevel != "" && iss.provider.RiskLevel != "NONE" {
 		rl = fmt.Sprintf("  %s%s%s", riskLevelColor(iss.provider.RiskLevel), iss.provider.RiskLevel, ansiReset)
 	}
-	fmt.Printf("  %s%s%s %s%s%s  %s%s%s%s\n",
+	s := fmt.Sprintf("  %s%s%s %s%s%s  %s%s%s%s\n",
 		color, badge, ansiReset,
 		ansiDim, iss.provider.Provider, ansiReset,
 		ansiText, iss.skillName, ansiReset,
 		rl)
 	if iss.provider.Summary != "" {
-		fmt.Printf("    %s%s%s\n", ansiDim, iss.provider.Summary, ansiReset)
+		s += fmt.Sprintf("    %s%s%s\n", ansiDim, iss.provider.Summary, ansiReset)
 	}
+	if url := auditIssueURL(iss); url != "" {
+		s += fmt.Sprintf("    %s%s%s\n", ansiDim, url, ansiReset)
+	}
+	return s
 }
 
-func confirmInstallAfterAudit(entries []installAuditEntry, autoYes bool) bool {
+func formatAuditIssueBlock(label string, issues []auditIssue) string {
+	s := fmt.Sprintf("%s⚠  %s found:%s\n\n", ansiYellow, label, ansiReset)
+	for _, iss := range issues {
+		s += formatAuditIssueEntry(iss)
+	}
+	s += "\n"
+	return s
+}
+
+func printAuditIssueEntry(iss auditIssue) {
+	fmt.Print(formatAuditIssueEntry(iss))
+}
+
+func confirmInstallAfterAudit(entries []installAuditEntry, autoYes, failOnAudit bool) bool {
 	if len(entries) == 0 {
 		return true
 	}
@@ -1173,22 +1221,26 @@ func confirmInstallAfterAudit(entries []installAuditEntry, autoYes bool) bool {
 	if hasFail {
 		label = "Security issues"
 	}
-	fmt.Printf("%s⚠  %s found:%s\n\n", ansiYellow, label, ansiReset)
-	for _, iss := range issues {
-		printAuditIssueEntry(iss)
-	}
-	fmt.Println()
+	header := formatAuditIssueBlock(label, issues)
 
 	if autoYes {
+		fmt.Print(header)
+		if failOnAudit {
+			fmt.Fprintf(os.Stderr, "mdm: audit-blocked\n")
+			os.Exit(1)
+		}
 		fmt.Printf("%sContinuing with --yes flag.%s\n\n", ansiDim, ansiReset)
 		return true
 	}
-	idx, ok := ui.UiSelect("Security findings detected. Continue?", []ui.UIOption{
+
+	idx, ok := ui.UiSelectWithContext("Security findings detected. Continue?", header, []ui.UIOption{
 		{Label: "Cancel installation"},
 		{Label: "Install anyway", Hint: "proceed despite findings"},
 	})
+	fmt.Println()
+	fmt.Print(header)
 	if !ok || idx == 0 {
-		fmt.Println("Installation cancelled.")
+		fmt.Printf("%s⚠  Installation cancelled due to security findings.%s\n\n", ansiYellow, ansiReset)
 		return false
 	}
 	return true

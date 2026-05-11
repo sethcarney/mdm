@@ -28,7 +28,8 @@ type FindSkillResult struct {
 }
 
 func buildFindCmd() *cobra.Command {
-	return &cobra.Command{
+	var jsonMode bool
+	cmd := &cobra.Command{
 		Use:     "find [query]",
 		Short:   "Search the skills registry",
 		Aliases: []string{"search", "f", "s"},
@@ -39,10 +40,36 @@ func buildFindCmd() *cobra.Command {
   mdm skills find git`, ansiBold, ansiReset),
 		Args: cobra.MaximumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
+			if jsonMode {
+				runFindJSON(args)
+				return
+			}
 			fmt.Println()
 			runFind(args)
 		},
 	}
+	cmd.Flags().BoolVar(&jsonMode, "json", false, "Output results as JSON without installing")
+	return cmd
+}
+
+func runFindJSON(args []string) {
+	query := ""
+	for _, a := range args {
+		if !strings.HasPrefix(a, "-") {
+			query = a
+			break
+		}
+	}
+	results, err := fetchFindResults(query)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Search failed: %v\n", err)
+		os.Exit(1)
+	}
+	if results == nil {
+		results = []FindSkillResult{}
+	}
+	out, _ := json.MarshalIndent(results, "", "  ")
+	fmt.Println(string(out))
 }
 
 func buildFindOptions(results []FindSkillResult) []ui.UIOption {

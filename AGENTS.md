@@ -1,10 +1,43 @@
-# CLAUDE.md
+# AGENTS.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## What This Project Is
 
 **MDM** (Markdown Management) is a Go CLI tool for managing "skills" — reusable markdown-based prompt libraries for AI agents (Claude Code, Cursor, Cline, Copilot, and 40+ others). Skills are installed from GitHub repos, GitLab, URLs, or local paths and placed into each agent's skills directory.
+
+## Git Conventions
+
+### Commit messages
+
+Use semantic (Conventional Commits) format:
+
+```
+<type>(<scope>): <short description>
+
+[optional body]
+```
+
+Types: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `ci`
+
+Examples:
+```
+feat(skills): add --dry-run flag to mdm skills add
+fix(audit): handle nil response from OSV API
+chore: bump Go toolchain to 1.26.3
+docs(agents): add pre-PR checklist guidance
+```
+
+### Branch naming
+
+Use a `<type>/<short-description>` prefix matching the commit type:
+
+```
+feat/dry-run-flag
+fix/osv-nil-panic
+chore/go1.26.3-toolchain
+docs/pre-pr-checklist
+```
 
 ## Commands
 
@@ -79,7 +112,7 @@ mdm
     ├── git/             # Shallow git clone; branch/ref handling
     ├── blob/            # GitHub API tree/blob queries for skill discovery
     ├── ui/              # ANSI color constants; Bubbletea spinner
-    └── version/         # Version constant (bump here for releases)
+    └── version/         # App name + dev fallback version (release tags override via ldflags)
 ```
 
 ### Key data flow
@@ -102,7 +135,15 @@ Create a file in `commands/`, define a `cobra.Command`, and register it either o
 
 ## Pre-PR Checklist
 
-Before opening a pull request, run all CI checks locally and fix any failures:
+Before opening a pull request, run the `/go-report-card` skill — it runs all four CI checks in order and reports results:
+
+```
+/go-report-card
+```
+
+This runs: `gofmt` (auto-fixes in place), `go test ./...`, `govulncheck`, and `gocyclo -over 16`. All four must pass before a PR is opened. CI will run the same checks and block merge on failure.
+
+If you need to run the checks manually:
 
 ```bash
 # 1. Tests
@@ -120,8 +161,6 @@ gofmt -s -l .
 go install github.com/fzipp/gocyclo/cmd/gocyclo@v0.6.0
 gocyclo -over 16 .
 ```
-
-All four checks must pass with no errors before a PR is opened. CI will run the same checks and block merge on failure.
 
 ## Windows Executable Icon
 
@@ -160,4 +199,13 @@ Right-click `mdm.exe` → Properties → Details to verify the icon and version 
 
 ## Release Process
 
-CI in `.github/workflows/release.yml` triggers on pushes to `main` (non-markdown files). It builds binaries for Linux/macOS/Windows (x64 + ARM64), then creates a GitHub release. Version is read from `internal/version/version.go` — bump it there before merging to main.
+CI in `.github/workflows/release.yml` triggers on **tag pushes** matching `v*`. To release:
+
+```bash
+git tag v1.5.8
+git push origin v1.5.8
+```
+
+GoReleaser builds binaries for Linux/macOS/Windows (x64 + ARM64), creates a GitHub release, and injects the tag as the version via ldflags. `internal/version/version.go` holds a `"dev"` fallback for `go install` users — do not bump it for releases, the tag is the source of truth.
+
+Pre-releases work the same way: push a tag like `v1.6.0-rc.1` and GoReleaser marks the GitHub release as a prerelease automatically. `mdm upgrade` skips prereleases because GitHub's `/releases/latest` API excludes them.
