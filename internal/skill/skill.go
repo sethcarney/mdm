@@ -11,14 +11,14 @@ import (
 )
 
 type Skill struct {
-	Name        string
-	Description string
-	Version     string
-	Requires    map[string]string
-	Path        string
-	RawContent  string
-	PluginName  string
-	Metadata    map[string]interface{}
+	Name          string
+	Description   string
+	Version       string
+	Compatibility map[string]string
+	Path          string
+	RawContent    string
+	PluginName    string
+	Metadata      map[string]interface{}
 }
 
 func ParseFrontmatter(raw string) (data map[string]interface{}, content string) {
@@ -116,28 +116,28 @@ func ParseSkillMd(skillMdPath string, includeInternal bool) (*Skill, error) {
 		}
 	}
 
-	var requires map[string]string
-	if reqVal, ok := data["requires"]; ok {
-		if reqMap, ok := reqVal.(map[string]interface{}); ok {
-			requires = make(map[string]string, len(reqMap))
-			for k, v := range reqMap {
+	var compatibility map[string]string
+	if compVal, ok := data["compatibility"]; ok {
+		if compMap, ok := compVal.(map[string]interface{}); ok {
+			compatibility = make(map[string]string, len(compMap))
+			for k, v := range compMap {
 				if vs, ok := v.(string); ok {
-					requires[k] = vs
+					compatibility[k] = vs
 				} else {
-					requires[k] = fmt.Sprintf("%v", v)
+					compatibility[k] = fmt.Sprintf("%v", v)
 				}
 			}
 		}
 	}
 
 	return &Skill{
-		Name:        name,
-		Description: desc,
-		Version:     ver,
-		Requires:    requires,
-		Path:        filepath.Dir(skillMdPath),
-		RawContent:  raw,
-		Metadata:    extractSkillMetadata(data),
+		Name:          name,
+		Description:   desc,
+		Version:       ver,
+		Compatibility: compatibility,
+		Path:          filepath.Dir(skillMdPath),
+		RawContent:    raw,
+		Metadata:      extractSkillMetadata(data),
 	}, nil
 }
 

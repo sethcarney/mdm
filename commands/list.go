@@ -133,8 +133,8 @@ func printSkillsForScope(scopeSkills []*InstalledSkill, scope, cwd string) {
 			}
 			fmt.Printf("    %sagents: %s%s\n", ansiDim, strings.Join(displayNames, ", "), ansiReset)
 		}
-		if len(s.Requires) > 0 {
-			fmt.Printf("    %srequires: %s%s\n", ansiDim, formatRequires(s.Requires), ansiReset)
+		if len(s.Compatibility) > 0 {
+			fmt.Printf("    %scompatibility: %s%s\n", ansiDim, formatCompatibility(s.Compatibility), ansiReset)
 		}
 		shortPath := shortenPath(s.Path, cwd)
 		fmt.Printf("    %s%s%s\n", ansiDim, shortPath, ansiReset)
@@ -142,15 +142,15 @@ func printSkillsForScope(scopeSkills []*InstalledSkill, scope, cwd string) {
 	fmt.Println()
 }
 
-func formatRequires(requires map[string]string) string {
-	keys := make([]string, 0, len(requires))
-	for k := range requires {
+func formatCompatibility(compat map[string]string) string {
+	keys := make([]string, 0, len(compat))
+	for k := range compat {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	parts := make([]string, 0, len(requires))
+	parts := make([]string, 0, len(compat))
 	for _, k := range keys {
-		parts = append(parts, k+": "+requires[k])
+		parts = append(parts, k+": "+compat[k])
 	}
 	return strings.Join(parts, ", ")
 }
