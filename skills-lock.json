@@ -3,8 +3,9 @@
   "skills": {
     "go-report-card": {
       "source": "sethcarney/custom-plugins",
-      "ref": "master",
-      "sourceType": "github"
+      "ref": "v1.0.0",
+      "sourceType": "github",
+      "skillPath": "plugins/go-report-card/skills/go-report-card/SKILL.md"
     }
   },
   "configuredAgents": [
