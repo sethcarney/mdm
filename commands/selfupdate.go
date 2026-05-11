@@ -16,6 +16,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/sethcarney/mdm/internal/ui"
 	"github.com/sethcarney/mdm/internal/version"
 )
 
@@ -23,6 +24,7 @@ const maxBinaryBytes = 100 * 1024 * 1024 // 100 MB hard cap
 
 const updateRepo = "sethcarney/mdm"
 const releasesAPI = "https://api.github.com/repos/" + updateRepo + "/releases/latest"
+const releasesListAPI = "https://api.github.com/repos/" + updateRepo + "/releases"
 
 type githubAsset struct {
 	Name               string `json:"name"`
@@ -30,20 +32,29 @@ type githubAsset struct {
 }
 
 type githubRelease struct {
-	TagName string        `json:"tag_name"`
-	Assets  []githubAsset `json:"assets"`
+	TagName    string        `json:"tag_name"`
+	Prerelease bool          `json:"prerelease"`
+	Assets     []githubAsset `json:"assets"`
 }
 
 func buildUpgradeCmd(ver string) *cobra.Command {
-	return &cobra.Command{
+	var beta, stable bool
+	cmd := &cobra.Command{
 		Use:     "upgrade",
 		Short:   "Upgrade the " + appName + " CLI binary",
 		Aliases: []string{"update-cli", "self-update"},
 		Args:    cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			runSelfUpdate(ver)
+			useBeta := beta
+			if !beta && !stable {
+				useBeta = promptChannel()
+			}
+			runSelfUpdate(ver, useBeta)
 		},
 	}
+	cmd.Flags().BoolVar(&beta, "beta", false, "Upgrade to the latest beta/prerelease version")
+	cmd.Flags().BoolVar(&stable, "stable", false, "Upgrade to the latest stable version (default)")
+	return cmd
 }
 
 func getBinaryAssetName() string {
@@ -123,6 +134,37 @@ func fetchLatestRelease(client *http.Client, currentVersion string) (*githubRele
 		return nil, err
 	}
 	return &release, nil
+}
+
+func fetchLatestPrerelease(client *http.Client, currentVersion string) (*githubRelease, error) {
+	req, _ := http.NewRequest("GET", releasesListAPI, nil)
+	req.Header.Set("User-Agent", appName+"-cli/"+currentVersion)
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to check for updates: %v\n", err)
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		fmt.Fprintf(os.Stderr, "GitHub API returned %d\n", resp.StatusCode)
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to read releases response: %v\n", err)
+		return nil, fmt.Errorf("reading releases response body: %w", err)
+	}
+	var releases []githubRelease
+	if err := json.Unmarshal(body, &releases); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to parse releases: %v\n", err)
+		return nil, err
+	}
+	for i := range releases {
+		if releases[i].Prerelease {
+			return &releases[i], nil
+		}
+	}
+	return nil, nil
 }
 
 func findReleaseURLs(release *githubRelease, assetName, latestVersion string) (string, string, bool) {
@@ -244,13 +286,37 @@ func replaceBinary(tmpPath, execPath, latestVersion string) {
 	os.Exit(0)
 }
 
-func runSelfUpdate(currentVersion string) {
+func promptChannel() bool {
+	idx, ok := ui.UiSelect("Select upgrade channel", []ui.UIOption{
+		{Label: "Stable (recommended)", Hint: "Latest stable release"},
+		{Label: "Beta / Prerelease", Hint: "Latest beta or release-candidate build"},
+	})
+	if !ok {
+		os.Exit(0)
+	}
+	return idx == 1
+}
+
+func runSelfUpdate(currentVersion string, useBeta bool) {
 	client := &http.Client{Timeout: 30 * time.Second}
 	fmt.Printf("%sChecking for updates...%s\n", ansiDim, ansiReset)
 
-	release, err := fetchLatestRelease(client, currentVersion)
-	if err != nil {
-		os.Exit(1)
+	var release *githubRelease
+	var err error
+	if useBeta {
+		release, err = fetchLatestPrerelease(client, currentVersion)
+		if err != nil {
+			os.Exit(1)
+		}
+		if release == nil {
+			fmt.Printf("%sNo beta releases found.%s\n", ansiText, ansiReset)
+			return
+		}
+	} else {
+		release, err = fetchLatestRelease(client, currentVersion)
+		if err != nil {
+			os.Exit(1)
+		}
 	}
 
 	latestVersion := strings.TrimPrefix(release.TagName, "v")
