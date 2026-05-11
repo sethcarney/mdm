@@ -255,9 +255,19 @@ func min(a, b int) int {
 
 func TestLocalSkillLockUsesRelativePath(t *testing.T) {
 	// Create an isolated project dir and a sibling skill dir.
-	projectDir := t.TempDir()
-	skillDir := t.TempDir()
+	parentDir := t.TempDir()
+	if realParent, err := filepath.EvalSymlinks(parentDir); err == nil {
+		parentDir = realParent
+	}
+	projectDir := filepath.Join(parentDir, "project")
+	skillDir := filepath.Join(parentDir, "skill")
 	stateDir := t.TempDir()
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		t.Fatalf("creating project dir: %v", err)
+	}
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatalf("creating skill dir: %v", err)
+	}
 
 	// Write a minimal SKILL.md (with YAML frontmatter) in skillDir so mdm recognises it.
 	skillMd := filepath.Join(skillDir, "SKILL.md")
@@ -295,4 +305,91 @@ func TestLocalSkillLockUsesRelativePath(t *testing.T) {
 	if !strings.Contains(content, `"./`) && !strings.Contains(content, `"../`) {
 		t.Errorf("skills-lock.json does not contain a relative path (./ or ../).\nlock file:\n%s", content)
 	}
+}
+
+func TestSkillsAddBlocksHiddenMarkdownCharacters(t *testing.T) {
+	projectDir := t.TempDir()
+	stateDir := t.TempDir()
+	skillDir := hiddenSkillFixturePath(t)
+
+	env := isolatedEnv(projectDir, stateDir)
+	stdout, stderr, code := runMdmInDir(t, projectDir, env,
+		"skills", "add", skillDir, "--agent", "claude-code", "--project", "-y")
+	combined := stdout + stderr
+	if code == 0 {
+		t.Fatalf("expected hidden character scan to block install, got code 0:\n%s", combined)
+	}
+	if !strings.Contains(combined, "Hidden character scan failed") || !strings.Contains(combined, "zero-width") {
+		t.Fatalf("expected hidden character finding in output, got:\n%s", combined)
+	}
+	if _, err := os.Stat(filepath.Join(projectDir, ".agents", "skills", "hidden-test-skill")); !os.IsNotExist(err) {
+		t.Fatalf("expected skill directory not to be created, stat err=%v", err)
+	}
+}
+
+func TestSkillsAddAllowsHiddenMarkdownCharactersWithFlag(t *testing.T) {
+	projectDir := t.TempDir()
+	stateDir := t.TempDir()
+	skillDir := hiddenSkillFixturePath(t)
+
+	env := isolatedEnv(projectDir, stateDir)
+	stdout, stderr, code := runMdmInDir(t, projectDir, env,
+		"skills", "add", skillDir, "--agent", "claude-code", "--project", "-y", "--allow-hidden-chars")
+	combined := stdout + stderr
+	if code != 0 {
+		t.Fatalf("expected install with --allow-hidden-chars to succeed, got code %d:\n%s", code, combined)
+	}
+	if !strings.Contains(combined, "Continuing because --allow-hidden-chars was provided") {
+		t.Fatalf("expected allow warning in output, got:\n%s", combined)
+	}
+	if _, err := os.Stat(filepath.Join(projectDir, ".agents", "skills", "hidden-test-skill", "SKILL.md")); err != nil {
+		t.Fatalf("expected skill to be installed, stat err=%v", err)
+	}
+}
+
+func TestSkillsInstallBlocksHiddenMarkdownCharactersFromLock(t *testing.T) {
+	projectDir := t.TempDir()
+	stateDir := t.TempDir()
+	skillDir := hiddenSkillFixturePath(t)
+	lockContent := `{
+  "version": 1,
+  "skills": {
+    "hidden-test-skill": {
+      "source": "` + filepath.ToSlash(skillDir) + `",
+      "sourceType": "local"
+    }
+  },
+  "configuredAgents": ["claude-code"]
+}
+`
+	if err := os.WriteFile(filepath.Join(projectDir, "skills-lock.json"), []byte(lockContent), 0600); err != nil {
+		t.Fatalf("creating skills-lock.json: %v", err)
+	}
+
+	env := isolatedEnv(projectDir, stateDir)
+	stdout, stderr, code := runMdmInDir(t, projectDir, env, "skills", "install", "-y")
+	combined := stdout + stderr
+	if code == 0 {
+		t.Fatalf("expected hidden character scan to block install, got code 0:\n%s", combined)
+	}
+	if !strings.Contains(combined, "Hidden character scan failed") || !strings.Contains(combined, "zero-width") {
+		t.Fatalf("expected hidden character finding in output, got:\n%s", combined)
+	}
+}
+
+func isolatedEnv(home, stateDir string) []string {
+	return []string{
+		"PATH=" + os.Getenv("PATH"),
+		"HOME=" + home,
+		"XDG_STATE_HOME=" + stateDir,
+	}
+}
+
+func hiddenSkillFixturePath(t *testing.T) string {
+	t.Helper()
+	root, err := findModRoot()
+	if err != nil {
+		t.Fatalf("finding module root: %v", err)
+	}
+	return filepath.Join(root, "tests", "testdata", "hidden-skill")
 }

@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-const Version = "1.5.0"
+const Version = "1.5.7"
 const AppName = "mdm"
 
 // IsNewer reports whether latest is strictly greater than current (semver strings, "v" prefix optional).

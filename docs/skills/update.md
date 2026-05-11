@@ -8,7 +8,8 @@ Update installed skills to their latest versions.
 mdm skills update [skills...]
 ```
 
-Re-fetches each skill from its recorded source and ref in the lock file. Skills that are already up to date are skipped.
+Re-fetches each skill from its recorded source and ref in the lock file. Skills that are already up to date are skipped. Local skills compare the `version` field in the source `SKILL.md` against the value recorded at install time.
+Updated skills are scanned for hidden Unicode characters before files are copied or symlinked.
 
 Alias: `check`
 
@@ -16,13 +17,10 @@ Alias: `check`
 
 | Source | Method |
 |---|---|
-| GitHub | Skill folder hash — only triggers when the skill's own directory changed, not the rest of the repo. Falls back to commit SHA on API error. |
-| GitLab / other git | Commit SHA via `git ls-remote` — no clone needed |
+| GitHub / GitLab / other git | Semver tag comparison via `git ls-remote --tags` — no clone needed. Must be pinned to a version tag (e.g. `#v1.2.0`). |
 | Local path | `version` field in `SKILL.md` — bump it to trigger an update |
 
-Remote skills use commit-based detection because it's automatic — every push is detectable without any author action. Local skills have no remote to query, so version comparison is used instead: mdm reads the `version` field from the source `SKILL.md` and compares it to the value recorded at install time. If no version is present in either the source or the lock entry, the skill is skipped with a warning.
-
-If no hash is recorded for a remote skill (older install), it is re-fetched once to populate tracking data.
+Remote skills use semver tag comparison: mdm fetches all tags from the remote and finds the latest stable release. If the installed tag is behind, the skill is upgraded automatically. Skills pinned to a branch (e.g. `main`) are skipped with a prompt to pin to a tag instead. Local skills have no remote to query, so version comparison is used: mdm reads the `version` field from the source `SKILL.md` and compares it to the value recorded at install time. If no version is present, the skill is skipped with a warning.
 
 ## Scope
 
@@ -44,6 +42,7 @@ With `--yes`, both scopes are updated without prompting.
 | `--global, -g` | Update global skills only |
 | `--project, -p` | Update project skills only |
 | `--yes, -y` | Skip scope prompt, update both scopes |
+| `--allow-hidden-chars` | Allow markdown files with hidden Unicode characters |
 
 ## Examples
 
@@ -59,4 +58,7 @@ mdm skills update -g
 
 # Update both scopes without prompting
 mdm skills update -y
+
+# Update even if a skill intentionally contains hidden characters
+mdm skills update -y --allow-hidden-chars
 ```

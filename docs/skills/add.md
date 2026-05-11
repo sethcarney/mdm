@@ -25,8 +25,9 @@ mdm skills add <package>
 2. `SKILL.md` files inside the repo are discovered.
 3. If the repo contains multiple skills, a picker lets you choose which ones to install.
 4. You are prompted for scope (project or global) and which agents to install to — unless flags are provided.
-5. Skill directories are copied into each agent's skills directory.
-6. The installation is recorded in `skills-lock.json`.
+5. Markdown files are scanned for hidden Unicode characters.
+6. Skill directories are copied into each agent's skills directory.
+7. The installation is recorded in `skills-lock.json`.
 
 ## Flags
 
@@ -42,6 +43,7 @@ mdm skills add <package>
 | `--all`         | Shorthand for `--skill '*' --agent '*' -y`           |
 | `--full-depth`  | Search all subdirectories for SKILL.md files         |
 | `--skip-audit`  | Skip the security audit check                        |
+| `--allow-hidden-chars` | Allow markdown files with hidden Unicode characters |
 
 The `--agent` and `--skill` flags accept multiple space-separated values after a single flag or can be repeated:
 
@@ -101,3 +103,7 @@ mdm skills add owner/repo -a claude-code cursor
 ## Security audit
 
 When installing public skills from GitHub, mdm checks the skills.sh registry for any known security advisories. If an advisory is found you are shown the details and asked to confirm before proceeding. Pass `--skip-audit` to disable this check.
+
+## Hidden character scan
+
+Before installing, mdm scans all markdown files in the selected skill for hidden Unicode characters used in prompt-smuggling attacks, including Unicode tags, bidirectional controls, zero-width characters, variation selectors, and soft hyphens. Findings block installation even with `--yes`. Pass `--allow-hidden-chars` to continue intentionally.

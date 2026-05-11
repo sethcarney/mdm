@@ -1,12 +1,14 @@
 package git
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type GitCloneError struct {
@@ -32,7 +34,9 @@ func CloneRepo(gitURL, ref string) (string, error) {
 	}
 	args = append(args, gitURL, tmpDir)
 
-	cmd := exec.Command("git", args...)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Env = append(os.Environ(),
 		"GIT_TERMINAL_PROMPT=0",
 		"GIT_LFS_SKIP_SMUDGE=1",
@@ -93,13 +97,44 @@ func CleanupTempDir(dir string) error {
 
 // GetLocalCommitSHA returns the HEAD commit SHA of an already-cloned repository directory.
 func GetLocalCommitSHA(dir string) (string, error) {
-	cmd := exec.Command("git", "-C", dir, "rev-parse", "HEAD")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "HEAD")
 	cmd.Env = os.Environ()
 	out, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("git rev-parse HEAD failed in %s: %w", dir, err)
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// DefaultBranch returns the default branch name of a remote git repository by running
+// "git ls-remote --symref <url> HEAD" and parsing the symbolic ref line.
+// Falls back to "main" if the default branch cannot be determined.
+func DefaultBranch(gitURL string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", "ls-remote", "--symref", gitURL, "HEAD")
+	cmd.Env = append(os.Environ(),
+		"GIT_TERMINAL_PROMPT=0",
+		"GIT_LFS_SKIP_SMUDGE=1",
+	)
+	out, err := cmd.Output()
+	if err != nil {
+		return "main"
+	}
+	// Output format: "ref: refs/heads/<branch>\tHEAD\n<sha>\tHEAD\n"
+	const prefix = "ref: refs/heads/"
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.HasPrefix(line, prefix) {
+			branch := strings.TrimPrefix(line, prefix)
+			branch = strings.Fields(branch)[0]
+			if branch != "" {
+				return branch
+			}
+		}
+	}
+	return "main"
 }
 
 // FetchRemoteCommitSHA fetches the commit SHA for the given ref on a remote git URL using
@@ -114,7 +149,9 @@ func FetchRemoteCommitSHA(gitURL, ref string) (string, error) {
 		args = append(args, "HEAD")
 	}
 
-	cmd := exec.Command("git", args...)
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel2()
+	cmd := exec.CommandContext(ctx2, "git", args...)
 	cmd.Env = append(os.Environ(),
 		"GIT_TERMINAL_PROMPT=0",
 		"GIT_LFS_SKIP_SMUDGE=1",

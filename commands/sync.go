@@ -15,7 +15,8 @@ import (
 )
 
 type SyncOptions struct {
-	Yes bool
+	Yes              bool
+	AllowHiddenChars bool
 }
 
 func buildSyncCmd(ver string) *cobra.Command {
@@ -32,6 +33,7 @@ func buildSyncCmd(ver string) *cobra.Command {
 	}
 
 	cmd.Flags().BoolVarP(&opts.Yes, "yes", "y", false, "Skip confirmation prompts")
+	cmd.Flags().BoolVar(&opts.AllowHiddenChars, "allow-hidden-chars", false, "Allow markdown files with hidden Unicode characters")
 	return cmd
 }
 
@@ -84,17 +86,21 @@ func syncAndLockSkill(s *skill.Skill, agents []string, global bool, mode Install
 	relPath = filepath.ToSlash(relPath)
 
 	if global {
-		_ = lock.AddSkillToLock(sName, lock.SkillLockEntry{
+		if err := lock.AddSkillToLock(sName, lock.SkillLockEntry{
 			Source:     relPath,
 			SourceType: string(source.SourceTypeLocal),
 			SourceURL:  relPath,
 			PluginName: sName,
-		})
+		}); err != nil {
+			ui.LogWarn(fmt.Sprintf("could not update lock file: %v", err))
+		}
 	} else {
-		_ = lock.AddSkillToLocalLock(sName, lock.LocalSkillLockEntry{
+		if err := lock.AddSkillToLocalLock(sName, lock.LocalSkillLockEntry{
 			Source:     relPath,
 			SourceType: string(source.SourceTypeLocal),
-		}, cwd)
+		}, cwd); err != nil {
+			ui.LogWarn(fmt.Sprintf("could not update lock file: %v", err))
+		}
 	}
 }
 
@@ -131,6 +137,9 @@ func runSync(opts SyncOptions) {
 	selectedSkills, ok := selectSkillsToSync(skills, opts.Yes)
 	if !ok {
 		return
+	}
+	if !checkDiskSkillsMarkdownForHiddenChars(selectedSkills, opts.AllowHiddenChars) {
+		os.Exit(1)
 	}
 
 	global, mode, agents, ok := promptScopeAndAgents(AddOptions{Yes: opts.Yes}, cwd)

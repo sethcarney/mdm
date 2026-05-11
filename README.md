@@ -54,6 +54,8 @@ mdm upgrade                Upgrade the mdm CLI binary
 
 Run `mdm --help` for the full command reference. See [docs/rules.md](docs/rules.md) for a detailed walkthrough of the `mdm rules` flow.
 
+Skill installs run a deterministic local hidden-character scan over markdown files before copying or symlinking content. See [docs/security/hidden-character-scan.md](docs/security/hidden-character-scan.md) for the exact checks and bypass policy.
+
 ## Development
 
 ```bash

@@ -68,6 +68,8 @@ type AuditOptions struct {
 	Global  bool
 	Project bool
 	JSON    bool
+	Source  string // pre-install audit: owner/repo or URL
+	Skill   string // filter by skill name (used with Source)
 }
 
 func buildAuditCmd() *cobra.Command {
@@ -95,6 +97,8 @@ Gen Agent Trust Hub, Socket, Snyk, Runlayer, and ZeroLeaks.
 	f.BoolVarP(&opts.Global, "global", "g", false, "Audit global skills only")
 	f.BoolVarP(&opts.Project, "project", "p", false, "Audit project skills only")
 	f.BoolVar(&opts.JSON, "json", false, "Output as JSON")
+	f.StringVarP(&opts.Source, "source", "r", "", "Pre-install audit: owner/repo or URL to audit before installing")
+	f.StringVarP(&opts.Skill, "skill", "s", "", "Skill name to audit (use with --source)")
 
 	return cmd
 }
@@ -102,6 +106,11 @@ Gen Agent Trust Hub, Socket, Snyk, Runlayer, and ZeroLeaks.
 // ── Run ────────────────────────────────────────────────────
 
 func runAudit(skillFilter []string, opts AuditOptions) {
+	if opts.Source != "" {
+		runPreInstallAudit(opts)
+		return
+	}
+
 	global := opts.Global
 	project := opts.Project
 	if !global && !project {
@@ -525,9 +534,56 @@ func syncBadge(status string) (string, string) {
 		return "~ local", ansiDim
 	case "unchecked":
 		return "? unchecked", ansiDim
+	case "n/a":
+		return "n/a", ansiDim
 	default:
 		return "? unknown", ansiDim
 	}
+}
+
+func runPreInstallAudit(opts AuditOptions) {
+	parsed := source.ParseSource(opts.Source)
+	ownerRepo := source.GetOwnerRepo(parsed)
+	if ownerRepo == "" {
+		fmt.Fprintf(os.Stderr, "Could not parse source: %s\n", opts.Source)
+		os.Exit(1)
+	}
+
+	skillSlug := blob.ToSkillSlug(opts.Skill)
+	skillID := ownerRepo
+	if skillSlug != "" {
+		skillID = ownerRepo + "/" + skillSlug
+	}
+
+	r := auditSkillResult{
+		Name:       opts.Skill,
+		Scope:      "pre-install",
+		SourceType: string(parsed.Type),
+		Source:     opts.Source,
+		SyncStatus: "n/a",
+		SkillID:    skillID,
+	}
+	if r.Name == "" {
+		r.Name = ownerRepo
+	}
+
+	audits, registryErr := fetchSkillAudits(skillID)
+	r.Audits = audits
+	r.RegistryError = registryErr
+
+	if opts.JSON {
+		out, _ := json.MarshalIndent([]auditSkillResult{r}, "", "  ")
+		fmt.Println(string(out))
+		for _, a := range r.Audits {
+			if a.Status == "warn" || a.Status == "fail" {
+				os.Exit(1)
+			}
+		}
+		return
+	}
+
+	printAuditEntry(r)
+	maybeShowAuditSummaries([]auditSkillResult{r})
 }
 
 func formatDate(ts string) string {

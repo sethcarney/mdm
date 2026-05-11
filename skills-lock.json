@@ -1,8 +1,15 @@
 {
   "version": 1,
-  "skills": {},
+  "skills": {
+    "go-report-card": {
+      "source": "sethcarney/custom-plugins",
+      "ref": "master",
+      "sourceType": "github"
+    }
+  },
   "configuredAgents": [
     "claude-code",
-    "github-copilot"
+    "github-copilot",
+    "opencode"
   ]
 }

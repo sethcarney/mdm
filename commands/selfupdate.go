@@ -112,7 +112,11 @@ func fetchLatestRelease(client *http.Client, currentVersion string) (*githubRele
 		fmt.Fprintf(os.Stderr, "GitHub API returned %d\n", resp.StatusCode)
 		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to read release response: %v\n", err)
+		return nil, fmt.Errorf("reading release response body: %w", err)
+	}
 	var release githubRelease
 	if err := json.Unmarshal(body, &release); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to parse release info: %v\n", err)
