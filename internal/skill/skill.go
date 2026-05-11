@@ -14,6 +14,7 @@ type Skill struct {
 	Name        string
 	Description string
 	Version     string
+	Requires    map[string]string
 	Path        string
 	RawContent  string
 	PluginName  string
@@ -114,10 +115,26 @@ func ParseSkillMd(skillMdPath string, includeInternal bool) (*Skill, error) {
 			ver = vs
 		}
 	}
+
+	var requires map[string]string
+	if reqVal, ok := data["requires"]; ok {
+		if reqMap, ok := reqVal.(map[string]interface{}); ok {
+			requires = make(map[string]string, len(reqMap))
+			for k, v := range reqMap {
+				if vs, ok := v.(string); ok {
+					requires[k] = vs
+				} else {
+					requires[k] = fmt.Sprintf("%v", v)
+				}
+			}
+		}
+	}
+
 	return &Skill{
 		Name:        name,
 		Description: desc,
 		Version:     ver,
+		Requires:    requires,
 		Path:        filepath.Dir(skillMdPath),
 		RawContent:  raw,
 		Metadata:    extractSkillMetadata(data),

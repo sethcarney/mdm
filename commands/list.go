@@ -133,10 +133,26 @@ func printSkillsForScope(scopeSkills []*InstalledSkill, scope, cwd string) {
 			}
 			fmt.Printf("    %sagents: %s%s\n", ansiDim, strings.Join(displayNames, ", "), ansiReset)
 		}
+		if len(s.Requires) > 0 {
+			fmt.Printf("    %srequires: %s%s\n", ansiDim, formatRequires(s.Requires), ansiReset)
+		}
 		shortPath := shortenPath(s.Path, cwd)
 		fmt.Printf("    %s%s%s\n", ansiDim, shortPath, ansiReset)
 	}
 	fmt.Println()
+}
+
+func formatRequires(requires map[string]string) string {
+	keys := make([]string, 0, len(requires))
+	for k := range requires {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(requires))
+	for _, k := range keys {
+		parts = append(parts, k+": "+requires[k])
+	}
+	return strings.Join(parts, ", ")
 }
 
 func printSkillSummaries(skills []*InstalledSkill, cwd string) {

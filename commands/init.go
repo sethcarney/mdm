@@ -68,6 +68,8 @@ func runInitCmd(args []string) {
 	content := fmt.Sprintf(`---
 name: %s
 description: A brief description of what this skill does
+# requires:
+#   some-library: ">=1.0.0"
 ---
 
 # %s
