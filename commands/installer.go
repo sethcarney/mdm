@@ -402,7 +402,8 @@ func getCanonicalPath(skillName string, global bool) string {
 type InstalledSkill struct {
 	Name          string
 	Description   string
-	Compatibility map[string]string `json:"compatibility,omitempty"`
+	License       string `json:"license,omitempty"`
+	Compatibility string `json:"compatibility,omitempty"`
 	Path          string
 	CanonicalPath string
 	Scope         string // "project" or "global"
@@ -522,8 +523,8 @@ func mergeAgentSkillIntoMap(skillsMap map[string]*InstalledSkill, mapKey, agentT
 	} else {
 		skillsMap[mapKey] = &InstalledSkill{
 			Name: s.Name, Description: s.Description,
-			Compatibility: s.Compatibility,
-			Path:          skillDir, CanonicalPath: skillDir,
+			License: s.License, Compatibility: s.Compatibility,
+			Path: skillDir, CanonicalPath: skillDir,
 			Scope: scopeKey, Agents: []string{agentType},
 		}
 	}
@@ -582,8 +583,8 @@ func mergeCanonicalSkillIntoMap(skillsMap map[string]*InstalledSkill, mapKey str
 	} else {
 		skillsMap[mapKey] = &InstalledSkill{
 			Name: s.Name, Description: s.Description,
-			Compatibility: s.Compatibility,
-			Path:          skillDir, CanonicalPath: skillDir,
+			License: s.License, Compatibility: s.Compatibility,
+			Path: skillDir, CanonicalPath: skillDir,
 			Scope: scopeKey, Agents: agents,
 		}
 	}

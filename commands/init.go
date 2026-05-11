@@ -68,8 +68,8 @@ func runInitCmd(args []string) {
 	content := fmt.Sprintf(`---
 name: %s
 description: A brief description of what this skill does
-# compatibility:
-#   some-library: ">=1.0.0"
+# license: MIT
+# compatibility: "Node.js >=20, React ^18"
 ---
 
 # %s

@@ -16,8 +16,8 @@ Creates a `SKILL.md` file with the required frontmatter and a starter template. 
 ---
 name: my-skill
 description: A brief description of what this skill does
-# compatibility:
-#   some-library: ">=1.0.0"
+# license: MIT
+# compatibility: "Node.js >=20, React ^18"
 ---
 
 # my-skill
@@ -37,13 +37,15 @@ Describe when this skill should be used.
 
 ## Frontmatter fields
 
-The `name` and `description` fields are required. See the [Anthropic SKILL.md docs](https://code.claude.com/docs/en/skills) for the full list of Claude Code frontmatter options (e.g. `allowed-tools`, `disable-model-invocation`, `model`).
+mdm follows the [Agent Skills open standard](https://agentskills.io/specification). The fields below are the standard-defined fields. See the [Claude Code skills docs](https://code.claude.com/docs/en/skills) for Claude Code-specific extensions (e.g. `allowed-tools`, `disable-model-invocation`, `model`).
 
 | Field | Required | Description |
 |---|---|---|
-| `name` | Yes | Machine name used as the `/skill-name` slash command. Lowercase letters, numbers, and hyphens only (max 64 characters). |
-| `description` | Yes | Short description shown in listings. Claude uses this to decide when to load the skill automatically — put the key use case first. |
-| `compatibility` | No | Map of library/framework version constraints (e.g. `react: "^18"`). Display-only — mdm shows this in `mdm skills list`. Not used by Claude Code. |
+| `name` | Yes | Skill identifier used as the `/skill-name` slash command. Lowercase letters, numbers, and hyphens only (max 64 characters). Must match the parent directory name. |
+| `description` | Yes | What the skill does and when to use it. Max 1024 characters. Claude uses this to decide when to load the skill automatically — put the key use case first. |
+| `license` | No | License name (e.g. `MIT`, `Apache-2.0`) or a reference to a bundled `LICENSE` file. |
+| `compatibility` | No | Plain-text description of environment requirements (max 500 characters). e.g. `"Node.js >=20, React ^18"`. mdm displays this in `mdm skills list`. Not enforced — informational only. |
+| `metadata` | No | Key-value pairs for custom properties (e.g. `internal: true` to hide from non-internal installs). |
 
 ## Examples
 
@@ -84,17 +86,15 @@ When a newer tag is published, `mdm skills update` detects the change and offers
 
 ### Declaring compatibility
 
-Use the `compatibility:` frontmatter field to document which library or runtime versions your skill is designed for:
+Use the `compatibility` field to document which runtimes or libraries your skill is designed for:
 
 ```yaml
 ---
 name: my-react-skill
 description: React component patterns for this project
-compatibility:
-  react: "^18"
-  node: ">=20"
-  typescript: ">=5.0"
+license: MIT
+compatibility: "Node.js >=20, React ^18, TypeScript >=5.0"
 ---
 ```
 
-This is informational only — mdm displays it in `mdm skills list` so developers know what environment the skill targets. Claude Code does not read or enforce this field.
+This is informational — mdm displays it in `mdm skills list` so developers know what environment the skill targets. It is not enforced or validated.

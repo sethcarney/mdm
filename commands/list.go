@@ -133,26 +133,16 @@ func printSkillsForScope(scopeSkills []*InstalledSkill, scope, cwd string) {
 			}
 			fmt.Printf("    %sagents: %s%s\n", ansiDim, strings.Join(displayNames, ", "), ansiReset)
 		}
-		if len(s.Compatibility) > 0 {
-			fmt.Printf("    %scompatibility: %s%s\n", ansiDim, formatCompatibility(s.Compatibility), ansiReset)
+		if s.License != "" {
+			fmt.Printf("    %slicense: %s%s\n", ansiDim, s.License, ansiReset)
+		}
+		if s.Compatibility != "" {
+			fmt.Printf("    %scompatibility: %s%s\n", ansiDim, s.Compatibility, ansiReset)
 		}
 		shortPath := shortenPath(s.Path, cwd)
 		fmt.Printf("    %s%s%s\n", ansiDim, shortPath, ansiReset)
 	}
 	fmt.Println()
-}
-
-func formatCompatibility(compat map[string]string) string {
-	keys := make([]string, 0, len(compat))
-	for k := range compat {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	parts := make([]string, 0, len(compat))
-	for _, k := range keys {
-		parts = append(parts, k+": "+compat[k])
-	}
-	return strings.Join(parts, ", ")
 }
 
 func printSkillSummaries(skills []*InstalledSkill, cwd string) {

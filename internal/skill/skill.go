@@ -14,7 +14,8 @@ type Skill struct {
 	Name          string
 	Description   string
 	Version       string
-	Compatibility map[string]string
+	License       string
+	Compatibility string
 	Path          string
 	RawContent    string
 	PluginName    string
@@ -116,17 +117,17 @@ func ParseSkillMd(skillMdPath string, includeInternal bool) (*Skill, error) {
 		}
 	}
 
-	var compatibility map[string]string
-	if compVal, ok := data["compatibility"]; ok {
-		if compMap, ok := compVal.(map[string]interface{}); ok {
-			compatibility = make(map[string]string, len(compMap))
-			for k, v := range compMap {
-				if vs, ok := v.(string); ok {
-					compatibility[k] = vs
-				} else {
-					compatibility[k] = fmt.Sprintf("%v", v)
-				}
-			}
+	var license string
+	if v, ok := data["license"]; ok {
+		if vs, ok := v.(string); ok {
+			license = vs
+		}
+	}
+
+	var compatibility string
+	if v, ok := data["compatibility"]; ok {
+		if vs, ok := v.(string); ok {
+			compatibility = vs
 		}
 	}
 
@@ -134,6 +135,7 @@ func ParseSkillMd(skillMdPath string, includeInternal bool) (*Skill, error) {
 		Name:          name,
 		Description:   desc,
 		Version:       ver,
+		License:       license,
 		Compatibility: compatibility,
 		Path:          filepath.Dir(skillMdPath),
 		RawContent:    raw,
