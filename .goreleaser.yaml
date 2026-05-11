@@ -22,7 +22,7 @@ builds:
     flags:
       - -trimpath
     ldflags:
-      - -s -w
+      - -s -w -X github.com/sethcarney/mdm/internal/version.Version={{.Version}}
     goos:
       - linux
       - darwin
@@ -68,5 +68,4 @@ release:
   github:
     owner: sethcarney
     name: mdm
-  mode: keep-existing
   draft: false

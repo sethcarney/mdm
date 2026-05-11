@@ -112,7 +112,7 @@ mdm
     ├── git/             # Shallow git clone; branch/ref handling
     ├── blob/            # GitHub API tree/blob queries for skill discovery
     ├── ui/              # ANSI color constants; Bubbletea spinner
-    └── version/         # Version constant (bump here for releases)
+    └── version/         # App name + dev fallback version (release tags override via ldflags)
 ```
 
 ### Key data flow
@@ -199,4 +199,13 @@ Right-click `mdm.exe` → Properties → Details to verify the icon and version 
 
 ## Release Process
 
-CI in `.github/workflows/release.yml` triggers on pushes to `main` (non-markdown files). It builds binaries for Linux/macOS/Windows (x64 + ARM64), then creates a GitHub release. Version is read from `internal/version/version.go` — bump it there before merging to main.
+CI in `.github/workflows/release.yml` triggers on **tag pushes** matching `v*`. To release:
+
+```bash
+git tag v1.5.8
+git push origin v1.5.8
+```
+
+GoReleaser builds binaries for Linux/macOS/Windows (x64 + ARM64), creates a GitHub release, and injects the tag as the version via ldflags. `internal/version/version.go` holds a `"dev"` fallback for `go install` users — do not bump it for releases, the tag is the source of truth.
+
+Pre-releases work the same way: push a tag like `v1.6.0-rc.1` and GoReleaser marks the GitHub release as a prerelease automatically. `mdm upgrade` skips prereleases because GitHub's `/releases/latest` API excludes them.
