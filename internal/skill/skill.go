@@ -8,17 +8,18 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
-
-	"github.com/sethcarney/mdm/internal/lock"
 )
 
 type Skill struct {
-	Name        string
-	Description string
-	Path        string
-	RawContent  string
-	PluginName  string
-	Metadata    map[string]interface{}
+	Name          string
+	Description   string
+	Version       string
+	License       string
+	Compatibility string
+	Path          string
+	RawContent    string
+	PluginName    string
+	Metadata      map[string]interface{}
 }
 
 func ParseFrontmatter(raw string) (data map[string]interface{}, content string) {
@@ -109,12 +110,36 @@ func ParseSkillMd(skillMdPath string, includeInternal bool) (*Skill, error) {
 		return nil, nil
 	}
 
+	var ver string
+	if v, ok := data["version"]; ok {
+		if vs, ok := v.(string); ok {
+			ver = vs
+		}
+	}
+
+	var license string
+	if v, ok := data["license"]; ok {
+		if vs, ok := v.(string); ok {
+			license = vs
+		}
+	}
+
+	var compatibility string
+	if v, ok := data["compatibility"]; ok {
+		if vs, ok := v.(string); ok {
+			compatibility = vs
+		}
+	}
+
 	return &Skill{
-		Name:        name,
-		Description: desc,
-		Path:        filepath.Dir(skillMdPath),
-		RawContent:  raw,
-		Metadata:    extractSkillMetadata(data),
+		Name:          name,
+		Description:   desc,
+		Version:       ver,
+		License:       license,
+		Compatibility: compatibility,
+		Path:          filepath.Dir(skillMdPath),
+		RawContent:    raw,
+		Metadata:      extractSkillMetadata(data),
 	}, nil
 }
 
@@ -425,6 +450,3 @@ func DiscoverNodeModuleSkills(cwd string) []NodeModuleSkill {
 
 // Needed for the DiscoverNodeModuleSkills return
 var _ fs.DirEntry // suppress unused import warning
-
-// Re-export ComputeSkillFolderHash from lock package for convenience
-var ComputeSkillFolderHash = lock.ComputeSkillFolderHash

@@ -7,7 +7,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/sethcarney/mdm/internal/blob"
 	"github.com/sethcarney/mdm/internal/git"
 	"github.com/sethcarney/mdm/internal/lock"
 	"github.com/sethcarney/mdm/internal/source"
@@ -93,25 +92,62 @@ func updateGlobalSkills(skillFilter []string, stats *updateStats, allowHiddenCha
 		if !matchesFilter(sName, entry.PluginName, skillFilter) {
 			continue
 		}
+		if entry.SourceType == string(source.SourceTypeLocal) {
+			stats.skipped++
+			continue
+		}
 		if !isGitSourceType(entry.SourceType) {
 			stats.skipped++
 			continue
 		}
 		fmt.Printf("%sChecking %s...%s\n", ansiDim, sName, ansiReset)
-		isUpToDate, err := checkSkillUpToDate(sName, entry)
+		isUpToDate, newRef, err := checkSkillUpToDate(entry)
 		if err != nil {
-			ui.LogWarn(fmt.Sprintf("Could not check %s: %v", sName, err))
+			ui.LogWarn(fmt.Sprintf("Skipping %s: %v", sName, err))
 			stats.skipped++
 			continue
 		}
 		if isUpToDate {
-			ui.LogInfo(sName + " is up to date")
+			ui.LogInfo(fmt.Sprintf("%s is up to date (%s)", sName, entry.Ref))
 			stats.skipped++
 			continue
 		}
-		runAdd(entry.Source, AddOptions{Global: true, Yes: true, Skills: []string{entry.PluginName}, AllowHiddenChars: allowHiddenChars})
+		src := entry.Source
+		if newRef != "" {
+			fmt.Printf("  %s→ upgrading %s → %s%s\n", ansiDim, entry.Ref, newRef, ansiReset)
+			src = source.AppendFragmentRef(src, newRef, "")
+		}
+		runAdd(src, AddOptions{Global: true, Yes: true, Skills: []string{entry.PluginName}, AllowHiddenChars: allowHiddenChars})
 		stats.updated++
 	}
+}
+
+// checkRemoteTagUpToDate fetches all tags from gitURL and compares the current
+// semver tag against the latest stable release. Returns (upToDate, latestTag, err).
+func checkRemoteTagUpToDate(gitURL, currentRef string) (bool, string, error) {
+	if !git.IsSemverTag(currentRef) {
+		return false, "", fmt.Errorf("not pinned to a version tag; use `mdm skills add <source>#<tag>` to pin")
+	}
+	tags, err := git.FetchRemoteTags(gitURL)
+	if err != nil {
+		return false, "", err
+	}
+	latest := git.LatestSemverTag(tags)
+	if latest == "" {
+		return false, "", fmt.Errorf("no stable version tags found on remote")
+	}
+	if git.CompareSemverTags(latest, currentRef) > 0 {
+		return false, latest, nil
+	}
+	return true, "", nil
+}
+
+func checkProjectSkillUpToDate(entry lock.LocalSkillLockEntry) (bool, string, error) {
+	if !isGitSourceType(entry.SourceType) {
+		return true, "", nil
+	}
+	parsed := source.ParseSource(entry.Source)
+	return checkRemoteTagUpToDate(parsed.URL, entry.Ref)
 }
 
 func updateProjectSkills(skillFilter []string, cwd string, stats *updateStats, allowHiddenChars bool) {
@@ -120,13 +156,31 @@ func updateProjectSkills(skillFilter []string, cwd string, stats *updateStats, a
 		if !matchesFilter(sName, "", skillFilter) {
 			continue
 		}
+		if entry.SourceType == string(source.SourceTypeLocal) {
+			stats.skipped++
+			continue
+		}
 		if !isGitSourceType(entry.SourceType) {
 			stats.skipped++
 			continue
 		}
 		fmt.Printf("%sChecking %s...%s\n", ansiDim, sName, ansiReset)
+		isUpToDate, newRef, err := checkProjectSkillUpToDate(entry)
+		if err != nil {
+			ui.LogWarn(fmt.Sprintf("Skipping %s: %v", sName, err))
+			stats.skipped++
+			continue
+		}
+		if isUpToDate {
+			ui.LogInfo(fmt.Sprintf("%s is up to date (%s)", sName, entry.Ref))
+			stats.skipped++
+			continue
+		}
 		src := entry.Source
-		if entry.Ref != "" && !strings.Contains(src, "#") {
+		if newRef != "" {
+			fmt.Printf("  %s→ upgrading %s → %s%s\n", ansiDim, entry.Ref, newRef, ansiReset)
+			src = source.AppendFragmentRef(src, newRef, "")
+		} else if entry.Ref != "" && !strings.Contains(src, "#") {
 			src = src + "#" + entry.Ref
 		}
 		runAdd(src, AddOptions{Project: true, Yes: true, Skills: []string{sName}, AllowHiddenChars: allowHiddenChars})
@@ -156,35 +210,10 @@ func runUpdateWithOpts(skillFilter []string, opts UpdateOptions) {
 	fmt.Println()
 }
 
-func checkSkillUpToDate(skillName string, entry lock.SkillLockEntry) (bool, error) {
+func checkSkillUpToDate(entry lock.SkillLockEntry) (bool, string, error) {
+	if !isGitSourceType(entry.SourceType) {
+		return true, "", nil
+	}
 	parsed := source.ParseSource(entry.Source)
-
-	// GitHub: prefer folder-level hash check (most precise — only changes when the skill
-	// folder itself changes, not when unrelated files in the repo change).
-	if entry.SourceType == string(source.SourceTypeGitHub) &&
-		entry.SkillFolderHash != "" && entry.SkillPath != "" {
-		ownerRepo := source.GetOwnerRepo(parsed)
-		if ownerRepo != "" {
-			token := lock.GetGitHubToken()
-			ref := entry.Ref
-			latestHash, err := blob.FetchSkillFolderHash(ownerRepo, entry.SkillPath, token, &ref)
-			if err == nil {
-				return latestHash == entry.SkillFolderHash, nil
-			}
-			// On GitHub API error fall through to commit SHA check below.
-		}
-	}
-
-	// Universal fallback: compare remote commit SHA via git ls-remote.
-	// Works for GitHub, GitLab, Bitbucket, and any self-hosted git server.
-	if entry.CommitSHA != "" {
-		currentSHA, err := git.FetchRemoteCommitSHA(parsed.URL, entry.Ref)
-		if err != nil {
-			return false, err
-		}
-		return currentSHA == entry.CommitSHA, nil
-	}
-
-	// No hash stored — treat as outdated so we always update once to populate the hash.
-	return false, nil
+	return checkRemoteTagUpToDate(parsed.URL, entry.Ref)
 }

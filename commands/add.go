@@ -52,13 +52,23 @@ pass them space-separated after the flag or repeat the flag for each value
   mdm skills add owner/repo -a claude-code cursor
   mdm skills add owner/repo -a claude-code -a cursor
 
+%sVersion pinning:%s
+Skills are versioned via the "version:" field in their SKILL.md frontmatter.
+To pin to a specific release, append the git tag with "#":
+
+  mdm skills add owner/repo#v1.0.0   # install the v1.0.0 tag
+  mdm skills add owner/repo#v2.0.0   # upgrade to v2.0.0 explicitly
+
+To update to the latest version, run:  mdm skills update
+
 %sExamples:%s
   mdm skills add vercel-labs/agent-skills
   mdm skills add vercel-labs/agent-skills -g
   mdm skills add vercel-labs/agent-skills -a claude-code cursor
   mdm skills add vercel-labs/agent-skills --agent claude-code --agent cursor
   mdm skills add https://github.com/owner/repo
-  mdm skills add ./my-local-skill`, ansiBold, ansiReset),
+  mdm skills add owner/repo#v1.2.0
+  mdm skills add ./my-local-skill`, ansiBold, ansiReset, ansiBold, ansiReset),
 		Args: cobra.MaximumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			showLogo(ver)
@@ -306,7 +316,7 @@ func runAddLocal(parsed source.ParsedSource, opts AddOptions, cwd string) {
 		Source:     localPath,
 		SourceType: string(source.SourceTypeLocal),
 		SourceURL:  localPath,
-	}, cwd, false)
+	}, cwd, "")
 	maybeShowFindPrompt(cwd)
 }
 
@@ -415,16 +425,14 @@ func runAddGitOrHub(parsed source.ParsedSource, opts AddOptions, cwd, sourceInpu
 	if lockRef == "" {
 		lockRef = git.DefaultBranch(parsed.URL)
 	}
-	commitSHA, _ := git.GetLocalCommitSHA(tmpDir)
 	baseLockEntry := lock.SkillLockEntry{
 		Source:     stripSourceRef(sourceInput),
 		SourceType: string(parsed.Type),
 		SourceURL:  parsed.URL,
 		Ref:        lockRef,
-		CommitSHA:  commitSHA,
 	}
 
-	installSkillsForAgents(selectedSkills, agents, global, mode, baseLockEntry, cwd, ownerRepo != "" && parsed.Type == source.SourceTypeGitHub)
+	installSkillsForAgents(selectedSkills, agents, global, mode, baseLockEntry, cwd, tmpDir)
 
 	maybeShowFindPrompt(cwd)
 }
@@ -503,19 +511,14 @@ func installBlobSkillsForAgents(selectedBlob []*blob.BlobSkill, agents []string,
 		} else {
 			ui.LogWarn(fmt.Sprintf("%s (failed for: %s)", bSkill.Name, strings.Join(failedAgents, ", ")))
 		}
-		folderHash := ""
-		if result.Tree != nil {
-			folderHash = blob.GetSkillFolderHashFromTree(result.Tree, bSkill.RepoPath)
-		}
 		if global {
 			if err := lock.AddSkillToLock(sName, lock.SkillLockEntry{
-				Source:          stripSourceRef(sourceInput),
-				SourceType:      string(source.SourceTypeGitHub),
-				SourceURL:       parsed.URL,
-				Ref:             ref,
-				SkillPath:       bSkill.RepoPath,
-				SkillFolderHash: folderHash,
-				PluginName:      sName,
+				Source:     stripSourceRef(sourceInput),
+				SourceType: string(source.SourceTypeGitHub),
+				SourceURL:  parsed.URL,
+				Ref:        ref,
+				SkillPath:  bSkill.RepoPath,
+				PluginName: sName,
 			}); err != nil {
 				ui.LogWarn(fmt.Sprintf("could not update lock file: %v", err))
 			}
@@ -524,6 +527,7 @@ func installBlobSkillsForAgents(selectedBlob []*blob.BlobSkill, agents []string,
 				Source:     stripSourceRef(sourceInput),
 				Ref:        ref,
 				SourceType: string(source.SourceTypeGitHub),
+				SkillPath:  bSkill.RepoPath,
 			}, cwd); err != nil {
 				ui.LogWarn(fmt.Sprintf("could not update lock file: %v", err))
 			}
@@ -591,7 +595,7 @@ func runAddBlob(result *blob.BlobInstallResult, parsed source.ParsedSource, opts
 
 // ─── Shared install logic ──────────────────────────────────────────────────────
 
-func installSkillsForAgents(skills []*skill.Skill, agents []string, global bool, mode InstallMode, baseLockEntry lock.SkillLockEntry, cwd string, computeHash bool) {
+func installSkillsForAgents(skills []*skill.Skill, agents []string, global bool, mode InstallMode, baseLockEntry lock.SkillLockEntry, cwd string, cloneDir string) {
 	for _, s := range skills {
 		sName := sanitizeName(s.Name)
 		fmt.Printf("%sInstalling %s%s%s...\n", ansiDim, ansiText, s.Name, ansiReset)
@@ -610,13 +614,11 @@ func installSkillsForAgents(skills []*skill.Skill, agents []string, global bool,
 			ui.LogWarn(fmt.Sprintf("%s (failed for: %s)", s.Name, strings.Join(failedAgents, ", ")))
 		}
 
+		skillPath := skillMdRepoPath(s.Path, cloneDir)
+
 		lockEntry := baseLockEntry
 		lockEntry.PluginName = sName
-		if computeHash && s.Path != "" {
-			if hash, err := lock.ComputeSkillFolderHash(s.Path); err == nil {
-				lockEntry.SkillFolderHash = hash
-			}
-		}
+		lockEntry.SkillPath = skillPath
 
 		if global {
 			if err := lock.AddSkillToLock(sName, lockEntry); err != nil {
@@ -631,6 +633,7 @@ func installSkillsForAgents(skills []*skill.Skill, agents []string, global bool,
 				Source:     localSrc,
 				Ref:        baseLockEntry.Ref,
 				SourceType: baseLockEntry.SourceType,
+				SkillPath:  skillPath,
 			}, cwd); err != nil {
 				ui.LogWarn(fmt.Sprintf("could not update lock file: %v", err))
 			}
@@ -639,6 +642,24 @@ func installSkillsForAgents(skills []*skill.Skill, agents []string, global bool,
 
 	fmt.Println()
 	printInstallSummary(len(skills), global, agents, mode)
+}
+
+// skillMdRepoPath returns the repo-relative path to the SKILL.md file for a
+// skill discovered during a git clone. cloneDir is the root of the clone; when
+// empty (local or blob installs) an empty string is returned.
+func skillMdRepoPath(skillPath, cloneDir string) string {
+	if cloneDir == "" || skillPath == "" {
+		return ""
+	}
+	rel, err := filepath.Rel(cloneDir, skillPath)
+	if err != nil {
+		return ""
+	}
+	rel = filepath.ToSlash(rel)
+	if rel == "." {
+		return "SKILL.md"
+	}
+	return rel + "/SKILL.md"
 }
 
 // toRelSourcePath converts an absolute local path to a path relative to cwd,

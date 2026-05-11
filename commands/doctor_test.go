@@ -6,8 +6,6 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-
-	"github.com/sethcarney/mdm/internal/lock"
 )
 
 // ── formatFileSize ─────────────────────────────────────────────────────────────
@@ -39,7 +37,7 @@ func TestDiagnoseSkillMissingDir(t *testing.T) {
 		Scope: "global",
 		Path:  "/nonexistent/path/test-skill",
 	}
-	diagnoseSkill(r, "", false, t.TempDir())
+	diagnoseSkill(r, false, t.TempDir())
 
 	if len(r.Issues) != 1 {
 		t.Fatalf("expected 1 issue, got %d: %v", len(r.Issues), r.Issues)
@@ -57,7 +55,7 @@ func TestDiagnoseSkillMissingDir(t *testing.T) {
 func TestDiagnoseSkillMissingSkillMd(t *testing.T) {
 	dir := t.TempDir()
 	r := &doctorResult{Name: "test-skill", Scope: "global", Path: dir}
-	diagnoseSkill(r, "", false, t.TempDir())
+	diagnoseSkill(r, false, t.TempDir())
 
 	if len(r.Issues) != 1 {
 		t.Fatalf("expected 1 issue, got %d: %v", len(r.Issues), r.Issues)
@@ -88,7 +86,7 @@ func TestDiagnoseSkillMdReadError(t *testing.T) {
 	}
 
 	r := &doctorResult{Name: "test-skill", Scope: "global", Path: dir}
-	diagnoseSkill(r, "", false, t.TempDir())
+	diagnoseSkill(r, false, t.TempDir())
 
 	found := false
 	for _, issue := range r.Issues {
@@ -112,7 +110,7 @@ func TestDiagnoseSkillMdMissingFields(t *testing.T) {
 	}
 
 	r := &doctorResult{Name: "test-skill", Scope: "global", Path: dir}
-	diagnoseSkill(r, "", false, t.TempDir())
+	diagnoseSkill(r, false, t.TempDir())
 
 	found := false
 	for _, issue := range r.Issues {
@@ -122,92 +120,6 @@ func TestDiagnoseSkillMdMissingFields(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("expected a warn about missing frontmatter fields, got: %v", r.Issues)
-	}
-}
-
-// ── diagnoseSkill: hash mismatch ──────────────────────────────────────────────
-
-func TestDiagnoseSkillHashMismatch(t *testing.T) {
-	dir := t.TempDir()
-	content := "---\nname: test\ndescription: A test skill\n---\nHello\n"
-	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	r := &doctorResult{Name: "test-skill", Scope: "global", Path: dir}
-	diagnoseSkill(r, "definitely-wrong-hash", false, t.TempDir())
-
-	found := false
-	for _, issue := range r.Issues {
-		if issue.Level == "warn" && strings.Contains(issue.Message, "skill content differs from installed version") {
-			found = true
-		}
-	}
-	if !found {
-		t.Errorf("expected a warn about hash mismatch, got: %v", r.Issues)
-	}
-}
-
-// ── diagnoseSkill: hash matches → no mismatch issue ───────────────────────────
-
-func TestDiagnoseSkillHashMatch(t *testing.T) {
-	dir := t.TempDir()
-	content := "---\nname: test\ndescription: A test skill\n---\nHello\n"
-	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	hash, err := lock.ComputeSkillFolderHash(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	r := &doctorResult{Name: "test-skill", Scope: "global", Path: dir}
-	diagnoseSkill(r, hash, false, t.TempDir())
-
-	for _, issue := range r.Issues {
-		if strings.Contains(issue.Message, "skill content differs") {
-			t.Errorf("unexpected hash-mismatch issue when hashes should match: %v", issue)
-		}
-		if strings.Contains(issue.Message, "integrity check skipped") {
-			t.Errorf("unexpected hash-error issue when hash should be computable: %v", issue)
-		}
-	}
-}
-
-// ── diagnoseSkill: hash error is surfaced as warn ─────────────────────────────
-
-func TestDiagnoseSkillHashError(t *testing.T) {
-	if os.Getuid() == 0 {
-		t.Skip("skipping permission test when running as root")
-	}
-	dir := t.TempDir()
-	content := "---\nname: test\ndescription: A test skill\n---\nHello\n"
-	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	// Create an unreadable subdirectory so hash computation fails
-	subDir := filepath.Join(dir, "assets")
-	if err := os.Mkdir(subDir, 0o000); err != nil {
-		t.Fatal(err)
-	}
-	defer os.Chmod(subDir, 0o755) //nolint:errcheck // cleanup best-effort
-
-	r := &doctorResult{Name: "test-skill", Scope: "global", Path: dir}
-	// Use a fake stored hash so we enter the hash-check branch
-	diagnoseSkill(r, "some-stored-hash", false, t.TempDir())
-
-	// Either a hash error OR a hash mismatch is acceptable — the important thing
-	// is that something is reported rather than silently ignored.
-	hasHashIssue := false
-	for _, issue := range r.Issues {
-		if strings.Contains(issue.Message, "integrity check skipped") ||
-			strings.Contains(issue.Message, "skill content differs") {
-			hasHashIssue = true
-		}
-	}
-	if !hasHashIssue {
-		t.Errorf("expected a hash-related issue, got: %v", r.Issues)
 	}
 }
 
@@ -520,13 +432,8 @@ func TestDiagnoseSkillHealthySkill(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	hash, err := lock.ComputeSkillFolderHash(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	r := &doctorResult{Name: "my-skill", Scope: "global", Path: dir}
-	diagnoseSkill(r, hash, false, t.TempDir())
+	diagnoseSkill(r, false, t.TempDir())
 
 	if len(r.Issues) != 0 {
 		t.Errorf("expected no issues for a healthy skill, got: %v", r.Issues)

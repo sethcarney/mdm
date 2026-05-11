@@ -1,10 +1,7 @@
 package lock
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -20,16 +17,14 @@ import (
 const globalLockVersion = 3
 
 type SkillLockEntry struct {
-	Source          string `json:"source"`
-	SourceType      string `json:"sourceType"`
-	SourceURL       string `json:"sourceUrl"`
-	Ref             string `json:"ref,omitempty"`
-	SkillPath       string `json:"skillPath,omitempty"`
-	SkillFolderHash string `json:"skillFolderHash"`
-	CommitSHA       string `json:"commitSHA,omitempty"`
-	InstalledAt     string `json:"installedAt"`
-	UpdatedAt       string `json:"updatedAt"`
-	PluginName      string `json:"pluginName,omitempty"`
+	Source      string `json:"source"`
+	SourceType  string `json:"sourceType"`
+	SourceURL   string `json:"sourceUrl"`
+	Ref         string `json:"ref,omitempty"`
+	SkillPath   string `json:"skillPath,omitempty"`
+	InstalledAt string `json:"installedAt"`
+	UpdatedAt   string `json:"updatedAt"`
+	PluginName  string `json:"pluginName,omitempty"`
 }
 
 type DismissedPrompts struct {
@@ -128,12 +123,6 @@ func GetGitHubToken() string {
 	return os.Getenv("GITHUB_TOKEN")
 }
 
-func ComputeContentHash(content string) string {
-	h := sha256.New()
-	h.Write([]byte(content))
-	return hex.EncodeToString(h.Sum(nil))
-}
-
 // ──────────────────────────────────────────────────────────
 // Local (project) skill lock (skills-lock.json)
 // ──────────────────────────────────────────────────────────
@@ -141,10 +130,10 @@ func ComputeContentHash(content string) string {
 const localLockVersion = 1
 
 type LocalSkillLockEntry struct {
-	Source       string `json:"source"`
-	Ref          string `json:"ref,omitempty"`
-	SourceType   string `json:"sourceType"`
-	ComputedHash string `json:"computedHash,omitempty"`
+	Source     string `json:"source"`
+	Ref        string `json:"ref,omitempty"`
+	SourceType string `json:"sourceType"`
+	SkillPath  string `json:"skillPath,omitempty"`
 }
 
 type LocalSkillLockFile struct {
@@ -210,52 +199,6 @@ func RemoveSkillFromLocalLock(skillName string, cwd string) error {
 	}
 	delete(lock.Skills, skillName)
 	return WriteLocalLock(lock, cwd)
-}
-
-func ComputeSkillFolderHash(skillDir string) (string, error) {
-	type fileEntry struct {
-		path    string
-		content []byte
-	}
-	var files []fileEntry
-
-	err := filepath.Walk(skillDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil
-		}
-		name := info.Name()
-		if info.IsDir() {
-			if name == ".git" || name == "node_modules" {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			return nil
-		}
-		rel, _ := filepath.Rel(skillDir, path)
-		rel = filepath.ToSlash(rel)
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return nil
-		}
-		files = append(files, fileEntry{path: rel, content: data})
-		return nil
-	})
-	if err != nil {
-		return "", err
-	}
-
-	sort.Slice(files, func(i, j int) bool {
-		return files[i].path < files[j].path
-	})
-
-	h := sha256.New()
-	for _, f := range files {
-		io.WriteString(h, f.path)
-		h.Write(f.content)
-	}
-	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func HasProjectSkills(cwd string) bool {

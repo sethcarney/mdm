@@ -16,6 +16,8 @@ Creates a `SKILL.md` file with the required frontmatter and a starter template. 
 ---
 name: my-skill
 description: A brief description of what this skill does
+# license: MIT
+# compatibility: "Node.js >=20, React ^18"
 ---
 
 # my-skill
@@ -35,10 +37,15 @@ Describe when this skill should be used.
 
 ## Frontmatter fields
 
+mdm follows the [Agent Skills open standard](https://agentskills.io/specification). The fields below are the standard-defined fields. See the [Claude Code skills docs](https://code.claude.com/docs/en/skills) for Claude Code-specific extensions (e.g. `allowed-tools`, `disable-model-invocation`, `model`).
+
 | Field | Required | Description |
 |---|---|---|
-| `name` | Yes | Machine name used to reference the skill |
-| `description` | Yes | Short description shown in listings and search results |
+| `name` | Yes | Skill identifier used as the `/skill-name` slash command. Lowercase letters, numbers, and hyphens only (max 64 characters). Must match the parent directory name. |
+| `description` | Yes | What the skill does and when to use it. Max 1024 characters. Claude uses this to decide when to load the skill automatically — put the key use case first. |
+| `license` | No | License name (e.g. `MIT`, `Apache-2.0`) or a reference to a bundled `LICENSE` file. |
+| `compatibility` | No | Plain-text description of environment requirements (max 500 characters). e.g. `"Node.js >=20, React ^18"`. mdm displays this in `mdm skills list`. Not enforced — informational only. |
+| `metadata` | No | Key-value pairs for custom properties (e.g. `internal: true` to hide from non-internal installs). |
 
 ## Examples
 
@@ -50,7 +57,7 @@ mdm skills init
 mdm skills init my-skill
 ```
 
-## Publishing
+## Publishing and version tagging
 
 Once you have written your skill:
 
@@ -59,3 +66,35 @@ Once you have written your skill:
 3. Optionally submit to the [skills.sh](https://skills.sh) registry so others can find it with `mdm skills find`.
 
 A single repository can contain multiple skills — each in its own subdirectory with its own `SKILL.md`.
+
+### Version tagging
+
+Tag your repository with a semver tag (e.g. `v1.0.0`) so users can pin to a specific version and receive automatic update notifications:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Users install pinned versions with:
+
+```bash
+mdm skills add owner/repo#v1.0.0
+```
+
+When a newer tag is published, `mdm skills update` detects the change and offers to upgrade.
+
+### Declaring compatibility
+
+Use the `compatibility` field to document which runtimes or libraries your skill is designed for:
+
+```yaml
+---
+name: my-react-skill
+description: React component patterns for this project
+license: MIT
+compatibility: "Node.js >=20, React ^18, TypeScript >=5.0"
+---
+```
+
+This is informational — mdm displays it in `mdm skills list` so developers know what environment the skill targets. It is not enforced or validated.

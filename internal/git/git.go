@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -169,4 +170,128 @@ func FetchRemoteCommitSHA(gitURL, ref string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("no matching ref found in git ls-remote output for %s ref=%s", gitURL, ref)
+}
+
+// FetchRemoteTags returns all tag names from a remote git repository without
+// performing a full clone. Annotated tag dereference lines ("^{}") are skipped
+// so each tag name appears exactly once.
+func FetchRemoteTags(gitURL string) ([]string, error) {
+	cmd := exec.Command("git", "ls-remote", "--tags", gitURL)
+	cmd.Env = append(os.Environ(),
+		"GIT_TERMINAL_PROMPT=0",
+		"GIT_LFS_SKIP_SMUDGE=1",
+	)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("git ls-remote --tags failed for %s: %w", gitURL, err)
+	}
+	var tags []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.Fields(line)
+		if len(parts) < 2 {
+			continue
+		}
+		ref := parts[1]
+		if !strings.HasPrefix(ref, "refs/tags/") {
+			continue
+		}
+		tag := strings.TrimPrefix(ref, "refs/tags/")
+		if strings.HasSuffix(tag, "^{}") {
+			continue
+		}
+		tags = append(tags, tag)
+	}
+	return tags, nil
+}
+
+// ── Semver utilities ───────────────────────────────────────────────────────────
+
+type semverParts struct {
+	major, minor, patch int
+	pre                 string // pre-release suffix, empty for release tags
+}
+
+func parseSemver(s string) (semverParts, bool) {
+	s = strings.TrimPrefix(s, "v")
+	pre := ""
+	if idx := strings.IndexByte(s, '-'); idx >= 0 {
+		pre = s[idx+1:]
+		s = s[:idx]
+	}
+	parts := strings.Split(s, ".")
+	if len(parts) != 3 {
+		return semverParts{}, false
+	}
+	nums := make([]int, 3)
+	for i, p := range parts {
+		n, err := strconv.Atoi(p)
+		if err != nil || n < 0 {
+			return semverParts{}, false
+		}
+		nums[i] = n
+	}
+	return semverParts{nums[0], nums[1], nums[2], pre}, true
+}
+
+func cmpSemver(a, b semverParts) int {
+	for _, pair := range [][2]int{{a.major, b.major}, {a.minor, b.minor}, {a.patch, b.patch}} {
+		if pair[0] != pair[1] {
+			if pair[0] < pair[1] {
+				return -1
+			}
+			return 1
+		}
+	}
+	// release (empty pre) sorts higher than pre-release
+	switch {
+	case a.pre == b.pre:
+		return 0
+	case a.pre == "":
+		return 1
+	case b.pre == "":
+		return -1
+	default:
+		if a.pre < b.pre {
+			return -1
+		}
+		return 1
+	}
+}
+
+// IsSemverTag reports whether s is a valid semver tag (e.g. "v1.2.3").
+func IsSemverTag(s string) bool {
+	_, ok := parseSemver(s)
+	return ok
+}
+
+// LatestSemverTag returns the highest stable (non-pre-release) semver tag from
+// the provided list, or "" if none qualify.
+func LatestSemverTag(tags []string) string {
+	var best *semverParts
+	bestStr := ""
+	for _, tag := range tags {
+		sv, ok := parseSemver(tag)
+		if !ok || sv.pre != "" {
+			continue
+		}
+		if best == nil || cmpSemver(sv, *best) > 0 {
+			best = &sv
+			bestStr = tag
+		}
+	}
+	return bestStr
+}
+
+// CompareSemverTags compares two semver tag strings and returns -1, 0, or 1
+// (a < b, a == b, a > b). Returns 0 if either string is not a valid semver tag.
+func CompareSemverTags(a, b string) int {
+	av, aok := parseSemver(a)
+	bv, bok := parseSemver(b)
+	if !aok || !bok {
+		return 0
+	}
+	return cmpSemver(av, bv)
 }

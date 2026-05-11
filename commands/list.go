@@ -133,6 +133,12 @@ func printSkillsForScope(scopeSkills []*InstalledSkill, scope, cwd string) {
 			}
 			fmt.Printf("    %sagents: %s%s\n", ansiDim, strings.Join(displayNames, ", "), ansiReset)
 		}
+		if s.License != "" {
+			fmt.Printf("    %slicense: %s%s\n", ansiDim, s.License, ansiReset)
+		}
+		if s.Compatibility != "" {
+			fmt.Printf("    %scompatibility: %s%s\n", ansiDim, s.Compatibility, ansiReset)
+		}
 		shortPath := shortenPath(s.Path, cwd)
 		fmt.Printf("    %s%s%s\n", ansiDim, shortPath, ansiReset)
 	}

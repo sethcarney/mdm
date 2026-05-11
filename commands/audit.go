@@ -240,11 +240,11 @@ func enrichResult(r *auditSkillResult) {
 		return
 	}
 
-	// Sync status: only works for global GitHub skills that have a stored hash
-	if r.Scope == "global" && r.SourceType == string(source.SourceTypeGitHub) {
+	// Sync status: compare installed tag against latest remote tag
+	if r.Scope == "global" {
 		globalLock := lock.ReadSkillLock()
 		if e, ok := globalLock.Skills[r.Name]; ok {
-			upToDate, err := checkSkillUpToDate(r.Name, e)
+			upToDate, _, err := checkSkillUpToDate(e)
 			if err != nil {
 				r.SyncStatus = "unknown"
 			} else if upToDate {
