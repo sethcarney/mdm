@@ -17,15 +17,14 @@ import (
 const globalLockVersion = 3
 
 type SkillLockEntry struct {
-	Source       string `json:"source"`
-	SourceType   string `json:"sourceType"`
-	SourceURL    string `json:"sourceUrl"`
-	Ref          string `json:"ref,omitempty"`
-	SkillPath    string `json:"skillPath,omitempty"`
-	SkillVersion string `json:"skillVersion,omitempty"`
-	InstalledAt  string `json:"installedAt"`
-	UpdatedAt    string `json:"updatedAt"`
-	PluginName   string `json:"pluginName,omitempty"`
+	Source      string `json:"source"`
+	SourceType  string `json:"sourceType"`
+	SourceURL   string `json:"sourceUrl"`
+	Ref         string `json:"ref,omitempty"`
+	SkillPath   string `json:"skillPath,omitempty"`
+	InstalledAt string `json:"installedAt"`
+	UpdatedAt   string `json:"updatedAt"`
+	PluginName  string `json:"pluginName,omitempty"`
 }
 
 type DismissedPrompts struct {
@@ -131,11 +130,10 @@ func GetGitHubToken() string {
 const localLockVersion = 1
 
 type LocalSkillLockEntry struct {
-	Source       string `json:"source"`
-	Ref          string `json:"ref,omitempty"`
-	SourceType   string `json:"sourceType"`
-	SkillPath    string `json:"skillPath,omitempty"`
-	SkillVersion string `json:"skillVersion,omitempty"`
+	Source     string `json:"source"`
+	Ref        string `json:"ref,omitempty"`
+	SourceType string `json:"sourceType"`
+	SkillPath  string `json:"skillPath,omitempty"`
 }
 
 type LocalSkillLockFile struct {

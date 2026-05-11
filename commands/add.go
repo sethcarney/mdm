@@ -513,23 +513,21 @@ func installBlobSkillsForAgents(selectedBlob []*blob.BlobSkill, agents []string,
 		}
 		if global {
 			if err := lock.AddSkillToLock(sName, lock.SkillLockEntry{
-				Source:       stripSourceRef(sourceInput),
-				SourceType:   string(source.SourceTypeGitHub),
-				SourceURL:    parsed.URL,
-				Ref:          ref,
-				SkillPath:    bSkill.RepoPath,
-				SkillVersion: bSkill.Version,
-				PluginName:   sName,
+				Source:     stripSourceRef(sourceInput),
+				SourceType: string(source.SourceTypeGitHub),
+				SourceURL:  parsed.URL,
+				Ref:        ref,
+				SkillPath:  bSkill.RepoPath,
+				PluginName: sName,
 			}); err != nil {
 				ui.LogWarn(fmt.Sprintf("could not update lock file: %v", err))
 			}
 		} else {
 			if err := lock.AddSkillToLocalLock(sName, lock.LocalSkillLockEntry{
-				Source:       stripSourceRef(sourceInput),
-				Ref:          ref,
-				SourceType:   string(source.SourceTypeGitHub),
-				SkillPath:    bSkill.RepoPath,
-				SkillVersion: bSkill.Version,
+				Source:     stripSourceRef(sourceInput),
+				Ref:        ref,
+				SourceType: string(source.SourceTypeGitHub),
+				SkillPath:  bSkill.RepoPath,
 			}, cwd); err != nil {
 				ui.LogWarn(fmt.Sprintf("could not update lock file: %v", err))
 			}
@@ -620,7 +618,6 @@ func installSkillsForAgents(skills []*skill.Skill, agents []string, global bool,
 
 		lockEntry := baseLockEntry
 		lockEntry.PluginName = sName
-		lockEntry.SkillVersion = s.Version
 		lockEntry.SkillPath = skillPath
 
 		if global {
@@ -633,11 +630,10 @@ func installSkillsForAgents(skills []*skill.Skill, agents []string, global bool,
 				localSrc = toRelSourcePath(localSrc, cwd)
 			}
 			if err := lock.AddSkillToLocalLock(sName, lock.LocalSkillLockEntry{
-				Source:       localSrc,
-				Ref:          baseLockEntry.Ref,
-				SourceType:   baseLockEntry.SourceType,
-				SkillPath:    skillPath,
-				SkillVersion: s.Version,
+				Source:     localSrc,
+				Ref:        baseLockEntry.Ref,
+				SourceType: baseLockEntry.SourceType,
+				SkillPath:  skillPath,
 			}, cwd); err != nil {
 				ui.LogWarn(fmt.Sprintf("could not update lock file: %v", err))
 			}
