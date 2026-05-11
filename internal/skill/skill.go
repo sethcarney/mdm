@@ -8,8 +8,6 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
-
-	"github.com/sethcarney/mdm/internal/lock"
 )
 
 type Skill struct {
@@ -433,6 +431,3 @@ func DiscoverNodeModuleSkills(cwd string) []NodeModuleSkill {
 
 // Needed for the DiscoverNodeModuleSkills return
 var _ fs.DirEntry // suppress unused import warning
-
-// Re-export ComputeSkillFolderHash from lock package for convenience
-var ComputeSkillFolderHash = lock.ComputeSkillFolderHash

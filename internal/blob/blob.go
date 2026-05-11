@@ -109,38 +109,42 @@ func FetchRepoTree(ownerRepo string, ref *string, token string) (*RepoTree, erro
 	return nil, fmt.Errorf("could not fetch repo tree for %s", ownerRepo)
 }
 
-func GetSkillFolderHashFromTree(tree *RepoTree, skillPath string) string {
-	// skillPath is like "skills/react-best-practices/SKILL.md"
-	// We want the SHA of the folder (tree entry for the parent dir)
-	folder := skillPath
-	if strings.HasSuffix(folder, "/SKILL.md") {
-		folder = folder[:len(folder)-9]
-	} else if strings.HasSuffix(folder, "SKILL.md") {
-		folder = folder[:len(folder)-8]
+// FetchSkillVersion fetches the version field from a SKILL.md file in a GitHub
+// repository. skillPath is the path to the SKILL.md file within the repo (e.g.
+// "skills/my-skill/SKILL.md" or "SKILL.md"). When ref is empty, "main" and
+// "master" are tried in order.
+func FetchSkillVersion(ownerRepo, ref, skillPath, token string) (string, error) {
+	mdPath := skillPath
+	if mdPath == "" {
+		mdPath = "SKILL.md"
 	}
-	folder = strings.TrimSuffix(folder, "/")
 
-	for _, e := range tree.Tree {
-		if e.Type == "tree" && e.Path == folder {
-			return e.SHA
+	tryRef := func(branch string) (string, bool) {
+		ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
+		defer cancel()
+		body, ok := fetchSkillMDContent(ctx, ownerRepo, branch, mdPath, token)
+		if !ok {
+			return "", false
+		}
+		data, _ := skill.ParseFrontmatter(string(body))
+		ver, _ := data["version"].(string)
+		return ver, true
+	}
+
+	if ref != "" {
+		ver, ok := tryRef(ref)
+		if !ok {
+			return "", fmt.Errorf("could not fetch SKILL.md from %s at ref %s", ownerRepo, ref)
+		}
+		return ver, nil
+	}
+
+	for _, branch := range []string{"main", "master"} {
+		if ver, ok := tryRef(branch); ok {
+			return ver, nil
 		}
 	}
-	// Fallback: try the SKILL.md blob SHA
-	for _, e := range tree.Tree {
-		if e.Type == "blob" && e.Path == skillPath {
-			return e.SHA
-		}
-	}
-	return ""
-}
-
-func FetchSkillFolderHash(ownerRepo, skillPath, token string, ref *string) (string, error) {
-	tree, err := FetchRepoTree(ownerRepo, ref, token)
-	if err != nil {
-		return "", err
-	}
-	hash := GetSkillFolderHashFromTree(tree, skillPath)
-	return hash, nil
+	return "", fmt.Errorf("could not fetch SKILL.md from %s", ownerRepo)
 }
 
 func ToSkillSlug(name string) string {

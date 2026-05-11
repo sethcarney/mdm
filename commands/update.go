@@ -9,7 +9,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/sethcarney/mdm/internal/blob"
-	"github.com/sethcarney/mdm/internal/git"
 	"github.com/sethcarney/mdm/internal/lock"
 	"github.com/sethcarney/mdm/internal/source"
 	"github.com/sethcarney/mdm/internal/ui"
@@ -149,15 +148,26 @@ func updateGlobalSkills(skillFilter []string, stats *updateStats) {
 }
 
 func checkProjectSkillUpToDate(entry lock.LocalSkillLockEntry) (bool, error) {
-	if entry.CommitSHA == "" {
-		return false, nil
+	if entry.SkillVersion == "" {
+		return false, fmt.Errorf("no version recorded; re-add the skill to enable version tracking")
+	}
+	if entry.SourceType != string(source.SourceTypeGitHub) {
+		return false, fmt.Errorf("version checking is only supported for GitHub sources")
 	}
 	parsed := source.ParseSource(entry.Source)
-	currentSHA, err := git.FetchRemoteCommitSHA(parsed.URL, entry.Ref)
+	ownerRepo := source.GetOwnerRepo(parsed)
+	if ownerRepo == "" {
+		return false, fmt.Errorf("could not determine repository from source")
+	}
+	token := lock.GetGitHubToken()
+	remoteVersion, err := blob.FetchSkillVersion(ownerRepo, entry.Ref, entry.SkillPath, token)
 	if err != nil {
 		return false, err
 	}
-	return currentSHA == entry.CommitSHA, nil
+	if remoteVersion == "" {
+		return false, fmt.Errorf("source SKILL.md has no version field; add one to enable version tracking")
+	}
+	return remoteVersion == entry.SkillVersion, nil
 }
 
 func updateProjectSkills(skillFilter []string, cwd string, stats *updateStats) {
@@ -235,34 +245,24 @@ func runUpdateWithOpts(skillFilter []string, opts UpdateOptions) {
 }
 
 func checkSkillUpToDate(skillName string, entry lock.SkillLockEntry) (bool, error) {
+	if entry.SkillVersion == "" {
+		return false, fmt.Errorf("no version recorded; re-add the skill to enable version tracking")
+	}
+	if entry.SourceType != string(source.SourceTypeGitHub) {
+		return false, fmt.Errorf("version checking is only supported for GitHub sources")
+	}
 	parsed := source.ParseSource(entry.Source)
-
-	// GitHub: prefer folder-level hash check (most precise — only changes when the skill
-	// folder itself changes, not when unrelated files in the repo change).
-	if entry.SourceType == string(source.SourceTypeGitHub) &&
-		entry.SkillFolderHash != "" && entry.SkillPath != "" {
-		ownerRepo := source.GetOwnerRepo(parsed)
-		if ownerRepo != "" {
-			token := lock.GetGitHubToken()
-			ref := entry.Ref
-			latestHash, err := blob.FetchSkillFolderHash(ownerRepo, entry.SkillPath, token, &ref)
-			if err == nil {
-				return latestHash == entry.SkillFolderHash, nil
-			}
-			// On GitHub API error fall through to commit SHA check below.
-		}
+	ownerRepo := source.GetOwnerRepo(parsed)
+	if ownerRepo == "" {
+		return false, fmt.Errorf("could not determine repository from source")
 	}
-
-	// Universal fallback: compare remote commit SHA via git ls-remote.
-	// Works for GitHub, GitLab, Bitbucket, and any self-hosted git server.
-	if entry.CommitSHA != "" {
-		currentSHA, err := git.FetchRemoteCommitSHA(parsed.URL, entry.Ref)
-		if err != nil {
-			return false, err
-		}
-		return currentSHA == entry.CommitSHA, nil
+	token := lock.GetGitHubToken()
+	remoteVersion, err := blob.FetchSkillVersion(ownerRepo, entry.Ref, entry.SkillPath, token)
+	if err != nil {
+		return false, err
 	}
-
-	// No hash stored — treat as outdated so we always update once to populate the hash.
-	return false, nil
+	if remoteVersion == "" {
+		return false, fmt.Errorf("source SKILL.md has no version field; add one to enable version tracking")
+	}
+	return remoteVersion == entry.SkillVersion, nil
 }

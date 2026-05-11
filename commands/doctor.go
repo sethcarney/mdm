@@ -102,13 +102,13 @@ func runDoctor(opts DoctorOptions) {
 	if checkGlobal {
 		globalLock := lock.ReadSkillLock()
 		canonicalBase := getCanonicalSkillsDir(true, cwd)
-		for skillName, entry := range globalLock.Skills {
+		for skillName := range globalLock.Skills {
 			r := doctorResult{
 				Name:  skillName,
 				Scope: "global",
 				Path:  filepath.Join(canonicalBase, sanitizeName(skillName)),
 			}
-			diagnoseSkill(&r, entry.SkillFolderHash, true, cwd)
+			diagnoseSkill(&r, true, cwd)
 			results = append(results, r)
 		}
 	}
@@ -127,7 +127,7 @@ func runDoctor(opts DoctorOptions) {
 				Scope: "project",
 				Path:  filepath.Join(canonicalBase, sanitizeName(skillName)),
 			}
-			diagnoseSkill(&r, "", false, cwd)
+			diagnoseSkill(&r, false, cwd)
 			results = append(results, r)
 		}
 
@@ -179,7 +179,7 @@ func buildProjectSkipPaths(cwd, canonicalBase string, skipDirs, skipFiles map[st
 
 // ── Checks ─────────────────────────────────────────────────────────────────────
 
-func diagnoseSkill(r *doctorResult, storedHash string, global bool, cwd string) {
+func diagnoseSkill(r *doctorResult, global bool, cwd string) {
 	// 1. Skill directory must exist
 	if _, err := os.Stat(r.Path); os.IsNotExist(err) {
 		r.Issues = append(r.Issues, doctorIssue{
@@ -214,23 +214,7 @@ func diagnoseSkill(r *doctorResult, storedHash string, global bool, cwd string) 
 	// 3. Symlinks in agent-specific directories must resolve
 	checkAgentLinks(r, global, cwd)
 
-	// 5. Skill content must match the installed hash (global skills only)
-	if storedHash != "" {
-		current, err := lock.ComputeSkillFolderHash(r.Path)
-		if err != nil {
-			r.Issues = append(r.Issues, doctorIssue{
-				Level:   "warn",
-				Message: fmt.Sprintf("could not compute skill content hash — integrity check skipped: %s", err),
-			})
-		} else if current != storedHash {
-			r.Issues = append(r.Issues, doctorIssue{
-				Level:   "warn",
-				Message: "skill content differs from installed version — run `mdm skills update` to sync",
-			})
-		}
-	}
-
-	// 6. Markdown files must not be too large for agent context windows
+	// 4. Markdown files must not be too large for agent context windows
 	checkLargeMarkdown(r)
 }
 
