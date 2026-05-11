@@ -11,7 +11,7 @@ before:
   hooks:
     - go mod tidy
     # generate Windows version-info + icon resource so the windows build picks it up
-    - make syso
+    - make syso GORELEASER_CURRENT_TAG={{ .Tag }}
 
 builds:
   - id: mdm
