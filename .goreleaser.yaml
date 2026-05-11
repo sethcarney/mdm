@@ -11,7 +11,8 @@ before:
   hooks:
     - go mod tidy
     # generate Windows version-info + icon resource so the windows build picks it up
-    - make syso GORELEASER_CURRENT_TAG={{ .Tag }}
+    # .Major/.Minor/.Patch are GoReleaser-parsed integers; pre-release suffix already stripped
+    - go tool goversioninfo -64 -ver-major {{.Major}} -ver-minor {{.Minor}} -ver-patch {{.Patch}} -ver-build 0 -product-ver-major {{.Major}} -product-ver-minor {{.Minor}} -product-ver-patch {{.Patch}} -product-ver-build 0 -o resource_windows.syso assets/versioninfo.json
 
 builds:
   - id: mdm
