@@ -45,10 +45,15 @@ mdm skills list            List installed skills
 mdm skills find [query]    Search the registry
 mdm skills update          Update installed skills
 mdm skills audit           Check installed skills for updates and security advisories
-mdm skills doctor          Check installed skills and project markdown for health issues
-mdm skills init <name>     Scaffold a new skill
+mdm skills init [name]     Scaffold a new skill
 mdm skills install         Restore skills from skills-lock.json
 mdm skills sync            Sync skills from node_modules
+
+mdm agents list            Show the configured agents for the current scope
+mdm agents add             Add agents to the configured default install list
+mdm agents remove          Remove agents (and their unique skill / instruction files)
+
+mdm doctor                 Check installed skills and project markdown for health issues
 mdm upgrade                Upgrade the mdm CLI binary
 ```
 

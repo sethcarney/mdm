@@ -12,6 +12,15 @@ Checks the latest release on GitHub, downloads the binary for your platform, ver
 
 Aliases: `update-cli`, `self-update`
 
+## Flags
+
+| Flag       | Description                                                                  |
+| ---------- | ---------------------------------------------------------------------------- |
+| `--stable` | Upgrade to the latest stable release (default behavior; mutually exclusive with `--beta`) |
+| `--beta`   | Upgrade to the latest beta / prerelease tag instead of the stable release    |
+
+`mdm upgrade` skips prereleases by default because GitHub's `/releases/latest` API excludes them. Pass `--beta` to opt in to release candidates and other prerelease tags.
+
 ## What it does
 
 1. Queries the GitHub releases API for the latest version.

@@ -43,6 +43,7 @@ mdm skills add <package>
 | `--all`         | Shorthand for `--skill '*' --agent '*' -y`           |
 | `--full-depth`  | Search all subdirectories for SKILL.md files         |
 | `--skip-audit`  | Skip the security audit check                        |
+| `--fail-on-audit` | Exit non-zero when security findings are detected instead of prompting (CI-friendly) |
 | `--allow-hidden-chars` | Allow markdown files with hidden Unicode characters |
 
 The `--agent` and `--skill` flags accept multiple space-separated values after a single flag or can be repeated:

@@ -66,6 +66,20 @@ Audit complete: 3 checked, 1 outdated, 1 advisory
 | `--global, -g` | Audit global skills only |
 | `--project, -p` | Audit project skills only |
 | `--json` | Output as JSON |
+| `--source, -r` | Pre-install audit: `owner/repo` or URL to audit *before* installing |
+| `--skill, -s` | Skill name to audit (used with `--source`) |
+
+### Pre-install audit
+
+Pass `--source` (and optionally `--skill`) to audit a package you have **not yet installed**. mdm queries skills.sh and OSV for the given source and prints the same advisory/sync report it would have produced after install, without writing anything to disk. Combine with `--json` for CI use.
+
+```bash
+# Audit a remote before installing
+mdm skills audit --source vercel-labs/agent-skills
+
+# Audit a single skill inside a multi-skill repo
+mdm skills audit --source owner/repo --skill my-skill --json
+```
 
 ## Examples
 

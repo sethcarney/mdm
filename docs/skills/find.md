@@ -12,6 +12,12 @@ Queries the [skills.sh](https://skills.sh) registry and shows a list of matching
 
 Aliases: `search`, `f`, `s`
 
+## Flags
+
+| Flag     | Description                                       |
+| -------- | ------------------------------------------------- |
+| `--json` | Print results as a JSON array and exit without installing (CI / scripting use) |
+
 ## Flow
 
 1. Enter a search query (or pass it as an argument).

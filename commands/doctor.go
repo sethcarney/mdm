@@ -73,9 +73,9 @@ Checks performed:
   • All other .md files in the project that may strain agent context windows
 
 %sExamples:%s
-  mdm skills doctor
-  mdm skills doctor -g
-  mdm skills doctor -p`, ansiBold, ansiReset),
+  mdm doctor
+  mdm doctor -g
+  mdm doctor -p`, ansiBold, ansiReset),
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			runDoctor(opts)

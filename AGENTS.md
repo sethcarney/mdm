@@ -61,25 +61,29 @@ Run with the debugger via `.vscode/launch.json` (Delve is configured).
 
 ```
 mdm
-├── upgrade                          # Self-update the mdm binary from GitHub releases (aliases: update-cli, self-update)
-├── uninstall                        # Remove the mdm binary from your system (aliases: remove-cli)
-├── doctor                           # Check installed skills and project markdown for health issues
-├── completion [bash|zsh|fish|ps1]   # Generate shell completion script
-│   └── install                      # Write completion into shell rc file
-├── skills                           # Manage skills for AI agents
-│   ├── add <package>                # Install a skill from GitHub, GitLab, URL, or local path (aliases: a, install, i)
-│   ├── remove [skills...]           # Uninstall skills (aliases: rm, r)
-│   ├── list                         # List installed skills (aliases: ls)
-│   ├── find [query]                 # Search the skills.sh registry and install interactively (aliases: search, f, s)
-│   ├── update [skills...]           # Re-fetch skills from their recorded source+ref (aliases: check)
-│   ├── audit [skills...]            # Check installed skills for updates and security advisories
-│   ├── init [name]                  # Scaffold a new SKILL.md in the current directory
-│   ├── install                      # Restore all skills from skills-lock.json (CI/onboarding)
-│   └── sync                         # Sync skills from node_modules into agent skill directories
-└── rules                            # Manage agent instruction files (CLAUDE.md, AGENTS.md, .cursorrules, etc.)
-    ├── link                         # Symlink all agent instruction files to a single AGENTS.md source of truth
-    ├── status                       # Show which instruction files exist, are symlinked, or are missing
-    └── unlink                       # Remove symlinks and restore per-agent instruction files
+├── upgrade                                 # Self-update the mdm binary from GitHub releases (aliases: update-cli, self-update)
+├── uninstall                               # Remove the mdm binary from your system (aliases: remove-cli)
+├── doctor                                  # Check installed skills and project markdown for health issues
+├── completion [bash|zsh|fish|powershell]   # Generate shell completion script
+│   └── install                             # Write completion into shell rc file
+├── skills                                  # Manage skills for AI agents
+│   ├── add <package>                       # Install a skill from GitHub, GitLab, URL, or local path (alias: a)
+│   ├── remove [skills...]                  # Uninstall skills (aliases: rm, r)
+│   ├── list                                # List installed skills (alias: ls)
+│   ├── find [query]                        # Search the skills.sh registry and install interactively (aliases: search, f, s)
+│   ├── update [skills...]                  # Re-fetch skills from their recorded source+ref (alias: check)
+│   ├── audit [skills...]                   # Check installed skills for updates and security advisories
+│   ├── init [name]                         # Scaffold a new SKILL.md in the current directory
+│   ├── install                             # Restore all skills from skills-lock.json (CI/onboarding)
+│   └── sync                                # Sync skills from node_modules into agent skill directories
+├── agents                                  # Manage the configured agent list used as default install targets
+│   ├── list                                # Show configured agents for the current scope (alias: ls)
+│   ├── add [agents...]                     # Add agents to the configured list (interactive picker with no args)
+│   └── remove [agents...]                  # Remove agents and their unique skill/instruction files
+└── rules                                   # Manage agent instruction files (CLAUDE.md, AGENTS.md, .cursorrules, etc.)
+    ├── link                                # Symlink all agent instruction files to a single AGENTS.md source of truth
+    ├── status                              # Show which instruction files exist, are symlinked, or are missing
+    └── unlink                              # Remove symlinks and restore per-agent instruction files
 ```
 
 ## Architecture
@@ -99,18 +103,22 @@ mdm
 │   ├── init.go          # `mdm skills init`: scaffolds a new SKILL.md
 │   ├── install.go       # `mdm skills install`: restores skills from skills-lock.json
 │   ├── sync.go          # `mdm skills sync`: syncs from node_modules
+│   ├── agents.go        # `mdm agents` group: list/add/remove configured agents (project + global scope)
 │   ├── rules.go         # `mdm rules` group: link/status/unlink agent instruction files
 │   ├── selfupdate.go    # `mdm upgrade`: downloads and replaces the mdm binary from GitHub releases
 │   ├── uninstall.go     # `mdm uninstall`: removes the mdm binary from the system
+│   ├── hidden_scan.go   # Hidden-character pre-install scan shared by add/update
 │   └── doctor.go        # `mdm doctor`: checks skill health, symlinks, hashes, README presence, and markdown sizes
 ├── internal/
     ├── agent/           # AllAgents registry (45+ agents); skill dir paths; detection
     ├── skill/           # Skill discovery (SKILL.md parsing); frontmatter; filtering
     ├── source/          # URL/path parsing into ParsedSource (GitHub, GitLab, local, well-known)
     ├── registry/        # Well-known registry fetching (.well-known/agent-skills standard)
-    ├── lock/            # skills-lock.json read/write; tracks hashes, versions, timestamps
+    ├── lock/            # skills-lock.json read/write; tracks hashes, versions, timestamps, configuredAgents
     ├── git/             # Shallow git clone; branch/ref handling
     ├── blob/            # GitHub API tree/blob queries for skill discovery
+    ├── security/        # markdownscan: hidden-character / prompt-smuggling detection
+    ├── update/          # Shared helpers for self-update and skill update flows
     ├── ui/              # ANSI color constants; Bubbletea spinner
     └── version/         # App name + dev fallback version (release tags override via ldflags)
 ```

@@ -60,9 +60,11 @@ If no agents are configured yet, the command tells you how to set them up.
 
 ### Flags
 
-| Flag           | Description                   |
-| -------------- | ----------------------------- |
-| `--global, -g` | List global configured agents |
+| Flag           | Description                                                                |
+| -------------- | -------------------------------------------------------------------------- |
+| `--global, -g` | List global configured agents                                              |
+| `--available`  | List every agent mdm knows about, not just the ones in the configured list |
+| `--json`       | Output as a JSON array (name, displayName, scope, installed)               |
 
 ## mdm agents add
 
@@ -133,6 +135,7 @@ mdm agents remove --global cursor
 | Flag           | Description                          |
 | -------------- | ------------------------------------ |
 | `--global, -g` | Remove from global configured agents |
+| `--yes, -y`    | Skip the confirmation prompt before removing files (use in CI / scripts) |
 
 ## Integration with mdm skills add
 

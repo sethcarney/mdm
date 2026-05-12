@@ -130,6 +130,21 @@ States:
 | `missing`   | The file does not exist                |
 | `broken`    | Symlink whose target is missing        |
 
+### Flags
+
+| Flag          | Description                                                                |
+| ------------- | -------------------------------------------------------------------------- |
+| `--agent, -a` | Limit the status report to the named agents (repeatable)                   |
+| `--json`      | Output the status table as a JSON array (file, state, target, agents) for scripting |
+
+```bash
+# Only show status for Claude Code and Cursor
+mdm rules status --agent claude-code cursor
+
+# Machine-readable
+mdm rules status --json
+```
+
 ## mdm rules unlink
 
 Removes symlinks created by `mdm rules link`. Real files are never touched.
