@@ -74,4 +74,4 @@ See [.vscode/launch.json](.vscode/launch.json) for VS Code debug configurations.
 
 ## VS Code extension
 
-Prefer a UI? The [**mdm**](https://marketplace.visualstudio.com/items?itemName=SethsSoftware.mdm-sidebar) VS Code extension visualizes your installed skills and agent rules alongside the CLI. [Source](https://github.com/sethcarney/mdm-vscode).
+Prefer a UI? The [**mdm VS Code extension**](https://marketplace.visualstudio.com/items?itemName=SethsSoftware.mdm-sidebar) visualizes your installed skills and agent rules alongside the CLI. [Source](https://github.com/sethcarney/mdm-vscode).
