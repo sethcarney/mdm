@@ -10,6 +10,21 @@
 
 The markdown management CLI. No telemetry · Fully open source.
 
+## Why mdm?
+
+Managing markdown across multiple agentic coding tools is more painful than it should be. Keeping `CLAUDE.md`, `copilot-instructions.md`, `.cursorrules`, and friends consistent and up to date is tedious enough on its own. Add in installing first- and third-party skills and context files, versioning them, pulling updates, and auditing them for prompt injection risks and hidden characters, and it becomes a real maintenance burden.
+
+`mdm` is a fast, security-focused markdown management CLI written in Go, designed to solve exactly these problems:
+
+- **45 agents supported** out of the box — Claude Code, Cursor, Cline, GitHub Copilot, Gemini CLI, Codex, and 39 more.
+- **One source of truth for instruction files.** `mdm rules link` makes `AGENTS.md` the canonical file and symlinks each agent's expected filename to it.
+- **Skills from anywhere.** Install from GitHub, GitLab, arbitrary URLs, local paths, or the [skills.sh](https://skills.sh) registry.
+- **Reproducible installs.** Repos can commit a `skills-lock.json` with their recommended skills so new teammates run `mdm skills install` once and onboard with whatever agent they prefer.
+- **Security-focused by default.** Every install runs a deterministic local scan for hidden characters and prompt-smuggling patterns, and `mdm skills audit` checks for updates and OSV security advisories.
+- **No telemetry, fully open source.**
+
+Prefer a UI? There's also a [VS Code extension](https://marketplace.visualstudio.com/items?itemName=SethsSoftware.mdm-sidebar).
+
 ## Install
 
 **macOS / Linux**
