@@ -102,7 +102,7 @@ func selectSkillsToRemove(installed []*InstalledSkill, skillFilter []string, opt
 		}
 		options[i] = ui.UIOption{Label: s.Name, Value: sanitizeName(s.Name), Hint: hint}
 	}
-	indices, ok := ui.UiMultiselect("Which skills would you like to remove?", options, true, nil, nil)
+	indices, ok := ui.UiSearchMultiselect("Which skills would you like to remove?", options, nil, nil, true)
 	if !ok {
 		fmt.Println("Cancelled.")
 		return nil, false

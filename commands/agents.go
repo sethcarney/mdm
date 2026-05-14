@@ -258,7 +258,7 @@ func pickAndSaveAgents(global bool, scope, cwd string) ([]string, error) {
 		}
 	}
 
-	selected, ok := ui.UiSearchMultiselect("Which agents do you want to configure?", options, lockedOptions, initSel)
+	selected, ok := ui.UiSearchMultiselect("Which agents do you want to configure?", options, lockedOptions, initSel, false)
 	if !ok {
 		return nil, nil
 	}

@@ -492,12 +492,13 @@ type searchModel struct {
 	offset    int
 	height    int
 	width     int
+	required  bool
 	result    []int
 	cancelled bool
 	done      bool
 }
 
-func newSearchModel(message string, options []UIOption, locked []UIOption, selected map[int]bool) *searchModel {
+func newSearchModel(message string, options []UIOption, locked []UIOption, selected map[int]bool, required bool) *searchModel {
 	ti := textinput.New()
 	ti.Placeholder = "filter..."
 	ti.Focus()
@@ -510,6 +511,7 @@ func newSearchModel(message string, options []UIOption, locked []UIOption, selec
 		input:    ti,
 		selected: selected,
 		filtered: filterOptions(options, ""),
+		required: required,
 	}
 }
 
@@ -578,6 +580,9 @@ func handleSearchModelKey(m *searchModel, msg tea.KeyMsg) (tea.Model, tea.Cmd, b
 			if s {
 				result = append(result, i)
 			}
+		}
+		if m.required && len(result) == 0 {
+			return m, nil, true
 		}
 		m.result = result
 		m.done = true
@@ -780,7 +785,7 @@ func padRight(s string, width int) string {
 
 // ─── SearchMultiselect ─────────────────────────────────────────────────────────
 
-func UiSearchMultiselect(message string, options []UIOption, locked []UIOption, initialSelected []int) ([]int, bool) {
+func UiSearchMultiselect(message string, options []UIOption, locked []UIOption, initialSelected []int, required bool) ([]int, bool) {
 	selected := make(map[int]bool)
 	for _, i := range initialSelected {
 		if i >= 0 && i < len(options) {
@@ -788,7 +793,7 @@ func UiSearchMultiselect(message string, options []UIOption, locked []UIOption, 
 		}
 	}
 	result, err := tea.NewProgram(
-		newSearchModel(message, options, locked, selected),
+		newSearchModel(message, options, locked, selected, required),
 		tea.WithAltScreen(),
 	).Run()
 	if err != nil {

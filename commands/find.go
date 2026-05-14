@@ -133,7 +133,7 @@ func runFind(args []string) {
 		return
 	}
 
-	indices, ok := ui.UiMultiselect("Select skills to install", buildFindOptions(results), false, nil, nil)
+	indices, ok := ui.UiSearchMultiselect("Select skills to install", buildFindOptions(results), nil, nil, false)
 	if !ok || len(indices) == 0 {
 		return
 	}
