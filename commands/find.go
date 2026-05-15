@@ -164,7 +164,7 @@ func runFind(args []string) {
 
 func runFindSource(sourceInput string, jsonMode bool) {
 	parsed := source.ParseSource(sourceInput)
-	entries, err := fetchSourceSkillEntries(parsed, sourceInput)
+	entries, err := fetchSourceSkillEntries(parsed, sourceInput, jsonMode)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to fetch skills: %v\n", err)
 		os.Exit(1)
@@ -199,12 +199,17 @@ func runFindSource(sourceInput string, jsonMode bool) {
 	runAdd(sourceInput, AddOptions{PreselectedSkills: names})
 }
 
-func fetchSourceSkillEntries(parsed source.ParsedSource, sourceInput string) ([]RemoteSkillEntry, error) {
+func fetchSourceSkillEntries(parsed source.ParsedSource, sourceInput string, jsonMode bool) ([]RemoteSkillEntry, error) {
 	switch parsed.Type {
 	case source.SourceTypeWellKnown:
-		spin := ui.NewSpinner("Fetching skills...")
+		var spin *ui.Spinner
+		if !jsonMode {
+			spin = ui.NewSpinner("Fetching skills...")
+		}
 		skills, err := registry.FetchAllWellKnownSkills(parsed.URL)
-		spin.Stop("")
+		if !jsonMode {
+			spin.Stop("")
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -222,9 +227,14 @@ func fetchSourceSkillEntries(parsed source.ParsedSource, sourceInput string) ([]
 		return entries, nil
 	case source.SourceTypeGitHub:
 		ownerRepo := source.GetOwnerRepo(parsed)
-		spin := ui.NewSpinner("Fetching skills...")
+		var spin *ui.Spinner
+		if !jsonMode {
+			spin = ui.NewSpinner("Fetching skills...")
+		}
 		metas, err := blob.FetchRemoteSkillList(ownerRepo, parsed.Ref, parsed.Subpath, lock.GetGitHubToken())
-		spin.Stop("")
+		if !jsonMode {
+			spin.Stop("")
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -234,9 +244,14 @@ func fetchSourceSkillEntries(parsed source.ParsedSource, sourceInput string) ([]
 		}
 		return entries, nil
 	default:
-		spin := ui.NewSpinner("Cloning " + parsed.URL + "...")
+		var spin *ui.Spinner
+		if !jsonMode {
+			spin = ui.NewSpinner("Cloning " + parsed.URL + "...")
+		}
 		tmpDir, err := git.CloneRepo(parsed.URL, parsed.Ref)
-		spin.Stop("")
+		if !jsonMode {
+			spin.Stop("")
+		}
 		if err != nil {
 			return nil, err
 		}
