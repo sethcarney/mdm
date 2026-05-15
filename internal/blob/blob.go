@@ -196,6 +196,48 @@ func fetchBlobSkillData(ctx context.Context, owner, repo, slug, branch, subpath,
 	return &BlobSkill{Skill: skill.Skill{Name: name, Description: desc, Version: version}, Files: dlResp.Files, SnapshotHash: dlResp.Hash, RepoPath: skillMdPath}
 }
 
+// RemoteSkillMeta holds the name and description of a skill discovered from a
+// remote SKILL.md without downloading full skill content.
+type RemoteSkillMeta struct {
+	Name        string
+	Description string
+}
+
+// FetchRemoteSkillList returns skill metadata from any public GitHub repo
+// without downloading full skill content. Unlike TryBlobInstall it has no
+// owner allowlist restriction because it performs no write operations.
+func FetchRemoteSkillList(ownerRepo, ref, subpath, token string) ([]*RemoteSkillMeta, error) {
+	var refPtr *string
+	if ref != "" {
+		refPtr = &ref
+	}
+	tree, err := FetchRepoTree(ownerRepo, refPtr, token)
+	if err != nil {
+		return nil, err
+	}
+	skillPaths := findSkillMdPaths(tree, subpath)
+	if len(skillPaths) == 0 {
+		return nil, nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	var results []*RemoteSkillMeta
+	for _, p := range skillPaths {
+		body, ok := fetchSkillMDContent(ctx, ownerRepo, tree.Branch, p, token)
+		if !ok {
+			continue
+		}
+		data, _ := skill.ParseFrontmatter(string(body))
+		name, _ := data["name"].(string)
+		desc, _ := data["description"].(string)
+		if name == "" {
+			continue
+		}
+		results = append(results, &RemoteSkillMeta{Name: name, Description: desc})
+	}
+	return results, nil
+}
+
 func TryBlobInstall(ownerRepo string, opts struct {
 	Subpath         string
 	SkillFilter     string
