@@ -7,12 +7,17 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/sethcarney/mdm/internal/blob"
+	"github.com/sethcarney/mdm/internal/git"
+	"github.com/sethcarney/mdm/internal/lock"
 	"github.com/sethcarney/mdm/internal/registry"
+	"github.com/sethcarney/mdm/internal/source"
 	"github.com/sethcarney/mdm/internal/ui"
 )
 
@@ -27,8 +32,15 @@ type FindSkillResult struct {
 	Repo        string `json:"repo,omitempty"`
 }
 
+// RemoteSkillEntry is the JSON shape returned by `skills find --source --json`.
+type RemoteSkillEntry struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+}
+
 func buildFindCmd() *cobra.Command {
 	var jsonMode bool
+	var sourceFlag string
 	cmd := &cobra.Command{
 		Use:     "find [query]",
 		Short:   "Search the skills registry",
@@ -37,9 +49,14 @@ func buildFindCmd() *cobra.Command {
 
 %sExamples:%s
   mdm skills find typescript
-  mdm skills find git`, ansiBold, ansiReset),
+  mdm skills find git
+  mdm skills find --source owner/repo --json`, ansiBold, ansiReset),
 		Args: cobra.MaximumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
+			if sourceFlag != "" {
+				runFindSource(sourceFlag, jsonMode)
+				return
+			}
 			if jsonMode {
 				runFindJSON(args)
 				return
@@ -49,6 +66,7 @@ func buildFindCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&jsonMode, "json", false, "Output results as JSON without installing")
+	cmd.Flags().StringVar(&sourceFlag, "source", "", "List skills available at a remote source without installing")
 	return cmd
 }
 
@@ -141,6 +159,98 @@ func runFind(args []string) {
 	fmt.Println()
 	for _, i := range indices {
 		installFindResult(results[i])
+	}
+}
+
+func runFindSource(sourceInput string, jsonMode bool) {
+	parsed := source.ParseSource(sourceInput)
+	entries, err := fetchSourceSkillEntries(parsed, sourceInput)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to fetch skills: %v\n", err)
+		os.Exit(1)
+	}
+	if len(entries) == 0 {
+		if jsonMode {
+			fmt.Println("[]")
+		} else {
+			fmt.Fprintf(os.Stderr, "%sNo skills found at %s%s\n", ansiDim, sourceInput, ansiReset)
+		}
+		return
+	}
+	if jsonMode {
+		out, _ := json.MarshalIndent(entries, "", "  ")
+		fmt.Println(string(out))
+		return
+	}
+	fmt.Println()
+	options := make([]ui.UIOption, len(entries))
+	for i, s := range entries {
+		options[i] = ui.UIOption{Label: s.Name, Value: s.Name, Hint: s.Description}
+	}
+	indices, ok := ui.UiSearchMultiselect("Select skills to install", options, nil, nil, false)
+	if !ok || len(indices) == 0 {
+		return
+	}
+	var names []string
+	for _, i := range indices {
+		names = append(names, entries[i].Name)
+	}
+	fmt.Println()
+	runAdd(sourceInput, AddOptions{PreselectedSkills: names})
+}
+
+func fetchSourceSkillEntries(parsed source.ParsedSource, sourceInput string) ([]RemoteSkillEntry, error) {
+	switch parsed.Type {
+	case source.SourceTypeWellKnown:
+		spin := ui.NewSpinner("Fetching skills...")
+		skills, err := registry.FetchAllWellKnownSkills(parsed.URL)
+		spin.Stop("")
+		if err != nil {
+			return nil, err
+		}
+		var entries []RemoteSkillEntry
+		for _, s := range skills {
+			entries = append(entries, RemoteSkillEntry{Name: s.Name, Description: s.Description})
+		}
+		return entries, nil
+	case source.SourceTypeLocal:
+		skills := discoverSkillsInDir(parsed.LocalPath, false, "")
+		var entries []RemoteSkillEntry
+		for _, s := range skills {
+			entries = append(entries, RemoteSkillEntry{Name: s.Name, Description: s.Description})
+		}
+		return entries, nil
+	case source.SourceTypeGitHub:
+		ownerRepo := source.GetOwnerRepo(parsed)
+		spin := ui.NewSpinner("Fetching skills...")
+		metas, err := blob.FetchRemoteSkillList(ownerRepo, parsed.Ref, parsed.Subpath, lock.GetGitHubToken())
+		spin.Stop("")
+		if err != nil {
+			return nil, err
+		}
+		var entries []RemoteSkillEntry
+		for _, m := range metas {
+			entries = append(entries, RemoteSkillEntry{Name: m.Name, Description: m.Description})
+		}
+		return entries, nil
+	default:
+		spin := ui.NewSpinner("Cloning " + parsed.URL + "...")
+		tmpDir, err := git.CloneRepo(parsed.URL, parsed.Ref)
+		spin.Stop("")
+		if err != nil {
+			return nil, err
+		}
+		defer git.CleanupTempDir(tmpDir)
+		searchRoot := tmpDir
+		if parsed.Subpath != "" {
+			searchRoot = filepath.Join(tmpDir, parsed.Subpath)
+		}
+		skills := discoverSkillsInDir(searchRoot, false, "")
+		var entries []RemoteSkillEntry
+		for _, s := range skills {
+			entries = append(entries, RemoteSkillEntry{Name: s.Name, Description: s.Description})
+		}
+		return entries, nil
 	}
 }
 
