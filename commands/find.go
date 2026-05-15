@@ -164,7 +164,7 @@ func runFind(args []string) {
 
 func runFindSource(sourceInput string, jsonMode bool) {
 	parsed := source.ParseSource(sourceInput)
-	entries, err := fetchSourceSkillEntries(parsed, sourceInput)
+	entries, err := fetchSourceSkillEntries(parsed, sourceInput, jsonMode)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to fetch skills: %v\n", err)
 		os.Exit(1)
@@ -199,12 +199,26 @@ func runFindSource(sourceInput string, jsonMode bool) {
 	runAdd(sourceInput, AddOptions{PreselectedSkills: names})
 }
 
-func fetchSourceSkillEntries(parsed source.ParsedSource, sourceInput string) ([]RemoteSkillEntry, error) {
+func startSpinner(msg string, show bool) *ui.Spinner {
+	if show {
+		return ui.NewSpinner(msg)
+	}
+	return nil
+}
+
+func stopSpinner(s *ui.Spinner) {
+	if s != nil {
+		s.Stop("")
+	}
+}
+
+func fetchSourceSkillEntries(parsed source.ParsedSource, sourceInput string, jsonMode bool) ([]RemoteSkillEntry, error) {
+	show := !jsonMode
 	switch parsed.Type {
 	case source.SourceTypeWellKnown:
-		spin := ui.NewSpinner("Fetching skills...")
+		spin := startSpinner("Fetching skills...", show)
 		skills, err := registry.FetchAllWellKnownSkills(parsed.URL)
-		spin.Stop("")
+		stopSpinner(spin)
 		if err != nil {
 			return nil, err
 		}
@@ -222,9 +236,9 @@ func fetchSourceSkillEntries(parsed source.ParsedSource, sourceInput string) ([]
 		return entries, nil
 	case source.SourceTypeGitHub:
 		ownerRepo := source.GetOwnerRepo(parsed)
-		spin := ui.NewSpinner("Fetching skills...")
+		spin := startSpinner("Fetching skills...", show)
 		metas, err := blob.FetchRemoteSkillList(ownerRepo, parsed.Ref, parsed.Subpath, lock.GetGitHubToken())
-		spin.Stop("")
+		stopSpinner(spin)
 		if err != nil {
 			return nil, err
 		}
@@ -234,9 +248,9 @@ func fetchSourceSkillEntries(parsed source.ParsedSource, sourceInput string) ([]
 		}
 		return entries, nil
 	default:
-		spin := ui.NewSpinner("Cloning " + parsed.URL + "...")
+		spin := startSpinner("Cloning "+parsed.URL+"...", show)
 		tmpDir, err := git.CloneRepo(parsed.URL, parsed.Ref)
-		spin.Stop("")
+		stopSpinner(spin)
 		if err != nil {
 			return nil, err
 		}
