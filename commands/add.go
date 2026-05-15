@@ -178,7 +178,7 @@ func selectWellKnownSkills(filtered []*registry.WellKnownSkill, opts AddOptions)
 	for i, s := range filtered {
 		options[i] = ui.UIOption{Label: s.Name, Value: s.InstallName, Hint: s.Description}
 	}
-	indices, ok := ui.UiMultiselect("Which skills would you like to install?", options, true, initSel, nil)
+	indices, ok := ui.UiSearchMultiselect("Which skills would you like to install?", options, nil, initSel, true)
 	if !ok {
 		fmt.Println("Cancelled.")
 		return nil, false
@@ -479,7 +479,7 @@ func selectBlobSkills(skills []*blob.BlobSkill, opts AddOptions) ([]*blob.BlobSk
 			}
 		}
 	}
-	indices, ok := ui.UiMultiselect("Which skills would you like to install?", options, true, initSel, nil)
+	indices, ok := ui.UiSearchMultiselect("Which skills would you like to install?", options, nil, initSel, true)
 	if !ok {
 		fmt.Println("Cancelled.")
 		return nil, false
@@ -757,7 +757,7 @@ func selectSkills(skills []*skill.Skill, opts AddOptions) ([]*skill.Skill, bool)
 	for i, s := range skills {
 		options[i] = ui.UIOption{Label: s.Name, Value: sanitizeName(s.Name), Hint: s.Description}
 	}
-	indices, ok := ui.UiMultiselect("Which skills would you like to install?", options, true, initSel, nil)
+	indices, ok := ui.UiSearchMultiselect("Which skills would you like to install?", options, nil, initSel, true)
 	if !ok {
 		fmt.Println("Cancelled.")
 		return nil, false
@@ -978,7 +978,7 @@ func promptAgents(opts AddOptions, global bool, cwd string) ([]string, bool) {
 	}
 
 	initSel := computeAgentInitSel(options, detectedUnique, configured)
-	selectedIndices, ok := ui.UiSearchMultiselect("Which agents would you like to install to?", options, lockedOptions, initSel)
+	selectedIndices, ok := ui.UiSearchMultiselect("Which agents would you like to install to?", options, lockedOptions, initSel, false)
 	if !ok {
 		return nil, false
 	}

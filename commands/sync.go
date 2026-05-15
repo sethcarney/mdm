@@ -49,7 +49,7 @@ func selectSkillsToSync(skills []*skill.Skill, yes bool) ([]*skill.Skill, bool) 
 	for i := range skills {
 		initSel[i] = i
 	}
-	indices, ok := ui.UiMultiselect("Which skills would you like to sync?", options, true, initSel, nil)
+	indices, ok := ui.UiSearchMultiselect("Which skills would you like to sync?", options, nil, initSel, true)
 	if !ok {
 		fmt.Println("Cancelled.")
 		return nil, false

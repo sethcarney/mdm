@@ -271,7 +271,7 @@ func selectAgentsToLink(agentFilter []string, linkable []agentCandidate, lockedO
 	for i, c := range linkable {
 		options[i] = ui.UIOption{Label: c.displayName, Value: c.name, Hint: c.file}
 	}
-	indices, ok := ui.UiSearchMultiselect("Which AI tools are you using in this project?", options, lockedOptions, preSelected)
+	indices, ok := ui.UiSearchMultiselect("Which AI tools are you using in this project?", options, lockedOptions, preSelected, false)
 	if !ok {
 		fmt.Println("Cancelled.")
 		return nil, false
