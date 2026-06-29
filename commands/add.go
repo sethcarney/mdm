@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/sethcarney/mdm/internal/agent"
 	"github.com/sethcarney/mdm/internal/blob"
@@ -34,6 +35,7 @@ type AddOptions struct {
 	SkipAudit         bool
 	FailOnAudit       bool
 	AllowHiddenChars  bool
+	Verbose           bool
 }
 
 func buildAddCmd(ver string) *cobra.Command {
@@ -98,10 +100,20 @@ To update to the latest version, run:  mdm skills update
 	f.BoolVar(&opts.SkipAudit, "skip-audit", false, "Skip security audit check for public skills")
 	f.BoolVar(&opts.FailOnAudit, "fail-on-audit", false, "Exit non-zero when security findings are detected instead of prompting")
 	f.BoolVar(&opts.AllowHiddenChars, "allow-hidden-chars", false, "Allow markdown files with hidden Unicode characters")
+	f.BoolVarP(&opts.Verbose, "verbose", "v", false, "Print diagnostic steps and stream git clone progress")
 
 	_ = cmd.RegisterFlagCompletionFunc("agent", agentFlagCompletion)
 
 	return cmd
+}
+
+// vlog writes a diagnostic line to stderr when --verbose is set. It is a no-op
+// otherwise, so call sites can sprinkle these freely without guarding.
+func vlog(verbose bool, format string, a ...interface{}) {
+	if !verbose {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "%s[mdm]%s %s\n", ansiDim, ansiReset, fmt.Sprintf(format, a...))
 }
 
 // ─── Main add command ──────────────────────────────────────────────────────────
@@ -119,6 +131,9 @@ func runAdd(sourceInput string, opts AddOptions) {
 	}
 
 	parsed := source.ParseSource(sourceInput)
+
+	vlog(opts.Verbose, "source %q → type=%s url=%s ref=%q subpath=%q",
+		sourceInput, parsed.Type, parsed.URL, parsed.Ref, parsed.Subpath)
 
 	fmt.Println()
 
@@ -338,14 +353,41 @@ func tryBlobFastInstall(parsed source.ParsedSource, opts AddOptions, cwd, ownerR
 		Ref:         parsed.Ref,
 		Token:       lock.GetGitHubToken(),
 	}
-	spin := ui.NewSpinner("Fetching skills...")
+	vlog(opts.Verbose, "trying GitHub API fast-path for %s (no clone)", ownerRepo)
+	var spin *ui.Spinner
+	if !opts.Verbose {
+		spin = ui.NewSpinner("Fetching skills...")
+	}
 	blobResult, _ := blob.TryBlobInstall(ownerRepo, blobOpts)
-	spin.Stop("")
+	if spin != nil {
+		spin.Stop("")
+	}
 	if blobResult == nil || len(blobResult.Skills) == 0 {
+		vlog(opts.Verbose, "fast-path unavailable for %s, falling back to full git clone", ownerRepo)
 		return false
 	}
+	vlog(opts.Verbose, "fast-path found %d skill(s) via API", len(blobResult.Skills))
 	runAddBlob(blobResult, parsed, opts, cwd, ownerRepo, sourceInput)
 	return true
+}
+
+// cloneForAdd shallow-clones the repo for an add operation. In verbose mode it
+// streams git's progress to stderr and reports timing; otherwise it shows the
+// usual spinner.
+func cloneForAdd(parsed source.ParsedSource, ref string, opts AddOptions) (string, error) {
+	if !opts.Verbose {
+		spin := ui.NewSpinner("Cloning " + parsed.URL + "...")
+		tmpDir, err := git.CloneRepo(parsed.URL, ref)
+		spin.Stop("")
+		return tmpDir, err
+	}
+	vlog(true, "cloning %s (shallow, --depth 1) — large monorepos can take a while:", parsed.URL)
+	start := time.Now()
+	tmpDir, err := git.CloneRepoWithOptions(parsed.URL, ref, git.CloneOptions{Verbose: true})
+	if err == nil {
+		vlog(true, "clone completed in %s", time.Since(start).Round(time.Millisecond))
+	}
+	return tmpDir, err
 }
 
 func runAddGitOrHub(parsed source.ParsedSource, opts AddOptions, cwd, sourceInput string) {
@@ -357,9 +399,7 @@ func runAddGitOrHub(parsed source.ParsedSource, opts AddOptions, cwd, sourceInpu
 
 	// Clone repo
 	ref := parsed.Ref
-	spin := ui.NewSpinner("Cloning " + parsed.URL + "...")
-	tmpDir, err := git.CloneRepo(parsed.URL, ref)
-	spin.Stop("")
+	tmpDir, err := cloneForAdd(parsed, ref, opts)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%sError:%s %s\n", ansiText, ansiReset, err.Error())
 		os.Exit(1)
@@ -376,7 +416,9 @@ func runAddGitOrHub(parsed source.ParsedSource, opts AddOptions, cwd, sourceInpu
 	}
 
 	skillFilter := skillFilterFromOpts(opts, parsed)
+	vlog(opts.Verbose, "scanning %s for SKILL.md files (filter=%q, full-depth=%v)", searchRoot, skillFilter, opts.FullDepth)
 	skills := discoverSkillsInDir(searchRoot, opts.FullDepth, skillFilter)
+	vlog(opts.Verbose, "discovered %d skill(s)", len(skills))
 	if len(skills) == 0 {
 		fmt.Fprintf(os.Stderr, "%sNo skills found in %s%s\n", ansiText, parsed.URL, ansiReset)
 		if strings.HasPrefix(parsed.URL, "https://") {
