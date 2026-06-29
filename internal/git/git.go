@@ -1,8 +1,10 @@
 package git
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +12,8 @@ import (
 	"strings"
 	"time"
 )
+
+const cloneTimeout = 120 * time.Second
 
 type GitCloneError struct {
 	Message   string
@@ -22,19 +26,46 @@ func (e *GitCloneError) Error() string {
 	return e.Message
 }
 
+// CloneOptions tunes the behaviour of CloneRepoWithOptions.
+type CloneOptions struct {
+	// Verbose streams git's live progress (clone counters, transfer speed)
+	// to Progress instead of silently buffering it. This is what powers the
+	// `mdm skills add --verbose` flag so users can see large clones advancing
+	// rather than staring at a frozen spinner.
+	Verbose bool
+	// Progress is where live git output is written when Verbose is true.
+	// Defaults to os.Stderr when nil.
+	Progress io.Writer
+}
+
+// CloneRepo performs a shallow clone with no live progress output, buffering
+// git's output for error reporting only. Kept for callers that don't need
+// streaming.
 func CloneRepo(gitURL, ref string) (string, error) {
+	return CloneRepoWithOptions(gitURL, ref, CloneOptions{})
+}
+
+// CloneRepoWithOptions shallow-clones gitURL (optionally at ref) into a fresh
+// temp dir. When opts.Verbose is set, git's progress meter is streamed live to
+// opts.Progress (default os.Stderr) while still being captured for diagnostics.
+func CloneRepoWithOptions(gitURL, ref string, opts CloneOptions) (string, error) {
 	tmpDir, err := os.MkdirTemp("", "skills-")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp dir: %w", err)
 	}
 
 	args := []string{"clone", "--depth", "1"}
+	if opts.Verbose {
+		// --progress forces git to emit its counters even though stderr is not
+		// a TTY (it's wired through an io.MultiWriter below).
+		args = append(args, "--progress")
+	}
 	if ref != "" {
 		args = append(args, "--branch", ref)
 	}
 	args = append(args, gitURL, tmpDir)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), cloneTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Env = append(os.Environ(),
@@ -42,38 +73,68 @@ func CloneRepo(gitURL, ref string) (string, error) {
 		"GIT_LFS_SKIP_SMUDGE=1",
 	)
 
-	out, err := cmd.CombinedOutput()
-	if err != nil {
+	out, runErr := runClone(cmd, opts)
+	if runErr != nil {
 		os.RemoveAll(tmpDir)
-		msg := string(out)
-		if err.Error() != "" {
-			msg = err.Error() + "\n" + msg
+		msg := out
+		if runErr.Error() != "" {
+			msg = runErr.Error() + "\n" + msg
 		}
-		isTimeout := strings.Contains(msg, "timed out") || strings.Contains(msg, "block timeout")
-		isAuth := strings.Contains(msg, "Authentication failed") ||
-			strings.Contains(msg, "could not read Username") ||
-			strings.Contains(msg, "Permission denied") ||
-			strings.Contains(msg, "Repository not found")
-
-		if isTimeout {
-			return "", &GitCloneError{
-				Message: fmt.Sprintf("Clone timed out. Ensure you have access and your SSH keys or credentials are configured:\n  - For SSH: ssh-add -l\n  - For HTTPS: git config --global credential.helper"),
-				URL:     gitURL, IsTimeout: true,
-			}
+		// A context deadline produces a generic "signal: killed" error whose
+		// text doesn't mention a timeout, so classify it explicitly here.
+		if ctx.Err() == context.DeadlineExceeded {
+			msg += "\ntimed out after " + cloneTimeout.String()
 		}
-		if isAuth {
-			return "", &GitCloneError{
-				Message: fmt.Sprintf("Authentication failed for %s.\n  - For private repos, ensure you have access\n  - For SSH: Check your keys with 'ssh -T git@github.com'\n  - For HTTPS: Check your git credentials with 'git config --global credential.helper'", gitURL),
-				URL:     gitURL, IsAuth: true,
-			}
-		}
-		return "", &GitCloneError{
-			Message: fmt.Sprintf("Failed to clone %s: %s", gitURL, strings.TrimSpace(msg)),
-			URL:     gitURL,
-		}
+		return "", classifyCloneError(msg, gitURL)
 	}
 
 	return tmpDir, nil
+}
+
+// runClone executes the clone, returning git's combined output as a string.
+// In verbose mode the output is teed live to the configured writer.
+func runClone(cmd *exec.Cmd, opts CloneOptions) (string, error) {
+	if !opts.Verbose {
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+	w := opts.Progress
+	if w == nil {
+		w = os.Stderr
+	}
+	var buf bytes.Buffer
+	mw := io.MultiWriter(&buf, w)
+	cmd.Stdout = mw
+	cmd.Stderr = mw
+	err := cmd.Run()
+	return buf.String(), err
+}
+
+// classifyCloneError maps git's output to a typed GitCloneError so callers can
+// distinguish timeouts and auth failures from generic clone errors.
+func classifyCloneError(msg, gitURL string) error {
+	isTimeout := strings.Contains(msg, "timed out") || strings.Contains(msg, "block timeout")
+	isAuth := strings.Contains(msg, "Authentication failed") ||
+		strings.Contains(msg, "could not read Username") ||
+		strings.Contains(msg, "Permission denied") ||
+		strings.Contains(msg, "Repository not found")
+
+	if isTimeout {
+		return &GitCloneError{
+			Message: "Clone timed out. The repository may be very large, or your connection is slow.\n  - Re-run with --verbose to watch git's progress\n  - For private repos, ensure your SSH keys or credentials are configured (ssh-add -l)",
+			URL:     gitURL, IsTimeout: true,
+		}
+	}
+	if isAuth {
+		return &GitCloneError{
+			Message: fmt.Sprintf("Authentication failed for %s.\n  - For private repos, ensure you have access\n  - For SSH: Check your keys with 'ssh -T git@github.com'\n  - For HTTPS: Check your git credentials with 'git config --global credential.helper'", gitURL),
+			URL:     gitURL, IsAuth: true,
+		}
+	}
+	return &GitCloneError{
+		Message: fmt.Sprintf("Failed to clone %s: %s", gitURL, strings.TrimSpace(msg)),
+		URL:     gitURL,
+	}
 }
 
 func CleanupTempDir(dir string) error {
