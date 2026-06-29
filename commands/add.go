@@ -341,29 +341,26 @@ func tryBlobFastInstall(parsed source.ParsedSource, opts AddOptions, cwd, ownerR
 	if parsed.Type != source.SourceTypeGitHub || ownerRepo == "" {
 		return false
 	}
-	blobOpts := struct {
-		Subpath         string
-		SkillFilter     string
-		Ref             string
-		Token           string
-		IncludeInternal bool
-	}{
+	blobOpts := blob.InstallOptions{
 		Subpath:     parsed.Subpath,
 		SkillFilter: skillFilterFromOpts(opts, parsed),
 		Ref:         parsed.Ref,
 		Token:       lock.GetGitHubToken(),
+	}
+	if opts.Verbose {
+		blobOpts.Logf = func(f string, a ...interface{}) { vlog(true, f, a...) }
 	}
 	vlog(opts.Verbose, "trying GitHub API fast-path for %s (no clone)", ownerRepo)
 	var spin *ui.Spinner
 	if !opts.Verbose {
 		spin = ui.NewSpinner("Fetching skills...")
 	}
-	blobResult, _ := blob.TryBlobInstall(ownerRepo, blobOpts)
+	blobResult, err := blob.TryBlobInstall(ownerRepo, blobOpts)
 	if spin != nil {
 		spin.Stop("")
 	}
 	if blobResult == nil || len(blobResult.Skills) == 0 {
-		vlog(opts.Verbose, "fast-path unavailable for %s, falling back to full git clone", ownerRepo)
+		reportFastPathFallback(ownerRepo, err, opts.Verbose)
 		return false
 	}
 	vlog(opts.Verbose, "fast-path found %d skill(s) via API", len(blobResult.Skills))
@@ -388,6 +385,22 @@ func cloneForAdd(parsed source.ParsedSource, ref string, opts AddOptions) (strin
 		vlog(true, "clone completed in %s", time.Since(start).Round(time.Millisecond))
 	}
 	return tmpDir, err
+}
+
+// reportFastPathFallback explains why the GitHub API fast-path didn't yield an
+// install and that we're falling back to a full git clone. A rate-limit hit is
+// actionable, so it's surfaced even without --verbose.
+func reportFastPathFallback(ownerRepo string, err error, verbose bool) {
+	switch {
+	case blob.IsRateLimited(err):
+		fmt.Fprintf(os.Stderr, "%sGitHub API rate limit reached — falling back to git clone (slower). Set GITHUB_TOKEN to avoid this.%s\n", ansiDim, ansiReset)
+	case err == blob.ErrTreeTruncated:
+		fmt.Fprintf(os.Stderr, "%sRepository is too large for the GitHub API path — falling back to git clone.%s\n", ansiDim, ansiReset)
+	case err != nil:
+		vlog(verbose, "fast-path unavailable for %s (%v), falling back to full git clone", ownerRepo, err)
+	default:
+		vlog(verbose, "fast-path found no installable skills for %s, falling back to full git clone", ownerRepo)
+	}
 }
 
 func runAddGitOrHub(parsed source.ParsedSource, opts AddOptions, cwd, sourceInput string) {
