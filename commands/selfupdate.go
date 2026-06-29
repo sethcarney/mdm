@@ -111,6 +111,7 @@ func verifyChecksums(data []byte, checksumText, assetName string) bool {
 }
 
 func fetchLatestRelease(client *http.Client, currentVersion string) (*githubRelease, error) {
+	vlog(verboseFlag, "fetching latest stable release: GET %s", releasesAPI)
 	req, _ := http.NewRequest("GET", releasesAPI, nil)
 	req.Header.Set("User-Agent", appName+"-cli/"+currentVersion)
 	resp, err := client.Do(req)
@@ -137,6 +138,7 @@ func fetchLatestRelease(client *http.Client, currentVersion string) (*githubRele
 }
 
 func fetchLatestPrerelease(client *http.Client, currentVersion string) (*githubRelease, error) {
+	vlog(verboseFlag, "fetching release list for prereleases: GET %s", releasesListAPI)
 	req, _ := http.NewRequest("GET", releasesListAPI, nil)
 	req.Header.Set("User-Agent", appName+"-cli/"+currentVersion)
 	resp, err := client.Do(req)
@@ -181,6 +183,7 @@ func findReleaseURLs(release *githubRelease, assetName, latestVersion string) (s
 		fmt.Fprintf(os.Stderr, "Binary for your platform (%s) not found in release %s.\n", assetName, latestVersion)
 		return "", "", false
 	}
+	vlog(verboseFlag, "selected asset %q → %s (checksums=%q)", assetName, downloadURL, checksumsURL)
 	if !isGitHubURL(downloadURL) {
 		fmt.Fprintf(os.Stderr, "Unexpected download host in release asset — aborting.\n")
 		return "", "", false
@@ -219,12 +222,15 @@ func downloadAndVerify(client *http.Client, downloadURL, checksumsURL, assetName
 		fmt.Fprintf(os.Stderr, "Downloaded binary exceeds %d MB limit — aborting.\n", maxBinaryBytes/1024/1024)
 		return nil, fmt.Errorf("binary too large")
 	}
+	vlog(verboseFlag, "downloaded %d bytes", len(dlBody))
 	if checksumText != "" {
 		if !verifyChecksums(dlBody, checksumText, assetName) {
 			fmt.Fprintf(os.Stderr, "SHA256 checksum mismatch for %s — aborting update.\n", assetName)
 			return nil, fmt.Errorf("checksum mismatch")
 		}
 		fmt.Printf("%sSHA256 verified.%s\n", ansiDim, ansiReset)
+	} else {
+		vlog(verboseFlag, "no checksums.txt asset found; skipping SHA256 verification")
 	}
 	return dlBody, nil
 }
@@ -252,8 +258,10 @@ func writeTempExecutable(data []byte) (string, error) {
 }
 
 func replaceBinary(tmpPath, execPath, latestVersion string) {
+	vlog(verboseFlag, "replacing binary: %s → %s", tmpPath, execPath)
 	if runtime.GOOS != "windows" {
 		if err := os.Rename(tmpPath, execPath); err != nil {
+			vlog(verboseFlag, "rename failed (%v); falling back to copy", err)
 			os.Remove(execPath)
 			if err2 := copyFile(tmpPath, execPath); err2 != nil {
 				fmt.Fprintf(os.Stderr, "Failed to update binary: %v\n", err2)
@@ -299,6 +307,7 @@ func promptChannel() bool {
 
 func runSelfUpdate(currentVersion string, useBeta bool) {
 	client := &http.Client{Timeout: 30 * time.Second}
+	vlog(verboseFlag, "self-update: current=%s channel=%s", currentVersion, map[bool]string{true: "beta", false: "stable"}[useBeta])
 	fmt.Printf("%sChecking for updates...%s\n", ansiDim, ansiReset)
 
 	var release *githubRelease

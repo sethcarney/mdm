@@ -160,10 +160,12 @@ func removeAgentSkillDir(agentBase, name, localSourceAbs string) {
 func removeSkillFromDisk(sk *InstalledSkill, agentsToRemove []string, global bool, cwd string) error {
 	sName := sanitizeName(sk.Name)
 	localSourceAbs := resolveLocalSourceAbs(sName, global, cwd)
+	vlog(verboseFlag, "removing %q from agents=%v (localSource=%q)", sk.Name, agentsToRemove, localSourceAbs)
 
 	for _, agentName := range agentsToRemove {
 		agentBase := getAgentBaseDir(agentName, global, cwd)
 		if agentBase == "" {
+			vlog(verboseFlag, "skip agent %q: no base dir resolved", agentName)
 			continue
 		}
 		for _, name := range []string{sName, filepath.Base(sk.Path)} {
@@ -251,13 +253,18 @@ func runRemove(positional []string, opts RemoveOptions) {
 	if !ok {
 		return
 	}
+	vlog(verboseFlag, "remove: global=%v filter=%v agents=%v", global, skillFilter, opts.Agents)
 
 	scopeGlobal := &global
 	installed, err := listInstalledSkills(scopeGlobal, opts.Agents)
+	if err != nil {
+		vlog(verboseFlag, "listing installed skills failed: %v", err)
+	}
 	if err != nil || len(installed) == 0 {
 		handleNoInstalled(global, cwd)
 		return
 	}
+	vlog(verboseFlag, "found %d installed skill(s) in scope", len(installed))
 
 	toRemove, ok := selectSkillsToRemove(installed, skillFilter, opts)
 	if !ok || len(toRemove) == 0 {

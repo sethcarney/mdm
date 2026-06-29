@@ -214,6 +214,8 @@ func stopSpinner(s *ui.Spinner) {
 
 func fetchSourceSkillEntries(parsed source.ParsedSource, sourceInput string, jsonMode bool) ([]RemoteSkillEntry, error) {
 	show := !jsonMode
+	vlog(verboseFlag, "listing skills at source %q → type=%s url=%s ref=%q subpath=%q",
+		sourceInput, parsed.Type, parsed.URL, parsed.Ref, parsed.Subpath)
 	switch parsed.Type {
 	case source.SourceTypeWellKnown:
 		spin := startSpinner("Fetching skills...", show)
@@ -248,10 +250,12 @@ func fetchSourceSkillEntries(parsed source.ParsedSource, sourceInput string, jso
 		}
 		return entries, nil
 	default:
+		vlog(verboseFlag, "no API fast-path for %s; cloning %s", parsed.Type, parsed.URL)
 		spin := startSpinner("Cloning "+parsed.URL+"...", show)
 		tmpDir, err := git.CloneRepo(parsed.URL, parsed.Ref)
 		stopSpinner(spin)
 		if err != nil {
+			vlog(verboseFlag, "clone failed: %v", err)
 			return nil, err
 		}
 		defer git.CleanupTempDir(tmpDir)
@@ -277,8 +281,13 @@ func fetchFindResults(query string) ([]FindSkillResult, error) {
 		fetchURL += "?q=" + url.QueryEscape(query)
 	}
 
+	vlog(verboseFlag, "searching registry: GET %s", fetchURL)
 	body, status, err := registry.HttpGetText(ctx, fetchURL)
-	if err != nil || status != 200 {
+	if err != nil {
+		vlog(verboseFlag, "search request error: %v", err)
+		return nil, fmt.Errorf("search failed: status %d", status)
+	}
+	if status != 200 {
 		return nil, fmt.Errorf("search failed: status %d", status)
 	}
 

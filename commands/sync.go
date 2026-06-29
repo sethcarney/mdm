@@ -65,10 +65,12 @@ func syncAndLockSkill(s *skill.Skill, agents []string, global bool, mode Install
 	sName := sanitizeName(s.Name)
 	fmt.Printf("%sSyncing %s%s%s...\n", ansiDim, ansiText, s.Name, ansiReset)
 
+	vlog(verboseFlag, "syncing %s from %s → agents=%v (global=%v, mode=%v)", s.Name, s.Path, agents, global, mode)
 	var failedAgents []string
 	for _, agentName := range agents {
 		result := installSkillForAgent(s, agentName, global, mode)
 		if !result.Success {
+			vlog(verboseFlag, "install failed for %s → agent %q", s.Name, agentName)
 			failedAgents = append(failedAgents, agentName)
 		}
 	}
@@ -110,6 +112,7 @@ func runSync(opts SyncOptions) {
 	fmt.Printf("\n%sScanning node_modules for skills...%s\n\n", ansiDim, ansiReset)
 
 	found := skill.DiscoverNodeModuleSkills(cwd)
+	vlog(verboseFlag, "scanned node_modules under %s: found %d skill record(s)", cwd, len(found))
 	if len(found) == 0 {
 		fmt.Printf("%sNo skills found in node_modules.%s\n\n", ansiDim, ansiReset)
 		fmt.Printf("Install skills packages with npm/yarn/pnpm first, then run %smdm skills sync%s\n\n", ansiText, ansiReset)

@@ -117,6 +117,7 @@ func runAudit(skillFilter []string, opts AuditOptions) {
 		global = true
 		project = true
 	}
+	vlog(verboseFlag, "audit scope: global=%v project=%v filter=%v", global, project, skillFilter)
 
 	var results []auditSkillResult
 
@@ -236,9 +237,11 @@ func auditEntryFromLocal(name string, entry lock.LocalSkillLockEntry) auditSkill
 
 func enrichResult(r *auditSkillResult) {
 	if !isGitSourceType(r.SourceType) {
+		vlog(verboseFlag, "%s: source type %q has no remote to check, marking local", r.Name, r.SourceType)
 		r.SyncStatus = "local"
 		return
 	}
+	vlog(verboseFlag, "enriching %s (scope=%s, skillID=%q)", r.Name, r.Scope, r.SkillID)
 
 	// Sync status: compare installed tag against latest remote tag
 	if r.Scope == "global" {
@@ -308,10 +311,13 @@ func fetchSkillAudits(skillID string) ([]auditProvider, bool) {
 	defer cancel()
 
 	url := auditAPIBase + "/audit/" + skillID
+	vlog(verboseFlag, "fetching audit data: GET %s", url)
 	body, status, err := registry.HttpGetText(ctx, url)
 	if err != nil {
+		vlog(verboseFlag, "audit request failed for %s: %v", skillID, err)
 		return nil, true
 	}
+	vlog(verboseFlag, "audit API returned status %d for %s", status, skillID)
 	if status == 200 {
 		var resp skillsShAuditResponse
 		if jsonErr := json.Unmarshal([]byte(body), &resp); jsonErr != nil {
@@ -336,6 +342,7 @@ func fetchSkillAudits(skillID string) ([]auditProvider, bool) {
 	if status >= 500 {
 		return nil, true
 	}
+	vlog(verboseFlag, "not in skills.sh registry (status %d); trying OSV fallback for %s", status, skillID)
 	providers := osvFallback(skillID)
 	return providers, false
 }
@@ -554,6 +561,7 @@ func runPreInstallAudit(opts AuditOptions) {
 	if skillSlug != "" {
 		skillID = ownerRepo + "/" + skillSlug
 	}
+	vlog(verboseFlag, "pre-install audit: source=%q ownerRepo=%q skillID=%q", opts.Source, ownerRepo, skillID)
 
 	r := auditSkillResult{
 		Name:       opts.Skill,

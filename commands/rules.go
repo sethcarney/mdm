@@ -286,6 +286,7 @@ func selectAgentsToLink(agentFilter []string, linkable []agentCandidate, lockedO
 func createAgentSymlinks(selected []agentCandidate, cwd, agentsMDPath string, yes bool) {
 	linked := 0
 	skipped := 0
+	vlog(verboseFlag, "linking %d instruction file(s) → %s", len(selected), agentsMDFile)
 	for _, c := range selected {
 		targetPath := filepath.Join(cwd, c.file)
 
@@ -331,6 +332,7 @@ func createAgentSymlinks(selected []agentCandidate, cwd, agentsMDPath string, ye
 		}
 
 		if err := os.Symlink(symlinkTarget, targetPath); err != nil {
+			vlog(verboseFlag, "symlink %s → %s failed: %v", c.file, symlinkTarget, err)
 			fmt.Fprintf(os.Stderr, "  %s✗%s %-35s %v\n", ansiRed, ansiReset, c.file, err)
 			continue
 		}
@@ -589,6 +591,7 @@ func collectSymlinkedFiles(cwd string, agentFilter []string) []symlinkedFile {
 func runRulesUnlink(agentFilter []string, yes bool) {
 	cwd, _ := os.Getwd()
 	found := collectSymlinkedFiles(cwd, agentFilter)
+	vlog(verboseFlag, "unlink: found %d symlinked instruction file(s) (filter=%v)", len(found), agentFilter)
 
 	if len(found) == 0 {
 		fmt.Printf("%sNo symlinked instruction files found.%s\n", ansiDim, ansiReset)
@@ -637,6 +640,7 @@ func runRulesUnlink(agentFilter []string, yes bool) {
 
 	for _, r := range toRemove {
 		if err := os.Remove(filepath.Join(cwd, r.file)); err != nil {
+			vlog(verboseFlag, "failed to remove symlink %s: %v", r.file, err)
 			ui.LogError("Failed to remove " + r.file + ": " + err.Error())
 			continue
 		}
