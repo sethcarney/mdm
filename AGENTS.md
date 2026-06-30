@@ -158,7 +158,9 @@ If you need to run the checks manually:
 go test ./...
 
 # 2. Vulnerability scan
-go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+# GOTOOLCHAIN pins the build of govulncheck to the project's Go (go.mod) so it
+# can parse go1.26 sources even when your base toolchain is older.
+GOTOOLCHAIN=go1.26.4 go install golang.org/x/vuln/cmd/govulncheck@v1.5.0
 govulncheck ./...
 
 # 3. Formatting — must produce no output
