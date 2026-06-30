@@ -100,15 +100,16 @@ To update to the latest version, run:  mdm skills update
 	f.BoolVar(&opts.SkipAudit, "skip-audit", false, "Skip security audit check for public skills")
 	f.BoolVar(&opts.FailOnAudit, "fail-on-audit", false, "Exit non-zero when security findings are detected instead of prompting")
 	f.BoolVar(&opts.AllowHiddenChars, "allow-hidden-chars", false, "Allow markdown files with hidden Unicode characters")
-	f.BoolVarP(&opts.Verbose, "verbose", "v", false, "Print diagnostic steps and stream git clone progress")
 
 	_ = cmd.RegisterFlagCompletionFunc("agent", agentFlagCompletion)
 
 	return cmd
 }
 
-// vlog writes a diagnostic line to stderr when --verbose is set. It is a no-op
-// otherwise, so call sites can sprinkle these freely without guarding.
+// vlog writes a diagnostic line to stderr when verbose is set. It is a no-op
+// otherwise, so call sites can sprinkle these freely without guarding. Most
+// callers pass the package-level verboseFlag (bound to the root --verbose/-v
+// flag); pass a literal true inside a block already gated on verbose.
 func vlog(verbose bool, format string, a ...interface{}) {
 	if !verbose {
 		return
@@ -120,6 +121,10 @@ func vlog(verbose bool, format string, a ...interface{}) {
 
 func runAdd(sourceInput string, opts AddOptions) {
 	cwd, _ := os.Getwd()
+
+	// Inherit the global --verbose flag so the existing blob/git diagnostic
+	// wiring fires, including when runAdd is called from update/find/install.
+	opts.Verbose = verboseFlag
 
 	if sourceInput == "" {
 		fmt.Fprintf(os.Stderr, "%sError:%s Please provide a package source.\n\n", ansiText, ansiReset)

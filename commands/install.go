@@ -38,6 +38,7 @@ func runInstallFromLock(yes bool, allowHiddenChars bool) {
 
 	hasLocal := len(localL.Skills) > 0
 	hasGlobal := len(globalL.Skills) > 0
+	vlog(verboseFlag, "install from lock: local=%d skill(s) global=%d skill(s)", len(localL.Skills), len(globalL.Skills))
 
 	switch {
 	case !hasLocal && !hasGlobal:
@@ -152,7 +153,9 @@ func restoreSkills(entries map[string]sourceRef, baseOpts AddOptions) {
 		baseOpts.Agents = agents
 	}
 
+	vlog(verboseFlag, "grouped %d skill(s) into %d source group(s)", len(entries), len(sourceMap))
 	for _, group := range sourceMap {
+		vlog(verboseFlag, "restoring from %q (ref=%q): %v", group.source, group.ref, group.skills)
 		fmt.Printf("%sInstalling from %s...%s\n", ansiDim, group.source, ansiReset)
 		opts := baseOpts
 		opts.Skills = group.skills

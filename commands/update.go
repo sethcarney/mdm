@@ -93,16 +93,20 @@ func updateGlobalSkills(skillFilter []string, stats *updateStats, allowHiddenCha
 			continue
 		}
 		if entry.SourceType == string(source.SourceTypeLocal) {
+			vlog(verboseFlag, "skip %s: local source is not remotely updatable", sName)
 			stats.skipped++
 			continue
 		}
 		if !isGitSourceType(entry.SourceType) {
+			vlog(verboseFlag, "skip %s: source type %q is not updatable", sName, entry.SourceType)
 			stats.skipped++
 			continue
 		}
 		fmt.Printf("%sChecking %s...%s\n", ansiDim, sName, ansiReset)
+		vlog(verboseFlag, "checking %s: ref=%q source=%q", sName, entry.Ref, entry.Source)
 		isUpToDate, newRef, err := checkSkillUpToDate(entry)
 		if err != nil {
+			vlog(verboseFlag, "remote tag check failed for %s: %v", sName, err)
 			ui.LogWarn(fmt.Sprintf("Skipping %s: %v", sName, err))
 			stats.skipped++
 			continue
@@ -128,11 +132,13 @@ func checkRemoteTagUpToDate(gitURL, currentRef string) (bool, string, error) {
 	if !git.IsSemverTag(currentRef) {
 		return false, "", fmt.Errorf("not pinned to a version tag; use `mdm skills add <source>#<tag>` to pin")
 	}
+	vlog(verboseFlag, "fetching remote tags from %s (current=%s)", gitURL, currentRef)
 	tags, err := git.FetchRemoteTags(gitURL)
 	if err != nil {
 		return false, "", err
 	}
 	latest := git.LatestSemverTag(tags)
+	vlog(verboseFlag, "remote has %d tag(s); latest stable=%q", len(tags), latest)
 	if latest == "" {
 		return false, "", fmt.Errorf("no stable version tags found on remote")
 	}
@@ -157,16 +163,20 @@ func updateProjectSkills(skillFilter []string, cwd string, stats *updateStats, a
 			continue
 		}
 		if entry.SourceType == string(source.SourceTypeLocal) {
+			vlog(verboseFlag, "skip %s: local source is not remotely updatable", sName)
 			stats.skipped++
 			continue
 		}
 		if !isGitSourceType(entry.SourceType) {
+			vlog(verboseFlag, "skip %s: source type %q is not updatable", sName, entry.SourceType)
 			stats.skipped++
 			continue
 		}
 		fmt.Printf("%sChecking %s...%s\n", ansiDim, sName, ansiReset)
+		vlog(verboseFlag, "checking %s: ref=%q source=%q", sName, entry.Ref, entry.Source)
 		isUpToDate, newRef, err := checkProjectSkillUpToDate(entry)
 		if err != nil {
+			vlog(verboseFlag, "remote tag check failed for %s: %v", sName, err)
 			ui.LogWarn(fmt.Sprintf("Skipping %s: %v", sName, err))
 			stats.skipped++
 			continue
@@ -193,6 +203,7 @@ func runUpdateWithOpts(skillFilter []string, opts UpdateOptions) {
 	if !ok {
 		return
 	}
+	vlog(verboseFlag, "update scope: global=%v project=%v filter=%v", global, project, skillFilter)
 	var stats updateStats
 	if global {
 		updateGlobalSkills(skillFilter, &stats, opts.AllowHiddenChars)

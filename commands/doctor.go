@@ -96,6 +96,7 @@ func runDoctor(opts DoctorOptions) {
 	checkProject := opts.Project || (!opts.Global && !opts.Project)
 
 	cwd, _ := os.Getwd()
+	vlog(verboseFlag, "doctor: checkGlobal=%v checkProject=%v cwd=%s", checkGlobal, checkProject, cwd)
 
 	var results []doctorResult
 
@@ -146,6 +147,9 @@ func runDoctor(opts DoctorOptions) {
 		unlinkedRulesIssues = checkUnlinkedRulesAgents(cwd)
 		missingSkillLinkIssues = checkMissingAgentSkillLinks(cwd)
 		mdIssues, mdTruncated = checkProjectMarkdown(cwd, skipDirs, skipFiles)
+		if mdTruncated {
+			vlog(verboseFlag, "project markdown walk hit the %d-entry limit; results truncated", markdownWalkLimit)
+		}
 		readmeIssue = checkProjectReadme(cwd)
 	}
 

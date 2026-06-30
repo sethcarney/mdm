@@ -432,9 +432,11 @@ func pickAgentsToRemove(configured []string) ([]string, bool) {
 // that belong exclusively to each agent being removed. Shared resources
 // (.agents/skills, AGENTS.md) are never touched.
 func cleanUpRemovedAgentFiles(toRemove []string, global bool, cwd string) {
+	vlog(verboseFlag, "cleaning up files for removed agent(s): %v (global=%v)", toRemove, global)
 	for _, name := range toRemove {
 		cfg := agent.AllAgents[name]
 		if cfg == nil {
+			vlog(verboseFlag, "skip %q: unknown agent, no files to clean", name)
 			continue
 		}
 
@@ -579,9 +581,11 @@ func collectSkillLinkSpecs(targets []string, cwd string) []skillLinkSpec {
 func installLockedSkillsForAgents(agentNames []string, cwd string) {
 	targets := agentsNeedingSkillLinks(agentNames)
 	if len(targets) == 0 {
+		vlog(verboseFlag, "no agents need explicit skill links (all use shared skills dir)")
 		return
 	}
 	specs := collectSkillLinkSpecs(targets, cwd)
+	vlog(verboseFlag, "linking locked skills: %d target agent(s), %d link spec(s)", len(targets), len(specs))
 	if len(specs) == 0 {
 		return
 	}

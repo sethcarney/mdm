@@ -15,6 +15,11 @@ import (
 
 const appName = version.AppName
 
+// verboseFlag is bound to the root command's persistent --verbose/-v flag, so
+// every subcommand in this package can read it directly and emit diagnostics
+// via vlog without threading a bool through each call site.
+var verboseFlag bool
+
 // ANSI shorthands — alias to ui constants so command files can keep using ansiXxx unchanged
 const (
 	ansiReset  = ui.Reset
@@ -105,6 +110,8 @@ func BuildRootCmd(ver string) *cobra.Command {
 			_ = cmd.Help()
 		},
 	}
+
+	root.PersistentFlags().BoolVarP(&verboseFlag, "verbose", "v", false, "Print diagnostic steps to stderr")
 
 	root.SetVersionTemplate(fmt.Sprintf("%s%s%s%s %s\n", ansiBold, ansiText, appName, ansiReset, ver))
 
