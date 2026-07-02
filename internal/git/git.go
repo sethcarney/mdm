@@ -237,15 +237,31 @@ func DefaultBranch(gitURL string) string {
 	if err != nil {
 		return "main"
 	}
-	// Output format: "ref: refs/heads/<branch>\tHEAD\n<sha>\tHEAD\n"
+	return parseSymrefBranch(string(out))
+}
+
+// parseSymrefBranch extracts the default branch name from the output of
+// "git ls-remote --symref <url> HEAD". The relevant line looks like
+// "ref: refs/heads/<branch>\tHEAD". Returns "main" when no branch can be
+// parsed, including from malformed or empty output.
+func parseSymrefBranch(out string) string {
 	const prefix = "ref: refs/heads/"
-	for _, line := range strings.Split(string(out), "\n") {
-		if strings.HasPrefix(line, prefix) {
-			branch := strings.TrimPrefix(line, prefix)
-			branch = strings.Fields(branch)[0]
-			if branch != "" {
-				return branch
-			}
+	for _, line := range strings.Split(out, "\n") {
+		if !strings.HasPrefix(line, prefix) {
+			continue
+		}
+		// The branch name is the text between the prefix and the first
+		// whitespace (the line is "ref: refs/heads/<branch>\tHEAD"). Cut at
+		// the first tab/space rather than using strings.Fields, so a
+		// malformed line with an empty branch name (e.g. "ref: refs/heads/"
+		// or "ref: refs/heads/\tHEAD") yields "" and is skipped instead of
+		// panicking or mis-parsing the trailing "HEAD" as the branch.
+		branch := strings.TrimPrefix(line, prefix)
+		if i := strings.IndexAny(branch, " \t"); i >= 0 {
+			branch = branch[:i]
+		}
+		if branch != "" {
+			return branch
 		}
 	}
 	return "main"

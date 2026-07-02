@@ -36,6 +36,28 @@ func TestIsAllowedTransport(t *testing.T) {
 	}
 }
 
+func TestParseSymrefBranch(t *testing.T) {
+	cases := []struct {
+		name string
+		out  string
+		want string
+	}{
+		{"normal main", "ref: refs/heads/main\tHEAD\nabc123\tHEAD\n", "main"},
+		{"normal master", "ref: refs/heads/master\tHEAD\ndef456\tHEAD\n", "master"},
+		{"branch with slash", "ref: refs/heads/release/1.x\tHEAD\n", "release/1.x"},
+		// Malformed lines that previously panicked or mis-parsed.
+		{"prefix only, no branch", "ref: refs/heads/\tHEAD\n", "main"},
+		{"prefix only, nothing after", "ref: refs/heads/", "main"},
+		{"empty output", "", "main"},
+		{"no symref line", "abc123\tHEAD\n", "main"},
+	}
+	for _, tc := range cases {
+		if got := parseSymrefBranch(tc.out); got != tc.want {
+			t.Errorf("%s: parseSymrefBranch(%q) = %q, want %q", tc.name, tc.out, got, tc.want)
+		}
+	}
+}
+
 func TestBlockedTransportShortCircuits(t *testing.T) {
 	// A blocked URL must fail fast with a typed error and never shell out to git.
 	if _, err := CloneRepo(`ext::sh -c "echo pwned"`, ""); err == nil {
