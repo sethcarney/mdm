@@ -76,6 +76,8 @@ Run `mdm --help` for the full command reference. See [docs/rules.md](docs/rules.
 
 Skill installs run a deterministic local hidden-character scan over markdown files before copying or symlinking content. See [docs/security/hidden-character-scan.md](docs/security/hidden-character-scan.md) for the exact checks and bypass policy.
 
+When installing from a git source, mdm restricts git to the **https** and **ssh** transports. This blocks git's `ext::`/`fd::` local-command transports, which would otherwise let a repository source string — including one replayed from a checked-in `skills-lock.json` — execute arbitrary commands. See [docs/security/git-transport-restrictions.md](docs/security/git-transport-restrictions.md) for the rationale and the full allow/deny list.
+
 ## Development
 
 ```bash
