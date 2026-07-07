@@ -44,5 +44,9 @@ change or be removed in any release.
 			_ = cmd.Help()
 		},
 	}
+	cmd.AddCommand(
+		buildKnowledgeValidateCmd(),
+		buildKnowledgeInitCmd(),
+	)
 	return cmd
 }

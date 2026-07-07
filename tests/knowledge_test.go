@@ -1,6 +1,8 @@
 package tests_test
 
 import (
+	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -93,6 +95,66 @@ func TestExperimentalEnableUnknownFeature(t *testing.T) {
 	}
 	if !strings.Contains(stdout+stderr, "unknown experimental feature") {
 		t.Errorf("expected unknown-feature error, got stdout=%q stderr=%q", stdout, stderr)
+	}
+}
+
+// okfFixturePath returns the path to a fixture bundle in internal/okf/testdata.
+func okfFixturePath(t *testing.T, name string) string {
+	t.Helper()
+	root, err := findModRoot()
+	if err != nil {
+		t.Fatalf("finding module root: %v", err)
+	}
+	return filepath.Join(root, "internal", "okf", "testdata", name)
+}
+
+func TestKnowledgeInitValidateRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	env := freshEnv(t, "MDM_EXPERIMENTAL=knowledge")
+
+	_, stderr, code := runMdmInDir(t, dir, env, "knowledge", "init", "my-bundle")
+	if code != 0 {
+		t.Fatalf("knowledge init exited %d: %s", code, stderr)
+	}
+
+	stdout, stderr, code := runMdmInDir(t, dir, env, "knowledge", "validate", "my-bundle")
+	if code != 0 {
+		t.Fatalf("scaffolded bundle should validate cleanly, exited %d:\n%s%s", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "no issues") {
+		t.Errorf("expected 'no issues' in validate output, got: %q", stdout)
+	}
+}
+
+func TestKnowledgeValidateFailsOnBrokenBundle(t *testing.T) {
+	env := freshEnv(t, "MDM_EXPERIMENTAL=knowledge")
+	stdout, stderr, code := runMdmInDir(t, t.TempDir(), env, "knowledge", "validate", okfFixturePath(t, "broken-link"))
+	if code == 0 {
+		t.Fatal("expected non-zero exit for bundle with broken links")
+	}
+	if !strings.Contains(stdout+stderr, "broken-link") {
+		t.Errorf("expected broken-link rule in output, got stdout=%q stderr=%q", stdout, stderr)
+	}
+}
+
+func TestKnowledgeValidateJSON(t *testing.T) {
+	env := freshEnv(t, "MDM_EXPERIMENTAL=knowledge")
+	stdout, stderr, code := runMdmInDir(t, t.TempDir(), env, "knowledge", "validate", "--json", okfFixturePath(t, "valid-bundle"))
+	if code != 0 {
+		t.Fatalf("validate --json exited %d: %s", code, stderr)
+	}
+	var report struct {
+		Documents int `json:"documents"`
+		Errors    int `json:"errors"`
+		Issues    []struct {
+			Rule string `json:"rule"`
+		} `json:"issues"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &report); err != nil {
+		t.Fatalf("stdout is not valid JSON: %v\n%s", err, stdout)
+	}
+	if report.Documents != 3 || report.Errors != 0 || len(report.Issues) != 0 {
+		t.Errorf("unexpected report: %+v", report)
 	}
 }
 
