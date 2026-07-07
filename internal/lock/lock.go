@@ -36,6 +36,7 @@ type SkillLockFile struct {
 	Skills           map[string]SkillLockEntry `json:"skills"`
 	Dismissed        DismissedPrompts          `json:"dismissed,omitempty"`
 	ConfiguredAgents []string                  `json:"configuredAgents,omitempty"`
+	Experimental     []string                  `json:"experimental,omitempty"`
 }
 
 func GetSkillLockPath() string {
