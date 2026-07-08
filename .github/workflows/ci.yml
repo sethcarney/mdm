@@ -28,18 +28,11 @@ jobs:
           GOTOOLCHAIN=go1.26.4 go install golang.org/x/vuln/cmd/govulncheck@v1.5.0
           govulncheck ./...
 
-      - name: Check formatting (gofmt -s)
+      - name: Lint (golangci-lint)
         run: |
-          unformatted=$(gofmt -s -l .)
-          if [ -n "$unformatted" ]; then
-            echo "The following files are not formatted with 'gofmt -s':"
-            echo "$unformatted"
-            echo ""
-            echo "Run 'gofmt -s -w .' to fix."
-            exit 1
-          fi
-
-      - name: Check cyclomatic complexity (gocyclo)
-        run: |
-          go install github.com/fzipp/gocyclo/cmd/gocyclo@v0.6.0
-          gocyclo -over 16 .
+          # golangci-lint replaces the retired Go Report Card service and the
+          # previous standalone gofmt + gocyclo steps. Enabled linters and
+          # thresholds live in .golangci.yml. Built with the project's Go
+          # toolchain (go.mod) so it can parse the module's go1.26 sources.
+          GOTOOLCHAIN=go1.26.4 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+          golangci-lint run ./...
