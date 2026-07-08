@@ -153,13 +153,13 @@ go test ./...
 # 2. Vulnerability scan
 # GOTOOLCHAIN pins the build of govulncheck to the project's Go (go.mod) so it
 # can parse go1.26 sources even when your base toolchain is older.
-GOTOOLCHAIN=go1.26.4 go install golang.org/x/vuln/cmd/govulncheck@v1.5.0
+GOTOOLCHAIN=go1.26.5 go install golang.org/x/vuln/cmd/govulncheck@v1.5.0
 govulncheck ./...
 
 # 3. Lint (formatting + cyclomatic complexity + vet)
 # golangci-lint replaces the retired Go Report Card service and the previous
 # standalone gofmt + gocyclo checks. Enabled linters live in .golangci.yml.
-GOTOOLCHAIN=go1.26.4 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+GOTOOLCHAIN=go1.26.5 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
 golangci-lint run ./...
 # Auto-fix formatting with: golangci-lint fmt
 ```
