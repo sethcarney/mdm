@@ -422,7 +422,7 @@ func runAddGitOrHub(parsed source.ParsedSource, opts AddOptions, cwd, sourceInpu
 		fmt.Fprintf(os.Stderr, "%sError:%s %s\n", ansiText, ansiReset, err.Error())
 		os.Exit(1)
 	}
-	defer git.CleanupTempDir(tmpDir)
+	defer func() { _ = git.CleanupTempDir(tmpDir) }()
 
 	searchRoot := tmpDir
 	if parsed.Subpath != "" {
@@ -1276,10 +1276,6 @@ func formatAuditIssueBlock(label string, issues []auditIssue) string {
 	}
 	s += "\n"
 	return s
-}
-
-func printAuditIssueEntry(iss auditIssue) {
-	fmt.Print(formatAuditIssueEntry(iss))
 }
 
 func confirmInstallAfterAudit(entries []installAuditEntry, autoYes, failOnAudit bool) bool {

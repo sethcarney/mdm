@@ -128,7 +128,7 @@ func CloneRepoWithOptions(gitURL, ref string, opts CloneOptions) (string, error)
 
 	out, runErr := runClone(cmd, opts)
 	if runErr != nil {
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 		msg := out
 		if runErr.Error() != "" {
 			msg = runErr.Error() + "\n" + msg

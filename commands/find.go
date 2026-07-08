@@ -258,7 +258,7 @@ func fetchSourceSkillEntries(parsed source.ParsedSource, sourceInput string, jso
 			vlog(verboseFlag, "clone failed: %v", err)
 			return nil, err
 		}
-		defer git.CleanupTempDir(tmpDir)
+		defer func() { _ = git.CleanupTempDir(tmpDir) }()
 		searchRoot := tmpDir
 		if parsed.Subpath != "" {
 			searchRoot = filepath.Join(tmpDir, parsed.Subpath)

@@ -316,7 +316,7 @@ func createAgentSymlinks(selected []agentCandidate, cwd, agentsMDPath string, ye
 					skipped++
 					continue
 				}
-				os.Remove(targetPath)
+				_ = os.Remove(targetPath)
 			} else {
 				if !yes {
 					confirmed, ok := ui.UiConfirm(fmt.Sprintf("Replace %s (real file) with a symlink?", c.file))
@@ -327,7 +327,7 @@ func createAgentSymlinks(selected []agentCandidate, cwd, agentsMDPath string, ye
 					}
 					fmt.Println()
 				}
-				os.Remove(targetPath)
+				_ = os.Remove(targetPath)
 			}
 		}
 
