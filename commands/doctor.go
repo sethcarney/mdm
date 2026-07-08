@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/sethcarney/mdm/internal/agent"
+	"github.com/sethcarney/mdm/internal/experimental"
 	"github.com/sethcarney/mdm/internal/lock"
 	"github.com/sethcarney/mdm/internal/skill"
 )
@@ -138,6 +139,7 @@ func runDoctor(opts DoctorOptions) {
 	var instrIssues []doctorIssue
 	var unlinkedRulesIssues []doctorIssue
 	var missingSkillLinkIssues []doctorIssue
+	var knowledgeIssues []doctorIssue
 	var mdIssues []doctorIssue
 	var mdTruncated bool
 
@@ -146,6 +148,9 @@ func runDoctor(opts DoctorOptions) {
 		instrIssues = checkInstructionFiles(cwd)
 		unlinkedRulesIssues = checkUnlinkedRulesAgents(cwd)
 		missingSkillLinkIssues = checkMissingAgentSkillLinks(cwd)
+		if experimental.Enabled(experimental.Knowledge) {
+			knowledgeIssues = checkKnowledgeBundles(cwd)
+		}
 		mdIssues, mdTruncated = checkProjectMarkdown(cwd, skipDirs, skipFiles)
 		if mdTruncated {
 			vlog(verboseFlag, "project markdown walk hit the %d-entry limit; results truncated", markdownWalkLimit)
@@ -160,7 +165,7 @@ func runDoctor(opts DoctorOptions) {
 		return results[i].Name < results[j].Name
 	})
 
-	printDoctorResults(results, instrIssues, unlinkedRulesIssues, missingSkillLinkIssues, mdIssues, mdTruncated, readmeIssue, checkProject, cwd)
+	printDoctorResults(results, instrIssues, unlinkedRulesIssues, missingSkillLinkIssues, knowledgeIssues, mdIssues, mdTruncated, readmeIssue, checkProject, cwd)
 }
 
 func buildProjectSkipPaths(cwd, canonicalBase string, skipDirs, skipFiles map[string]bool) {
@@ -523,7 +528,7 @@ func checkProjectMarkdown(cwd string, skipDirs map[string]bool, skipFiles map[st
 
 // ── Output ─────────────────────────────────────────────────────────────────────
 
-func printDoctorResults(results []doctorResult, instrIssues, unlinkedRulesIssues, missingSkillLinkIssues, mdIssues []doctorIssue, mdTruncated bool, readmeIssue *doctorIssue, scannedProject bool, cwd string) {
+func printDoctorResults(results []doctorResult, instrIssues, unlinkedRulesIssues, missingSkillLinkIssues, knowledgeIssues, mdIssues []doctorIssue, mdTruncated bool, readmeIssue *doctorIssue, scannedProject bool, cwd string) {
 	fmt.Println()
 
 	byScope := map[string][]doctorResult{}
@@ -562,6 +567,14 @@ func printDoctorResults(results []doctorResult, instrIssues, unlinkedRulesIssues
 	if len(missingSkillLinkIssues) > 0 {
 		fmt.Printf("%sSkill coverage:%s\n\n", ansiText, ansiReset)
 		e, w := printAndCountDoctorIssues(missingSkillLinkIssues)
+		totalErrors += e
+		totalWarnings += w
+		fmt.Println()
+	}
+
+	if len(knowledgeIssues) > 0 {
+		fmt.Printf("%sKnowledge bundles:%s\n\n", ansiText, ansiReset)
+		e, w := printAndCountDoctorIssues(knowledgeIssues)
 		totalErrors += e
 		totalWarnings += w
 		fmt.Println()
