@@ -12,6 +12,23 @@ You should receive a response within 72 hours. If the issue is confirmed, a fix 
 
 Only the latest release receives security fixes.
 
+## Git Transport Restrictions
+
+When installing skills from a git source, mdm only uses the **https** and **ssh**
+git transports. Git's local-command transports (`ext::`, `fd::`) — which execute
+arbitrary commands rather than fetching from a server — along with `git://`,
+`http://`, and `file://` are rejected before git is invoked.
+
+This matters because a repository source string is untrusted input, and
+`mdm skills install`/`update` replay the `source` field from a (commonly
+committed) `skills-lock.json`. Without the restriction, a poisoned source such as
+`ext::sh -c "…"` could turn a routine install into remote code execution.
+
+Enforcement uses `GIT_ALLOW_PROTOCOL=https:ssh` on every git subprocess (inherited
+by submodule/recursive operations) plus a pre-flight check in mdm itself. See
+[docs/security/git-transport-restrictions.md](docs/security/git-transport-restrictions.md)
+for the full allow/deny list and rationale.
+
 ## Release Verification
 
 All release binaries are signed with [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) keyless signing via Sigstore and accompanied by a `sha256sums.txt` checksum file. Each release includes `.sig`, `.pem`, and `.bundle` files for every binary.
