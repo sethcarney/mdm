@@ -21,6 +21,7 @@ Managing markdown across multiple agentic coding tools is more painful than it s
 - **Skills from anywhere.** Install from GitHub, GitLab, arbitrary URLs, local paths, or the [skills.sh](https://skills.sh) registry.
 - **Reproducible installs.** Repos can commit a `skills-lock.json` with their recommended skills so new teammates run `mdm skills install` once and onboard with whatever agent they prefer.
 - **Security-focused by default.** Every install runs a deterministic local scan for hidden characters and prompt-smuggling patterns, and `mdm skills audit` checks for updates and OSV security advisories.
+- **Knowledge bundles _(experimental)_.** `mdm knowledge` installs, validates, and updates [Open Knowledge Format (OKF)](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf) bundles for AI agents. It's gated behind an experimental flag — see [docs/experimental.md](docs/experimental.md) to enable it.
 - **No telemetry, fully open source.**
 
 Prefer a UI? There's also a [VS Code extension](https://marketplace.visualstudio.com/items?itemName=SethsSoftware.mdm-sidebar).
