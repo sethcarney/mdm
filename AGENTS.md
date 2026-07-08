@@ -143,15 +143,8 @@ Create a file in `commands/`, define a `cobra.Command`, and register it either o
 
 ## Pre-PR Checklist
 
-Before opening a pull request, run the `/go-report-card` skill — it runs all four CI checks in order and reports results:
-
-```
-/go-report-card
-```
-
-This runs: `gofmt` (auto-fixes in place), `go test ./...`, `govulncheck`, and `gocyclo -over 16`. All four must pass before a PR is opened. CI will run the same checks and block merge on failure.
-
-If you need to run the checks manually:
+Before opening a pull request, run these three checks — they mirror what CI runs
+and block merge on failure:
 
 ```bash
 # 1. Tests
@@ -160,16 +153,15 @@ go test ./...
 # 2. Vulnerability scan
 # GOTOOLCHAIN pins the build of govulncheck to the project's Go (go.mod) so it
 # can parse go1.26 sources even when your base toolchain is older.
-GOTOOLCHAIN=go1.26.4 go install golang.org/x/vuln/cmd/govulncheck@v1.5.0
+GOTOOLCHAIN=go1.26.5 go install golang.org/x/vuln/cmd/govulncheck@v1.5.0
 govulncheck ./...
 
-# 3. Formatting — must produce no output
-gofmt -s -l .
-# Auto-fix with: gofmt -s -w .
-
-# 4. Cyclomatic complexity — no function may exceed 16
-go install github.com/fzipp/gocyclo/cmd/gocyclo@v0.6.0
-gocyclo -over 16 .
+# 3. Lint (formatting + cyclomatic complexity + vet)
+# golangci-lint replaces the retired Go Report Card service and the previous
+# standalone gofmt + gocyclo checks. Enabled linters live in .golangci.yml.
+GOTOOLCHAIN=go1.26.5 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+golangci-lint run ./...
+# Auto-fix formatting with: golangci-lint fmt
 ```
 
 ## Windows Executable Icon
