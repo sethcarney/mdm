@@ -304,6 +304,92 @@ func TestKnowledgeLockSurvivesSkillsOperations(t *testing.T) {
 	}
 }
 
+func TestKnowledgeInstallRestoresFromLock(t *testing.T) {
+	project := t.TempDir()
+	src := filepath.Join(project, "src-bundle")
+	writeSourceBundle(t, src)
+	env := freshEnv(t, "MDM_EXPERIMENTAL=knowledge")
+
+	if _, stderr, code := runMdmInDir(t, project, env, "knowledge", "add", "./src-bundle", "-y"); code != 0 {
+		t.Fatalf("knowledge add exited %d: %s", code, stderr)
+	}
+	if err := os.RemoveAll(filepath.Join(project, "knowledge")); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, stderr, code := runMdmInDir(t, project, env, "knowledge", "install")
+	if code != 0 {
+		t.Fatalf("knowledge install exited %d:\n%s%s", code, stdout, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(project, "knowledge", "src-bundle", "index.md")); err != nil {
+		t.Errorf("expected bundle to be restored: %v", err)
+	}
+}
+
+func TestKnowledgeUpdateRefetchesSource(t *testing.T) {
+	project := t.TempDir()
+	src := filepath.Join(project, "src-bundle")
+	writeSourceBundle(t, src)
+	env := freshEnv(t, "MDM_EXPERIMENTAL=knowledge")
+
+	if _, stderr, code := runMdmInDir(t, project, env, "knowledge", "add", "./src-bundle", "-y"); code != 0 {
+		t.Fatalf("knowledge add exited %d: %s", code, stderr)
+	}
+
+	// Change the source, then update: the installed copy must follow.
+	updated := "---\ntype: Concept\ntitle: Thing\n---\n\nAn updated thing.\n"
+	if err := os.WriteFile(filepath.Join(src, "concepts", "thing.md"), []byte(updated), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, stderr, code := runMdmInDir(t, project, env, "knowledge", "update")
+	if code != 0 {
+		t.Fatalf("knowledge update exited %d:\n%s%s", code, stdout, stderr)
+	}
+	installed, err := os.ReadFile(filepath.Join(project, "knowledge", "src-bundle", "concepts", "thing.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(installed), "An updated thing") {
+		t.Errorf("expected update to re-fetch the source, got: %s", installed)
+	}
+}
+
+func TestDoctorKnowledgeSectionGated(t *testing.T) {
+	project := t.TempDir()
+	src := filepath.Join(project, "src-bundle")
+	writeSourceBundle(t, src)
+	envOn := freshEnv(t, "MDM_EXPERIMENTAL=knowledge")
+
+	if _, stderr, code := runMdmInDir(t, project, envOn, "knowledge", "add", "./src-bundle", "-y"); code != 0 {
+		t.Fatalf("knowledge add exited %d: %s", code, stderr)
+	}
+	// Break the install so doctor has something to report.
+	if err := os.RemoveAll(filepath.Join(project, "knowledge", "src-bundle")); err != nil {
+		t.Fatal(err)
+	}
+
+	// Gate on: doctor reports the missing bundle.
+	stdout, _, code := runMdmInDir(t, project, envOn, "doctor", "-p")
+	if code != 0 {
+		t.Fatalf("doctor exited %d", code)
+	}
+	if !strings.Contains(stdout, "Knowledge bundles:") || !strings.Contains(stdout, "not found") {
+		t.Errorf("expected knowledge section with missing-bundle error, got:\n%s", stdout)
+	}
+
+	// Gate off: same project, no knowledge section — stable doctor output is
+	// unaffected by experimental state on disk.
+	envOff := freshEnv(t)
+	stdout, _, code = runMdmInDir(t, project, envOff, "doctor", "-p")
+	if code != 0 {
+		t.Fatalf("doctor exited %d", code)
+	}
+	if strings.Contains(stdout, "Knowledge bundles:") {
+		t.Errorf("doctor must not mention knowledge while the gate is off, got:\n%s", stdout)
+	}
+}
+
 func TestExperimentalList(t *testing.T) {
 	dir := t.TempDir()
 	stdout, _, code := runMdmInDir(t, dir, freshEnv(t), "experimental", "list")

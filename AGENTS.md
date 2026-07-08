@@ -76,6 +76,18 @@ mdm
 │   ├── init [name]                         # Scaffold a new SKILL.md in the current directory
 │   ├── install                             # Restore all skills from skills-lock.json (CI/onboarding)
 │   └── sync                                # Sync skills from node_modules into agent skill directories
+├── knowledge                               # [EXPERIMENTAL] Manage OKF knowledge bundles (hidden until enabled; see docs/experimental.md)
+│   ├── add <source>                        # Install an OKF bundle into ./knowledge/ and record it in knowledge-lock.json (alias: a)
+│   ├── remove [bundles...]                 # Remove bundles and their lock entries (aliases: rm, r)
+│   ├── list                                # List installed bundles (alias: ls)
+│   ├── update [bundles...]                 # Re-fetch bundles from their recorded source+ref
+│   ├── validate [path]                     # Check OKF conformance and link integrity (--json)
+│   ├── init [name]                         # Scaffold a minimal conformant bundle
+│   └── install                             # Restore all bundles from knowledge-lock.json (CI/onboarding)
+├── experimental                            # Manage experimental features (also: MDM_EXPERIMENTAL env var)
+│   ├── list                                # Show experimental features and their status (alias: ls)
+│   ├── enable <feature>                    # Persist an opt-in
+│   └── disable <feature>                   # Remove a persisted opt-in
 ├── agents                                  # Manage the configured agent list used as default install targets
 │   ├── list                                # Show configured agents for the current scope (alias: ls)
 │   ├── add [agents...]                     # Add agents to the configured list (interactive picker with no args)
@@ -108,13 +120,17 @@ mdm
 │   ├── selfupdate.go    # `mdm upgrade`: downloads and replaces the mdm binary from GitHub releases
 │   ├── uninstall.go     # `mdm uninstall`: removes the mdm binary from the system
 │   ├── hidden_scan.go   # Hidden-character pre-install scan shared by add/update
+│   ├── experimental.go  # `mdm experimental` group: list/enable/disable feature gates
+│   ├── knowledge*.go    # `mdm knowledge` group [EXPERIMENTAL]: OKF bundle add/list/remove/update/validate/init/install + doctor section
 │   └── doctor.go        # `mdm doctor`: checks skill health, symlinks, hashes, README presence, and markdown sizes
 ├── internal/
     ├── agent/           # AllAgents registry (45+ agents); skill dir paths; detection
     ├── skill/           # Skill discovery (SKILL.md parsing); frontmatter; filtering
+    ├── okf/             # [EXPERIMENTAL] OKF bundle parsing, discovery, validation, content hashing
+    ├── experimental/    # Named feature gates (MDM_EXPERIMENTAL env var + persisted opt-ins)
     ├── source/          # URL/path parsing into ParsedSource (GitHub, GitLab, local, well-known)
     ├── registry/        # Well-known registry fetching (.well-known/agent-skills standard)
-    ├── lock/            # skills-lock.json read/write; tracks hashes, versions, timestamps, configuredAgents
+    ├── lock/            # skills-lock.json + knowledge-lock.json read/write; tracks hashes, versions, timestamps, configuredAgents
     ├── git/             # Shallow git clone; branch/ref handling
     ├── blob/            # GitHub API tree/blob queries for skill discovery
     ├── security/        # markdownscan: hidden-character / prompt-smuggling detection

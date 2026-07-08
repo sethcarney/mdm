@@ -48,8 +48,10 @@ change or be removed in any release.
 		buildKnowledgeAddCmd(),
 		buildKnowledgeListCmd(),
 		buildKnowledgeRemoveCmd(),
+		buildKnowledgeUpdateCmd(),
 		buildKnowledgeValidateCmd(),
 		buildKnowledgeInitCmd(),
+		buildKnowledgeInstallCmd(),
 	)
 	return cmd
 }
