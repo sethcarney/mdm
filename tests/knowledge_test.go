@@ -2,6 +2,7 @@ package tests_test
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -155,6 +156,151 @@ func TestKnowledgeValidateJSON(t *testing.T) {
 	}
 	if report.Documents != 3 || report.Errors != 0 || len(report.Issues) != 0 {
 		t.Errorf("unexpected report: %+v", report)
+	}
+}
+
+// writeSourceBundle creates a small valid OKF bundle to install from.
+func writeSourceBundle(t *testing.T, dir string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(dir, "concepts"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	index := "---\ntitle: Fixture\n---\n\n- [Thing](concepts/thing.md)\n"
+	concept := "---\ntype: Concept\ntitle: Thing\n---\n\nA thing.\n"
+	if err := os.WriteFile(filepath.Join(dir, "index.md"), []byte(index), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "concepts", "thing.md"), []byte(concept), 0644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestKnowledgeAddListRemoveLocal(t *testing.T) {
+	project := t.TempDir()
+	src := filepath.Join(project, "src-bundle")
+	writeSourceBundle(t, src)
+	env := freshEnv(t, "MDM_EXPERIMENTAL=knowledge")
+
+	// add
+	stdout, stderr, code := runMdmInDir(t, project, env, "knowledge", "add", "./src-bundle", "-y")
+	if code != 0 {
+		t.Fatalf("knowledge add exited %d:\n%s%s", code, stdout, stderr)
+	}
+	installed := filepath.Join(project, "knowledge", "src-bundle", "index.md")
+	if _, err := os.Stat(installed); err != nil {
+		t.Fatalf("expected installed bundle at %s: %v", installed, err)
+	}
+	lockPath := filepath.Join(project, "knowledge-lock.json")
+	lockData, err := os.ReadFile(lockPath)
+	if err != nil {
+		t.Fatalf("expected knowledge-lock.json: %v", err)
+	}
+	for _, want := range []string{"src-bundle", "specVersion", "contentHash", "knowledge/src-bundle"} {
+		if !strings.Contains(string(lockData), want) {
+			t.Errorf("expected %q in knowledge-lock.json, got:\n%s", want, lockData)
+		}
+	}
+
+	// list
+	stdout, stderr, code = runMdmInDir(t, project, env, "knowledge", "list")
+	if code != 0 {
+		t.Fatalf("knowledge list exited %d: %s", code, stderr)
+	}
+	if !strings.Contains(stdout, "src-bundle") || !strings.Contains(stdout, "2 document(s)") {
+		t.Errorf("unexpected list output: %q", stdout)
+	}
+
+	// remove
+	_, stderr, code = runMdmInDir(t, project, env, "knowledge", "remove", "src-bundle", "-y")
+	if code != 0 {
+		t.Fatalf("knowledge remove exited %d: %s", code, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(project, "knowledge", "src-bundle")); !os.IsNotExist(err) {
+		t.Error("expected installed bundle directory to be removed")
+	}
+	if _, err := os.Stat(lockPath); !os.IsNotExist(err) {
+		t.Error("expected knowledge-lock.json to be removed with the last bundle")
+	}
+}
+
+func TestKnowledgeAddDryRunWritesNothing(t *testing.T) {
+	project := t.TempDir()
+	src := filepath.Join(project, "src-bundle")
+	writeSourceBundle(t, src)
+	env := freshEnv(t, "MDM_EXPERIMENTAL=knowledge")
+
+	stdout, stderr, code := runMdmInDir(t, project, env, "knowledge", "add", "./src-bundle", "-y", "--dry-run")
+	if code != 0 {
+		t.Fatalf("knowledge add --dry-run exited %d:\n%s%s", code, stdout, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(project, "knowledge")); !os.IsNotExist(err) {
+		t.Error("dry run must not create the knowledge directory")
+	}
+	if _, err := os.Stat(filepath.Join(project, "knowledge-lock.json")); !os.IsNotExist(err) {
+		t.Error("dry run must not write knowledge-lock.json")
+	}
+}
+
+func TestKnowledgeAddBlocksHiddenChars(t *testing.T) {
+	project := t.TempDir()
+	env := freshEnv(t, "MDM_EXPERIMENTAL=knowledge")
+	root, err := findModRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture := filepath.Join(root, "tests", "testdata", "hidden-knowledge")
+
+	stdout, stderr, code := runMdmInDir(t, project, env, "knowledge", "add", fixture, "-y")
+	combined := stdout + stderr
+	if code == 0 {
+		t.Fatalf("expected hidden character scan to block install:\n%s", combined)
+	}
+	if !strings.Contains(combined, "Hidden character") {
+		t.Errorf("expected hidden character finding, got:\n%s", combined)
+	}
+	if _, err := os.Stat(filepath.Join(project, "knowledge-lock.json")); !os.IsNotExist(err) {
+		t.Error("blocked install must not write knowledge-lock.json")
+	}
+}
+
+func TestKnowledgeLockSurvivesSkillsOperations(t *testing.T) {
+	project := t.TempDir()
+	src := filepath.Join(project, "src-bundle")
+	writeSourceBundle(t, src)
+	env := freshEnv(t, "MDM_EXPERIMENTAL=knowledge")
+
+	if _, stderr, code := runMdmInDir(t, project, env, "knowledge", "add", "./src-bundle", "-y"); code != 0 {
+		t.Fatalf("knowledge add exited %d: %s", code, stderr)
+	}
+	lockPath := filepath.Join(project, "knowledge-lock.json")
+	before, err := os.ReadFile(lockPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A skills operation that rewrites skills-lock.json must leave the
+	// knowledge lock byte-identical.
+	skillDir := filepath.Join(project, "my-skill")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	skillMd := "---\nname: my-skill\ndescription: fixture skill\n---\n\n# my-skill\n"
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillMd), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if stdout, stderr, code := runMdmInDir(t, project, env, "skills", "add", "./my-skill", "-p", "-y", "-a", "claude-code"); code != 0 {
+		t.Fatalf("skills add exited %d:\n%s%s", code, stdout, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(project, "skills-lock.json")); err != nil {
+		t.Fatalf("expected skills add to write skills-lock.json: %v", err)
+	}
+
+	after, err := os.ReadFile(lockPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(before) != string(after) {
+		t.Errorf("knowledge-lock.json changed after a skills operation:\nbefore: %s\nafter: %s", before, after)
 	}
 }
 

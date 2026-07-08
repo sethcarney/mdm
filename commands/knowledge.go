@@ -45,6 +45,9 @@ change or be removed in any release.
 		},
 	}
 	cmd.AddCommand(
+		buildKnowledgeAddCmd(),
+		buildKnowledgeListCmd(),
+		buildKnowledgeRemoveCmd(),
 		buildKnowledgeValidateCmd(),
 		buildKnowledgeInitCmd(),
 	)
