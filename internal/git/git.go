@@ -26,6 +26,56 @@ func (e *GitCloneError) Error() string {
 	return e.Message
 }
 
+// gitBaseEnv returns the environment used for every git subprocess mdm spawns.
+//
+// GIT_ALLOW_PROTOCOL restricts git to the https and ssh transports. This is the
+// authoritative defense against git's local-command "remote helper" transports
+// (ext::, fd::), which turn a repository URL into arbitrary command execution —
+// e.g. `git clone 'ext::sh -c "…"'`. Because a skills-lock.json source string is
+// replayed verbatim by `mdm skills install`/`update`, an unrestricted git could
+// be coerced into running code from a checked-in lock file. The allowlist is
+// inherited by submodule and recursive operations, so it holds even for git URLs
+// that were never seen by mdm's own parser. See docs/security/git-transport-restrictions.md.
+func gitBaseEnv() []string {
+	return append(os.Environ(),
+		"GIT_TERMINAL_PROMPT=0",
+		"GIT_LFS_SKIP_SMUDGE=1",
+		"GIT_ALLOW_PROTOCOL=https:ssh",
+	)
+}
+
+// isAllowedTransport reports whether gitURL uses a transport mdm permits (https
+// or ssh). It rejects git's local-command transports (ext::, fd::), any explicit
+// scheme other than https/ssh (e.g. git://, http://, file://), and URLs that
+// begin with '-' (which git may misinterpret as an option flag). scp-like syntax
+// (git@host:path) and other schemeless forms are accepted here and further
+// constrained by GIT_ALLOW_PROTOCOL at exec time.
+func isAllowedTransport(gitURL string) bool {
+	trimmed := strings.TrimSpace(gitURL)
+	if trimmed == "" || strings.HasPrefix(trimmed, "-") {
+		return false
+	}
+	if idx := strings.Index(trimmed, "://"); idx > 0 {
+		scheme := strings.ToLower(trimmed[:idx])
+		return scheme == "https" || scheme == "ssh"
+	}
+	// No explicit scheme: reject the local-command helper transports outright.
+	lower := strings.ToLower(trimmed)
+	if strings.HasPrefix(lower, "ext::") || strings.HasPrefix(lower, "fd::") {
+		return false
+	}
+	return true
+}
+
+// errBlockedTransport builds the typed error returned when a git URL is refused
+// before it ever reaches the git binary.
+func errBlockedTransport(gitURL string) error {
+	return &GitCloneError{
+		Message: fmt.Sprintf("Refusing to use %q: only https and ssh git transports are allowed.\n  mdm blocks git's ext::/fd:: and other local-command transports because they execute arbitrary commands.\n  See https://github.com/sethcarney/mdm/blob/main/docs/security/git-transport-restrictions.md", gitURL),
+		URL:     gitURL,
+	}
+}
+
 // CloneOptions tunes the behaviour of CloneRepoWithOptions.
 type CloneOptions struct {
 	// Verbose streams git's live progress (clone counters, transfer speed)
@@ -49,6 +99,10 @@ func CloneRepo(gitURL, ref string) (string, error) {
 // temp dir. When opts.Verbose is set, git's progress meter is streamed live to
 // opts.Progress (default os.Stderr) while still being captured for diagnostics.
 func CloneRepoWithOptions(gitURL, ref string, opts CloneOptions) (string, error) {
+	if !isAllowedTransport(gitURL) {
+		return "", errBlockedTransport(gitURL)
+	}
+
 	tmpDir, err := os.MkdirTemp("", "skills-")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp dir: %w", err)
@@ -63,15 +117,14 @@ func CloneRepoWithOptions(gitURL, ref string, opts CloneOptions) (string, error)
 	if ref != "" {
 		args = append(args, "--branch", ref)
 	}
-	args = append(args, gitURL, tmpDir)
+	// "--" terminates option parsing so a URL beginning with "-" can't be
+	// misread by git as a flag.
+	args = append(args, "--", gitURL, tmpDir)
 
 	ctx, cancel := context.WithTimeout(context.Background(), cloneTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", args...)
-	cmd.Env = append(os.Environ(),
-		"GIT_TERMINAL_PROMPT=0",
-		"GIT_LFS_SKIP_SMUDGE=1",
-	)
+	cmd.Env = gitBaseEnv()
 
 	out, runErr := runClone(cmd, opts)
 	if runErr != nil {
@@ -173,26 +226,42 @@ func GetLocalCommitSHA(dir string) (string, error) {
 // "git ls-remote --symref <url> HEAD" and parsing the symbolic ref line.
 // Falls back to "main" if the default branch cannot be determined.
 func DefaultBranch(gitURL string) string {
+	if !isAllowedTransport(gitURL) {
+		return "main"
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", "ls-remote", "--symref", gitURL, "HEAD")
-	cmd.Env = append(os.Environ(),
-		"GIT_TERMINAL_PROMPT=0",
-		"GIT_LFS_SKIP_SMUDGE=1",
-	)
+	cmd := exec.CommandContext(ctx, "git", "ls-remote", "--symref", "--", gitURL, "HEAD")
+	cmd.Env = gitBaseEnv()
 	out, err := cmd.Output()
 	if err != nil {
 		return "main"
 	}
-	// Output format: "ref: refs/heads/<branch>\tHEAD\n<sha>\tHEAD\n"
+	return parseSymrefBranch(string(out))
+}
+
+// parseSymrefBranch extracts the default branch name from the output of
+// "git ls-remote --symref <url> HEAD". The relevant line looks like
+// "ref: refs/heads/<branch>\tHEAD". Returns "main" when no branch can be
+// parsed, including from malformed or empty output.
+func parseSymrefBranch(out string) string {
 	const prefix = "ref: refs/heads/"
-	for _, line := range strings.Split(string(out), "\n") {
-		if strings.HasPrefix(line, prefix) {
-			branch := strings.TrimPrefix(line, prefix)
-			branch = strings.Fields(branch)[0]
-			if branch != "" {
-				return branch
-			}
+	for _, line := range strings.Split(out, "\n") {
+		if !strings.HasPrefix(line, prefix) {
+			continue
+		}
+		// The branch name is the text between the prefix and the first
+		// whitespace (the line is "ref: refs/heads/<branch>\tHEAD"). Cut at
+		// the first tab/space rather than using strings.Fields, so a
+		// malformed line with an empty branch name (e.g. "ref: refs/heads/"
+		// or "ref: refs/heads/\tHEAD") yields "" and is skipped instead of
+		// panicking or mis-parsing the trailing "HEAD" as the branch.
+		branch := strings.TrimPrefix(line, prefix)
+		if i := strings.IndexAny(branch, " \t"); i >= 0 {
+			branch = branch[:i]
+		}
+		if branch != "" {
+			return branch
 		}
 	}
 	return "main"
@@ -202,7 +271,11 @@ func DefaultBranch(gitURL string) string {
 // "git ls-remote", which works for any git host (GitHub, GitLab, Bitbucket, self-hosted)
 // without performing a full clone.  If ref is empty it resolves HEAD.
 func FetchRemoteCommitSHA(gitURL, ref string) (string, error) {
-	args := []string{"ls-remote", gitURL}
+	if !isAllowedTransport(gitURL) {
+		return "", errBlockedTransport(gitURL)
+	}
+	// "--" terminates option parsing before the repository/ref positionals.
+	args := []string{"ls-remote", "--", gitURL}
 	if ref != "" {
 		// Check branch and tag refs; include the bare ref in case it is a full refspec.
 		args = append(args, "refs/heads/"+ref, "refs/tags/"+ref, ref)
@@ -213,10 +286,7 @@ func FetchRemoteCommitSHA(gitURL, ref string) (string, error) {
 	ctx2, cancel2 := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel2()
 	cmd := exec.CommandContext(ctx2, "git", args...)
-	cmd.Env = append(os.Environ(),
-		"GIT_TERMINAL_PROMPT=0",
-		"GIT_LFS_SKIP_SMUDGE=1",
-	)
+	cmd.Env = gitBaseEnv()
 	out, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("git ls-remote failed for %s: %w", gitURL, err)
@@ -237,11 +307,11 @@ func FetchRemoteCommitSHA(gitURL, ref string) (string, error) {
 // performing a full clone. Annotated tag dereference lines ("^{}") are skipped
 // so each tag name appears exactly once.
 func FetchRemoteTags(gitURL string) ([]string, error) {
-	cmd := exec.Command("git", "ls-remote", "--tags", gitURL)
-	cmd.Env = append(os.Environ(),
-		"GIT_TERMINAL_PROMPT=0",
-		"GIT_LFS_SKIP_SMUDGE=1",
-	)
+	if !isAllowedTransport(gitURL) {
+		return nil, errBlockedTransport(gitURL)
+	}
+	cmd := exec.Command("git", "ls-remote", "--tags", "--", gitURL)
+	cmd.Env = gitBaseEnv()
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("git ls-remote --tags failed for %s: %w", gitURL, err)

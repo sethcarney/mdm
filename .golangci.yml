@@ -1,0 +1,34 @@
+version: "2"
+
+# golangci-lint replaces the retired Go Report Card service (sunset 2026) and
+# the ad-hoc gofmt + gocyclo steps that CI used to run. The enabled set is
+# scoped so adopting golangci-lint does not change what CI accepts:
+#
+#   * gofmt (simplify)     ← replaces `gofmt -s -l .`
+#   * gocyclo min 16       ← replaces `gocyclo -over 16 .`
+#   * govet, ineffassign   ← default linters the codebase already passes clean
+#
+# Additional high-signal linters (errcheck, staticcheck, unused, …) currently
+# report findings and can be enabled incrementally as those are addressed.
+# Run locally with `golangci-lint run`; auto-fix formatting with
+# `golangci-lint fmt`.
+
+linters:
+  default: none
+  enable:
+    - gocyclo
+    - govet
+    - ineffassign
+  settings:
+    gocyclo:
+      # Report functions with cyclomatic complexity greater than this value,
+      # matching the previous `gocyclo -over 16`.
+      min-complexity: 16
+
+formatters:
+  enable:
+    - gofmt
+  settings:
+    gofmt:
+      # Apply gofmt's -s (simplify) rules, matching the previous `gofmt -s`.
+      simplify: true
