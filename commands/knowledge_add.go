@@ -134,12 +134,12 @@ func fetchKnowledgeSource(parsed source.ParsedSource) (string, func()) {
 		if parsed.Subpath != "" {
 			searchRoot = filepath.Join(tmpDir, parsed.Subpath)
 			if _, err := os.Stat(searchRoot); err != nil {
-				git.CleanupTempDir(tmpDir)
+				_ = git.CleanupTempDir(tmpDir)
 				fmt.Fprintf(os.Stderr, "%sSubpath not found:%s %s\n", ansiText, ansiReset, parsed.Subpath)
 				os.Exit(1)
 			}
 		}
-		return searchRoot, func() { git.CleanupTempDir(tmpDir) }
+		return searchRoot, func() { _ = git.CleanupTempDir(tmpDir) }
 	}
 }
 

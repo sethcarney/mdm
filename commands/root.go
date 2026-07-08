@@ -208,7 +208,7 @@ Supports bash, zsh, fish, and PowerShell. Run once after installing %s.`, appNam
 			if err != nil {
 				return fmt.Errorf("opening %s: %w", rcFile, err)
 			}
-			defer f.Close()
+			defer func() { _ = f.Close() }()
 
 			if _, err = fmt.Fprintf(f, "\n# %s shell completion\n%s\n", appName, line); err != nil {
 				return fmt.Errorf("writing to %s: %w", rcFile, err)

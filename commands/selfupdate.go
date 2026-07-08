@@ -119,7 +119,7 @@ func fetchLatestRelease(client *http.Client, currentVersion string) (*githubRele
 		fmt.Fprintf(os.Stderr, "Failed to check for updates: %v\n", err)
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 200 {
 		fmt.Fprintf(os.Stderr, "GitHub API returned %d\n", resp.StatusCode)
 		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
@@ -146,7 +146,7 @@ func fetchLatestPrerelease(client *http.Client, currentVersion string) (*githubR
 		fmt.Fprintf(os.Stderr, "Failed to check for updates: %v\n", err)
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != 200 {
 		fmt.Fprintf(os.Stderr, "GitHub API returned %d\n", resp.StatusCode)
 		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
@@ -197,7 +197,7 @@ func downloadAndVerify(client *http.Client, downloadURL, checksumsURL, assetName
 		csResp, csErr := client.Get(checksumsURL)
 		if csErr == nil && csResp.StatusCode == 200 {
 			csBody, _ := io.ReadAll(io.LimitReader(csResp.Body, 1024*1024))
-			csResp.Body.Close()
+			_ = csResp.Body.Close()
 			checksumText = string(csBody)
 		}
 	}
@@ -208,7 +208,7 @@ func downloadAndVerify(client *http.Client, downloadURL, checksumsURL, assetName
 		fmt.Fprintf(os.Stderr, "Download failed: %v\n", err)
 		return nil, err
 	}
-	defer dlResp.Body.Close()
+	defer func() { _ = dlResp.Body.Close() }()
 	if dlResp.StatusCode != 200 {
 		fmt.Fprintf(os.Stderr, "Download failed: HTTP %d\n", dlResp.StatusCode)
 		return nil, fmt.Errorf("HTTP %d", dlResp.StatusCode)
@@ -243,14 +243,14 @@ func writeTempExecutable(data []byte) (string, error) {
 	}
 	tmpPath := tmpFile.Name()
 	if _, err := tmpFile.Write(data); err != nil {
-		tmpFile.Close()
-		os.Remove(tmpPath)
+		_ = tmpFile.Close()
+		_ = os.Remove(tmpPath)
 		fmt.Fprintf(os.Stderr, "Failed to write temp file: %v\n", err)
 		return "", err
 	}
-	tmpFile.Close()
+	_ = tmpFile.Close()
 	if err := os.Chmod(tmpPath, 0700); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		fmt.Fprintf(os.Stderr, "Failed to set permissions on temp file: %v\n", err)
 		return "", err
 	}
@@ -262,12 +262,12 @@ func replaceBinary(tmpPath, execPath, latestVersion string) {
 	if runtime.GOOS != "windows" {
 		if err := os.Rename(tmpPath, execPath); err != nil {
 			vlog(verboseFlag, "rename failed (%v); falling back to copy", err)
-			os.Remove(execPath)
+			_ = os.Remove(execPath)
 			if err2 := copyFile(tmpPath, execPath); err2 != nil {
 				fmt.Fprintf(os.Stderr, "Failed to update binary: %v\n", err2)
 				os.Exit(1)
 			}
-			os.Remove(tmpPath)
+			_ = os.Remove(tmpPath)
 		}
 		fmt.Printf("%sUpdated to %s successfully.%s\n", ansiText, latestVersion, ansiReset)
 		fmt.Printf("%sRestart your shell or run %s%s --version%s%s to confirm.%s\n",

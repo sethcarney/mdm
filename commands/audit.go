@@ -289,9 +289,10 @@ func osvFallback(skillID string) []auditProvider {
 		return nil
 	}
 	status := "pass"
-	if osvResult.MaxSeverity == registry.OSVHigh || osvResult.MaxSeverity == registry.OSVCritical {
+	switch osvResult.MaxSeverity {
+	case registry.OSVHigh, registry.OSVCritical:
 		status = "fail"
-	} else if osvResult.MaxSeverity == registry.OSVMedium || osvResult.MaxSeverity == registry.OSVLow {
+	case registry.OSVMedium, registry.OSVLow:
 		status = "warn"
 	}
 	summary := fmt.Sprintf("%d advisory(s) found via OSV", osvResult.Count)

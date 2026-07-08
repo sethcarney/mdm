@@ -292,7 +292,7 @@ func writeFileOfSize(path string, size int) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	buf := make([]byte, size)
 	for i := range buf {
 		buf[i] = 'x'

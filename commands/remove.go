@@ -151,9 +151,9 @@ func removeAgentSkillDir(agentBase, name, localSourceAbs string) {
 		return
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
-		os.Remove(agentSkillDir)
+		_ = os.Remove(agentSkillDir)
 	} else {
-		os.RemoveAll(agentSkillDir)
+		_ = os.RemoveAll(agentSkillDir)
 	}
 }
 
@@ -177,7 +177,7 @@ func removeSkillFromDisk(sk *InstalledSkill, agentsToRemove []string, global boo
 	canonicalAbs, _ := filepath.Abs(canonicalDir)
 	skipCanonical := localSourceAbs != "" && isInsideOrEqual(canonicalAbs, localSourceAbs)
 	if !skipCanonical && canonicalDir != "" && isPathSafe(getCanonicalSkillsDir(global, cwd), canonicalDir) {
-		os.RemoveAll(canonicalDir)
+		_ = os.RemoveAll(canonicalDir)
 	}
 
 	ui.LogSuccess("Removed " + sk.Name)

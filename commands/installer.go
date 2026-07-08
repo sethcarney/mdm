@@ -104,7 +104,7 @@ func getAgentBaseDir(agentName string, global bool, cwd string) string {
 }
 
 func cleanAndCreateDir(path string) error {
-	os.RemoveAll(path)
+	_ = os.RemoveAll(path)
 	return os.MkdirAll(path, 0755)
 }
 
@@ -148,9 +148,9 @@ func createSymlink(target, linkPath string) bool {
 					return true
 				}
 			}
-			os.Remove(linkPath)
+			_ = os.Remove(linkPath)
 		} else {
-			os.RemoveAll(linkPath)
+			_ = os.RemoveAll(linkPath)
 		}
 	}
 
@@ -234,7 +234,7 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer in.Close()
+	defer func() { _ = in.Close() }()
 
 	info, err := in.Stat()
 	if err != nil {
@@ -244,7 +244,7 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 	_, err = io.Copy(out, in)
 	return err
 }

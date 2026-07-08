@@ -19,7 +19,7 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic("failed to create temp dir: " + err.Error())
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	mdmBin = filepath.Join(tmpDir, "mdm")
 	if runtime.GOOS == "windows" {

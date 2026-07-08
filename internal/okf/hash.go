@@ -31,14 +31,14 @@ func HashBundleDir(root string) (string, error) {
 		if err != nil {
 			return err
 		}
-		io.WriteString(h, filepath.ToSlash(rel))
+		_, _ = io.WriteString(h, filepath.ToSlash(rel))
 		h.Write([]byte{0})
 		f, err := os.Open(p)
 		if err != nil {
 			return err
 		}
 		_, err = io.Copy(h, f)
-		f.Close()
+		_ = f.Close()
 		if err != nil {
 			return err
 		}

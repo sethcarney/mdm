@@ -74,6 +74,6 @@ func FuzzSanitizeSubpath(f *testing.F) {
 	f.Add("..")
 	f.Add("\x00")
 	f.Fuzz(func(t *testing.T, input string) {
-		SanitizeSubpath(input) // must not panic
+		_, _ = SanitizeSubpath(input) // must not panic
 	})
 }

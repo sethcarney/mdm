@@ -451,9 +451,9 @@ func cleanUpRemovedAgentFiles(toRemove []string, global bool, cwd string) {
 			if skillsPath != "" {
 				if info, err := os.Lstat(skillsPath); err == nil {
 					if info.Mode()&os.ModeSymlink != 0 {
-						os.Remove(skillsPath)
+						_ = os.Remove(skillsPath)
 					} else {
-						os.RemoveAll(skillsPath)
+						_ = os.RemoveAll(skillsPath)
 					}
 					ui.LogInfo("Removed " + cfg.DisplayName + " skills directory")
 				}
@@ -465,7 +465,7 @@ func cleanUpRemovedAgentFiles(toRemove []string, global bool, cwd string) {
 		if !global && !cfg.NativeInstructions {
 			instrPath := filepath.Join(cwd, cfg.InstructionsFile)
 			if _, err := os.Lstat(instrPath); err == nil {
-				os.Remove(instrPath)
+				_ = os.Remove(instrPath)
 				ui.LogInfo("Removed " + cfg.InstructionsFile)
 			}
 		}
