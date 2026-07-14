@@ -10,6 +10,8 @@
 
 The markdown management CLI. No telemetry · Fully open source.
 
+📖 **Full documentation: [sethcarney.github.io/mdm](https://sethcarney.github.io/mdm/)** — install guide, complete [command reference](https://sethcarney.github.io/mdm/commands/), and per-command guides.
+
 ## Why mdm?
 
 Managing markdown across multiple agentic coding tools is more painful than it should be. Keeping `CLAUDE.md`, `copilot-instructions.md`, `.cursorrules`, and friends consistent and up to date is tedious enough on its own. Add in installing first- and third-party skills and context files, versioning them, pulling updates, and auditing them for prompt injection risks and hidden characters, and it becomes a real maintenance burden.
