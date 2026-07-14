@@ -1,0 +1,119 @@
+site_name: mdm
+site_description: The markdown management CLI — install skills, sync agent instruction files, and audit them for prompt-injection risks.
+site_author: Seth Carney
+site_url: https://sethcarney.github.io/mdm/
+repo_name: sethcarney/mdm
+repo_url: https://github.com/sethcarney/mdm
+edit_uri: edit/main/docs/
+copyright: Copyright &copy; Seth Carney — MIT Licensed
+
+# Build helper files live in docs/ but shouldn't be published.
+exclude_docs: |
+  requirements.txt
+
+theme:
+  name: material
+  logo: assets/logo-white.svg
+  favicon: assets/favicon.svg
+  icon:
+    repo: fontawesome/brands/github
+  font:
+    text: Inter
+    code: JetBrains Mono
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: black
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - navigation.indexes
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - content.action.edit
+
+extra_css:
+  - assets/extra.css
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/sethcarney/mdm
+      name: mdm on GitHub
+    - icon: material/package-variant
+      link: https://skills.sh
+      name: skills.sh registry
+  generator: false
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      title: On this page
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - Command reference: commands.md
+  - Guides:
+      - Rules — instruction files: rules.md
+      - Agents: agents.md
+      - Doctor: doctor.md
+      - Experimental features: experimental.md
+      - Upgrade: upgrade.md
+      - Uninstall: uninstall.md
+  - Skills commands:
+      - add: skills/add.md
+      - find: skills/find.md
+      - list: skills/list.md
+      - remove: skills/remove.md
+      - update: skills/update.md
+      - audit: skills/audit.md
+      - init: skills/init.md
+      - install: skills/install.md
+      - sync: skills/sync.md
+  - Knowledge (experimental): specs/knowledge.md
+  - Security:
+      - Hidden-character scan: security/hidden-character-scan.md
+      - Git transport restrictions: security/git-transport-restrictions.md

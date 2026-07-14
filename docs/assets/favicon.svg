@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <rect width="256" height="256" rx="40" fill="#ffffff"/>
+  <!-- Block-M: scaled to left portion, vertically centred at y=128 -->
+  <polygon
+    fill="#000000"
+    points="12,180 12,77 37,77 79,126 120,77 145,77 145,180 120,180 120,105 79,154 37,105 37,180"
+  />
+  <!-- Downward arrow: same vertical extent as M (y=77..180) -->
+  <!-- Stem centred at x=203, width matches M bar width (~24px) -->
+  <rect x="191" y="77" width="24" height="63" fill="#000000"/>
+  <!-- Arrowhead base overlaps stem by 7px at y=133 -->
+  <polygon fill="#000000" points="162,133 244,133 203,180"/>
+</svg>

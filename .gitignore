@@ -3,3 +3,7 @@ mdm.exe
 resource_windows.syso
 .agents
 .claude
+
+# MkDocs build output
+/site
+.venv

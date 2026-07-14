@@ -1,0 +1,72 @@
+/* mdm docs — small polish on top of Material */
+
+:root {
+  --md-code-font: "JetBrains Mono", SFMono-Regular, Consolas, monospace;
+}
+
+/* ---- Landing hero ---- */
+.mdm-hero {
+  text-align: center;
+  padding: 2.5rem 1rem 1.5rem;
+}
+
+.mdm-hero__logo {
+  width: 84px;
+  height: 84px;
+  margin: 0 auto 1rem;
+}
+
+.mdm-hero h1 {
+  font-weight: 800;
+  font-size: 2.6rem;
+  letter-spacing: -0.02em;
+  margin: 0.2rem 0 0.4rem;
+}
+
+.mdm-hero__tagline {
+  font-size: 1.05rem;
+  color: var(--md-default-fg-color--light);
+  max-width: 42rem;
+  margin: 0 auto 1.4rem;
+}
+
+.mdm-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: center;
+  margin: 0 auto 1.6rem;
+}
+
+.mdm-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  justify-content: center;
+  margin-bottom: 0.5rem;
+}
+
+.mdm-cta .md-button {
+  min-width: 8rem;
+}
+
+/* ---- Feature grid cards ---- */
+.grid.cards > ul > li,
+.grid > .card {
+  border-radius: 0.6rem;
+}
+
+.grid.cards > ul > li:hover {
+  border-color: var(--md-accent-fg-color);
+  box-shadow: 0 0.2rem 0.8rem rgba(0, 0, 0, 0.08);
+}
+
+/* ---- Command reference tables read a bit tighter ---- */
+.md-typeset table:not([class]) code {
+  white-space: nowrap;
+}
+
+/* Keep the tab bar subtle */
+.md-tabs {
+  font-weight: 600;
+}
