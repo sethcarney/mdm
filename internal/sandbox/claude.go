@@ -10,12 +10,16 @@ import (
 
 // Claude Code enforcement lives in the project's .claude/settings.json:
 //
-//   - permissions.deny Read() rules block secret reads at the app level
-//     (they also feed the OS sandbox boundary when it is enabled)
+//   - permissions.deny Read() rules block secret reads at the tool layer
 //   - permissions.disableBypassPermissionsMode blocks --dangerously-skip-permissions
 //   - sandbox.enabled turns on OS-level (Seatbelt/bubblewrap) enforcement for
-//     Bash commands, which confines writes to the working directory and gates
-//     network access behind per-domain approval
+//     Bash commands, which confines writes to the working directory
+//   - sandbox.allowUnsandboxedCommands=false forbids the escape hatch that
+//     retries failed commands outside the sandbox
+//   - sandbox.filesystem.denyRead is what actually blocks secret *reads* at
+//     the OS layer: enabling the sandbox alone still lets commands read the
+//     whole disk, so we deny the home directory (re-allowing the project via
+//     allowRead ".") plus in-project secret globs
 //
 // Project settings are committable, so a team shares one hardened baseline.
 
@@ -26,11 +30,19 @@ func claudeAgent() Agent {
 		Notes: []string{
 			"Settings are project-scoped (.claude/settings.json) and safe to commit.",
 			"The OS sandbox needs bubblewrap+socat on Linux/WSL2; macOS needs nothing extra.",
-			"Deny rules cover Claude's file tools and recognized shell commands; the OS sandbox extends enforcement to all Bash subprocesses.",
+			"sandbox.filesystem denies reads of your home directory (allowing the project back in) plus in-project secret files — widen with allowWrite/allowRead if a build needs a path in $HOME.",
 		},
 		Plan:   func(dir string) ([]Change, error) { return claudeSetup(dir, false) },
 		Apply:  func(dir string) ([]Change, error) { return claudeSetup(dir, true) },
 		Status: claudeStatus,
+		HasProjectConfig: func(dir string) bool {
+			settings, exists, err := readJSONMap(claudeSettingsPath(dir))
+			if err != nil || !exists {
+				return false
+			}
+			_, ok := settings["sandbox"].(map[string]any)
+			return ok
+		},
 	}
 }
 
@@ -47,31 +59,38 @@ func claudeSetup(projectDir string, write bool) ([]Change, error) {
 		return nil, err
 	}
 
-	var added []string
-
-	perms := ensureMap(settings, "permissions")
-	deny := stringSlice(perms["deny"])
-	for _, rule := range secretDenyReadRules {
-		if !containsString(deny, rule) {
-			deny = append(deny, rule)
-			added = append(added, rule)
-		}
-	}
-	perms["deny"] = toAnySlice(deny)
-
 	var descs []string
-	if len(added) > 0 {
-		descs = append(descs, fmt.Sprintf("add %d Read deny rule(s) for secret paths", len(added)))
+
+	// permissions: Read() deny rules (deduped by gitignore-equivalence so
+	// Read(.env) and Read(**/.env) never both appear) + bypass lockdown.
+	perms := ensureMap(settings, "permissions")
+	if deny, added := mergeDenyRules(stringSlice(perms["deny"]), secretReadDenyRules()); added > 0 {
+		perms["deny"] = toAnySlice(deny)
+		descs = append(descs, fmt.Sprintf("add %d Read deny rule(s) for secret paths", added))
 	}
 	if perms["disableBypassPermissionsMode"] != "disable" {
 		perms["disableBypassPermissionsMode"] = "disable"
 		descs = append(descs, "disable bypass-permissions mode")
 	}
 
+	// sandbox: OS-level enforcement + filesystem read blocking.
 	sb := ensureMap(settings, "sandbox")
 	if sb["enabled"] != true {
 		sb["enabled"] = true
 		descs = append(descs, "enable the OS sandbox for Bash commands")
+	}
+	if sb["allowUnsandboxedCommands"] != false {
+		sb["allowUnsandboxedCommands"] = false
+		descs = append(descs, "forbid the unsandboxed-command escape hatch")
+	}
+	fsm := ensureMap(sb, "filesystem")
+	if allowRead, added := mergeStringSet(stringSlice(fsm["allowRead"]), []string{"."}); added > 0 {
+		fsm["allowRead"] = toAnySlice(allowRead)
+		descs = append(descs, "allow sandbox reads within the project")
+	}
+	if denyRead, added := mergeStringSet(stringSlice(fsm["denyRead"]), sandboxDenyReadPaths()); added > 0 {
+		fsm["denyRead"] = toAnySlice(denyRead)
+		descs = append(descs, "block sandbox reads of home and in-project secrets")
 	}
 
 	if len(descs) == 0 {
@@ -97,17 +116,21 @@ func claudeStatus(projectDir string) ([]Check, error) {
 	}
 
 	perms, _ := settings["permissions"].(map[string]any)
-	deny := stringSlice(perms["deny"])
+	haveKeys := map[string]bool{}
+	for _, r := range stringSlice(perms["deny"]) {
+		haveKeys[denyRuleKey(r)] = true
+	}
+	baseline := secretReadDenyRules()
 	missing := 0
-	for _, rule := range secretDenyReadRules {
-		if !containsString(deny, rule) {
+	for _, rule := range baseline {
+		if !haveKeys[denyRuleKey(rule)] {
 			missing++
 		}
 	}
 	checks := []Check{
 		boolCheck("Secret read deny rules", missing == 0,
 			"all baseline rules present",
-			fmt.Sprintf("%d of %d baseline rules missing", missing, len(secretDenyReadRules)), path),
+			fmt.Sprintf("%d of %d baseline rules missing", missing, len(baseline)), path),
 		boolCheck("Bypass mode disabled", perms != nil && perms["disableBypassPermissionsMode"] == "disable",
 			"permissions.disableBypassPermissionsMode = disable",
 			"--dangerously-skip-permissions is not blocked", path),
@@ -117,6 +140,18 @@ func claudeStatus(projectDir string) ([]Check, error) {
 	checks = append(checks, boolCheck("OS sandbox enabled", sb != nil && sb["enabled"] == true,
 		"sandbox.enabled = true",
 		"Bash commands are not OS-sandboxed", path))
+	checks = append(checks, boolCheck("Strict sandbox", sb != nil && sb["allowUnsandboxedCommands"] == false,
+		"allowUnsandboxedCommands = false",
+		"commands may fall back to running unsandboxed", path))
+
+	var fsm map[string]any
+	if sb != nil {
+		fsm, _ = sb["filesystem"].(map[string]any)
+	}
+	readBlocked := fsm != nil && containsString(stringSlice(fsm["denyRead"]), "~/") && containsString(stringSlice(fsm["allowRead"]), ".")
+	checks = append(checks, boolCheck("OS-level secret read blocking", readBlocked,
+		"sandbox.filesystem denies home reads, allows the project",
+		"sandbox.filesystem.denyRead does not block home — enabling the sandbox alone still allows secret reads", path))
 
 	if extra := stringSlice(perms["additionalDirectories"]); len(extra) > 0 {
 		checks = append(checks, Check{

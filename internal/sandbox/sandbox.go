@@ -54,11 +54,18 @@ type Agent struct {
 	Plan   func(projectDir string) ([]Change, error)
 	Apply  func(projectDir string) ([]Change, error)
 	Status func(projectDir string) ([]Check, error)
+
+	// HasProjectConfig reports whether an mdm-written sandbox artifact already
+	// exists for this agent in the project. `mdm doctor` uses it to surface
+	// drift for agents the user has already hardened, without nagging every
+	// project where a tool merely happens to be installed. Nil (e.g. Codex,
+	// which is global-only) means "no project artifact".
+	HasProjectConfig func(projectDir string) bool
 }
 
 // Agents lists the supported tools in display order.
 func Agents() []Agent {
-	return []Agent{claudeAgent(), codexAgent(), copilotAgent()}
+	return []Agent{claudeAgent(), codexAgent(), copilotAgent(), cursorAgent(), geminiAgent()}
 }
 
 // Supported reports whether name is a sandbox-capable agent.
@@ -71,18 +78,33 @@ func Supported(name string) bool {
 	return false
 }
 
-// secretDenyReadRules are Claude Code permission deny rules (gitignore-style
-// path patterns) covering common credential locations. Bare filenames match
-// at any depth under the project, and ~/ anchors at the home directory, so
-// the same rules work in project and user settings.
-var secretDenyReadRules = []string{
-	"Read(.env)",
-	"Read(.env.*)",
-	"Read(**/*.pem)",
-	"Read(**/*.key)",
-	"Read(**/id_rsa)",
-	"Read(**/id_ed25519)",
-	"Read(**/secrets/**)",
+// projectSecretGlobs name secret-bearing files that live *inside* a project,
+// as gitignore-style globs relative to the project root. They are reused in
+// two forms:
+//
+//   - Read() permission deny rules, as Read(**/<glob>) (Claude Code, Cursor)
+//   - OS-sandbox filesystem denyRead entries, as ./**/<glob> (Claude Code)
+//
+// so a project's own secrets are blocked both at the tool layer and, where
+// available, at the OS layer.
+var projectSecretGlobs = []string{
+	".env",
+	".env.*",
+	"*.pem",
+	"*.key",
+	"id_rsa",
+	"id_ed25519",
+	"secrets/**",
+	"*credentials*",
+	"appsettings.*.json",
+	".npmrc",
+	"nuget.config",
+	"NuGet.Config",
+}
+
+// homeSecretReadRules are Read() permission deny rules for credential stores
+// outside the project, anchored at the home directory with ~/.
+var homeSecretReadRules = []string{
 	"Read(~/.ssh/**)",
 	"Read(~/.aws/**)",
 	"Read(~/.gnupg/**)",
@@ -91,6 +113,83 @@ var secretDenyReadRules = []string{
 	"Read(~/.npmrc)",
 	"Read(~/.config/gh/**)",
 	"Read(~/.docker/config.json)",
+	"Read(~/.microsoft/usersecrets/**)",
+	"Read(~/.nuget/NuGet/NuGet.Config)",
+}
+
+// secretReadDenyRules returns the canonical Read() deny rules: project
+// secrets as Read(**/<glob>) plus the home credential stores.
+func secretReadDenyRules() []string {
+	rules := make([]string, 0, len(projectSecretGlobs)+len(homeSecretReadRules))
+	for _, g := range projectSecretGlobs {
+		rules = append(rules, "Read(**/"+g+")")
+	}
+	return append(rules, homeSecretReadRules...)
+}
+
+// sandboxDenyReadPaths returns OS-sandbox filesystem denyRead entries: the
+// whole home directory (re-allowing the project via allowRead ".") plus each
+// project secret glob so in-project secrets stay blocked even though the
+// project is otherwise readable.
+func sandboxDenyReadPaths() []string {
+	paths := make([]string, 0, len(projectSecretGlobs)+1)
+	paths = append(paths, "~/")
+	for _, g := range projectSecretGlobs {
+		paths = append(paths, "./**/"+g)
+	}
+	return paths
+}
+
+// denyRuleKey normalizes a Read() rule so gitignore-equivalent spellings
+// collapse to one key: Read(**/.env) and Read(.env) both match any .env at
+// any depth, so they share a key and are never both written. Non-Read rules
+// key on themselves.
+func denyRuleKey(rule string) string {
+	if !strings.HasPrefix(rule, "Read(") || !strings.HasSuffix(rule, ")") {
+		return rule
+	}
+	inner := rule[len("Read(") : len(rule)-1]
+	inner = strings.TrimPrefix(inner, "**/")
+	return "Read(" + inner + ")"
+}
+
+// mergeDenyRules appends desired rules to existing, skipping any whose
+// normalized key is already present, and reports how many were added.
+func mergeDenyRules(existing, desired []string) (merged []string, added int) {
+	keys := make(map[string]bool, len(existing))
+	for _, r := range existing {
+		keys[denyRuleKey(r)] = true
+	}
+	merged = append([]string(nil), existing...)
+	for _, r := range desired {
+		k := denyRuleKey(r)
+		if keys[k] {
+			continue
+		}
+		keys[k] = true
+		merged = append(merged, r)
+		added++
+	}
+	return merged, added
+}
+
+// mergeStringSet appends desired entries to existing with exact-string
+// deduplication, reporting how many were added.
+func mergeStringSet(existing, desired []string) (merged []string, added int) {
+	seen := make(map[string]bool, len(existing))
+	for _, s := range existing {
+		seen[s] = true
+	}
+	merged = append([]string(nil), existing...)
+	for _, s := range desired {
+		if seen[s] {
+			continue
+		}
+		seen[s] = true
+		merged = append(merged, s)
+		added++
+	}
+	return merged, added
 }
 
 // secretHookPattern is the extended regex (POSIX ERE, matched

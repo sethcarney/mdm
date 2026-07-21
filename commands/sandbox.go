@@ -21,7 +21,7 @@ func buildSandboxCmd() *cobra.Command {
 so they cannot read secret files and stay confined to the project
 working directory.
 
-Supported agents: Claude Code, Codex, GitHub Copilot CLI.
+Supported agents: Claude Code, Codex, GitHub Copilot CLI, Cursor, Gemini CLI.
 
 Each tool is configured through its own native mechanism — permission
 deny rules and the OS sandbox for Claude Code, sandbox_mode and network
@@ -61,7 +61,7 @@ func resolveSandboxAgents(agentFilter []string, yes bool) ([]sandbox.Agent, erro
 		var selected []sandbox.Agent
 		for _, name := range agentFilter {
 			if !sandbox.Supported(name) {
-				return nil, fmt.Errorf("unsupported agent %q; sandbox setup supports: claude-code, codex, github-copilot", name)
+				return nil, fmt.Errorf("unsupported agent %q; sandbox setup supports: claude-code, codex, github-copilot, cursor, gemini-cli", name)
 			}
 			for _, a := range all {
 				if a.Name == name {
@@ -111,11 +111,14 @@ func buildSandboxSetupCmd() *cobra.Command {
 
 %sWhat gets configured:%s
   Claude Code    .claude/settings.json — Read() deny rules for secret paths,
-                 OS sandbox enabled, bypass-permissions mode disabled
+                 OS sandbox enabled + strict, filesystem denyRead blocks home
+                 and in-project secrets, bypass-permissions mode disabled
   Codex          $CODEX_HOME/config.toml — workspace-write sandbox, network
                  off for sandboxed commands, approval to leave the sandbox
   Copilot CLI    .github/hooks/ secret guard hook (committable) and
                  ~/.copilot/settings.json --yolo/--allow-all lockdown
+  Cursor         .cursor/cli.json — Read() deny rules for secret paths
+  Gemini CLI     .gemini/settings.json tool sandbox + user-settings folderTrust
 
 Existing configuration is preserved: mdm only adds missing baseline
 entries and never loosens a stricter setting you already have.

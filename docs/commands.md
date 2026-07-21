@@ -239,10 +239,10 @@ friends) by pointing them all at a single source of truth.
 
 ## `mdm sandbox`
 
-Configure Claude Code, Codex, and GitHub Copilot CLI so they cannot read
-secret files and stay confined to the project working directory. Each tool is
-hardened through its own native mechanism; mdm only adds or tightens settings
-and never removes entries you wrote yourself.
+Configure Claude Code, Codex, GitHub Copilot CLI, Cursor, and Gemini CLI so
+they cannot read secret files and stay confined to the project working
+directory. Each tool is hardened through its own native mechanism; mdm only
+adds or tightens settings and never removes entries you wrote yourself.
 
 | Command | Description |
 | --- | --- |

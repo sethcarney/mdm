@@ -31,6 +31,10 @@ For each agent recorded in `configuredAgents` that has a unique instruction file
 
 For each configured agent whose rules file is already linked, checks that every installed project skill has a corresponding entry in that agent's skills directory. Catches the case where you add a new agent via `mdm rules link` but haven't re-run `mdm skills add` to distribute existing skills to it.
 
+### Agent sandboxing
+
+For each [sandbox](sandbox.md)-supported agent that is configured in the project or detected on your machine (Claude Code, Codex, GitHub Copilot CLI, Cursor, Gemini CLI), runs the `mdm sandbox status` baseline checks and warns about any below-baseline items — for example a missing `.claude/settings.json`, an OS sandbox that isn't enabled, or `filesystem.denyRead` not blocking secret reads. Run `mdm sandbox setup` to apply the recommended baseline.
+
 ### Project markdown
 
 Walks the entire project tree and flags any other `.md` file that is too large. Skips directories already covered above and common noise directories (`.git`, `node_modules`, `vendor`, `dist`, `build`, `.next`, etc.). Stops after 10,000 filesystem entries to avoid hangs on very large repositories.

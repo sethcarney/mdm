@@ -13,6 +13,7 @@ import (
 	"github.com/sethcarney/mdm/internal/agent"
 	"github.com/sethcarney/mdm/internal/experimental"
 	"github.com/sethcarney/mdm/internal/lock"
+	"github.com/sethcarney/mdm/internal/sandbox"
 	"github.com/sethcarney/mdm/internal/skill"
 )
 
@@ -70,6 +71,7 @@ Checks performed:
   • Oversized agent instruction files (CLAUDE.md, AGENTS.md, .cursorrules, etc.)
   • Configured agents whose instruction file is not yet linked to AGENTS.md
   • Configured agents with linked rules but missing skill symlinks
+  • Sandbox hardening gaps for configured/detected agents (see mdm sandbox)
   • Missing README in the project root
   • All other .md files in the project that may strain agent context windows
 
@@ -140,6 +142,7 @@ func runDoctor(opts DoctorOptions) {
 	var unlinkedRulesIssues []doctorIssue
 	var missingSkillLinkIssues []doctorIssue
 	var knowledgeIssues []doctorIssue
+	var sandboxIssues []doctorIssue
 	var mdIssues []doctorIssue
 	var mdTruncated bool
 
@@ -151,6 +154,7 @@ func runDoctor(opts DoctorOptions) {
 		if experimental.Enabled(experimental.Knowledge) {
 			knowledgeIssues = checkKnowledgeBundles(cwd)
 		}
+		sandboxIssues = checkSandbox(cwd)
 		mdIssues, mdTruncated = checkProjectMarkdown(cwd, skipDirs, skipFiles)
 		if mdTruncated {
 			vlog(verboseFlag, "project markdown walk hit the %d-entry limit; results truncated", markdownWalkLimit)
@@ -165,7 +169,47 @@ func runDoctor(opts DoctorOptions) {
 		return results[i].Name < results[j].Name
 	})
 
-	printDoctorResults(results, instrIssues, unlinkedRulesIssues, missingSkillLinkIssues, knowledgeIssues, mdIssues, mdTruncated, readmeIssue, checkProject, cwd)
+	printDoctorResults(results, instrIssues, unlinkedRulesIssues, missingSkillLinkIssues, knowledgeIssues, sandboxIssues, mdIssues, mdTruncated, readmeIssue, checkProject, cwd)
+}
+
+// checkSandbox reports sandbox-hardening gaps for agents the user has opted
+// into: those configured in this project, or those already carrying an
+// mdm-written sandbox artifact (drift detection). It deliberately does NOT
+// nag every project where a tool merely happens to be installed. It mirrors
+// `mdm sandbox status` but surfaces only below-baseline items (missing or
+// weakened), as warnings — sandbox hardening is advisory, not required for
+// skills to work.
+func checkSandbox(cwd string) []doctorIssue {
+	configured := map[string]bool{}
+	for _, name := range lock.GetConfiguredAgents(false, cwd) {
+		configured[name] = true
+	}
+
+	var issues []doctorIssue
+	for _, a := range sandbox.Agents() {
+		hasConfig := a.HasProjectConfig != nil && a.HasProjectConfig(cwd)
+		if !configured[a.Name] && !hasConfig {
+			continue
+		}
+		checks, err := a.Status(cwd)
+		if err != nil {
+			issues = append(issues, doctorIssue{
+				Level:   "warn",
+				Message: fmt.Sprintf("%s: could not read sandbox config: %v", a.DisplayName, err),
+			})
+			continue
+		}
+		for _, c := range checks {
+			if c.State != sandbox.StateMissing && c.State != sandbox.StateWarn {
+				continue
+			}
+			issues = append(issues, doctorIssue{
+				Level:   "warn",
+				Message: fmt.Sprintf("%s — %s: %s", a.DisplayName, c.Name, c.Detail),
+			})
+		}
+	}
+	return issues
 }
 
 func buildProjectSkipPaths(cwd, canonicalBase string, skipDirs, skipFiles map[string]bool) {
@@ -528,7 +572,7 @@ func checkProjectMarkdown(cwd string, skipDirs map[string]bool, skipFiles map[st
 
 // ── Output ─────────────────────────────────────────────────────────────────────
 
-func printDoctorResults(results []doctorResult, instrIssues, unlinkedRulesIssues, missingSkillLinkIssues, knowledgeIssues, mdIssues []doctorIssue, mdTruncated bool, readmeIssue *doctorIssue, scannedProject bool, cwd string) {
+func printDoctorResults(results []doctorResult, instrIssues, unlinkedRulesIssues, missingSkillLinkIssues, knowledgeIssues, sandboxIssues, mdIssues []doctorIssue, mdTruncated bool, readmeIssue *doctorIssue, scannedProject bool, cwd string) {
 	fmt.Println()
 
 	byScope := map[string][]doctorResult{}
@@ -578,6 +622,14 @@ func printDoctorResults(results []doctorResult, instrIssues, unlinkedRulesIssues
 		totalErrors += e
 		totalWarnings += w
 		fmt.Println()
+	}
+
+	if len(sandboxIssues) > 0 {
+		fmt.Printf("%sAgent sandboxing:%s\n\n", ansiText, ansiReset)
+		e, w := printAndCountDoctorIssues(sandboxIssues)
+		totalErrors += e
+		totalWarnings += w
+		fmt.Printf("  %s→ run `mdm sandbox setup` to apply the recommended baseline%s\n\n", ansiDim, ansiReset)
 	}
 
 	e, w := printDoctorMarkdownSection(readmeIssue, mdIssues, mdTruncated)

@@ -36,6 +36,10 @@ func copilotAgent() Agent {
 		Plan:   func(dir string) ([]Change, error) { return copilotSetup(dir, false) },
 		Apply:  func(dir string) ([]Change, error) { return copilotSetup(dir, true) },
 		Status: copilotStatus,
+		HasProjectConfig: func(dir string) bool {
+			_, err := os.Stat(copilotHookJSONPath(dir))
+			return err == nil
+		},
 	}
 }
 

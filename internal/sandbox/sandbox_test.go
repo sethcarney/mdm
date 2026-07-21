@@ -40,7 +40,7 @@ func TestClaudeSetupFreshProject(t *testing.T) {
 	}
 	perms := settings["permissions"].(map[string]any)
 	deny := stringSlice(perms["deny"])
-	for _, rule := range secretDenyReadRules {
+	for _, rule := range secretReadDenyRules() {
 		if !containsString(deny, rule) {
 			t.Errorf("missing deny rule %q", rule)
 		}
@@ -48,8 +48,23 @@ func TestClaudeSetupFreshProject(t *testing.T) {
 	if perms["disableBypassPermissionsMode"] != "disable" {
 		t.Error("bypass mode not disabled")
 	}
-	if sb := settings["sandbox"].(map[string]any); sb["enabled"] != true {
+	sb := settings["sandbox"].(map[string]any)
+	if sb["enabled"] != true {
 		t.Error("sandbox not enabled")
+	}
+	if sb["allowUnsandboxedCommands"] != false {
+		t.Error("allowUnsandboxedCommands not set false")
+	}
+	fsm := sb["filesystem"].(map[string]any)
+	if !containsString(stringSlice(fsm["allowRead"]), ".") {
+		t.Error("filesystem.allowRead missing '.'")
+	}
+	denyRead := stringSlice(fsm["denyRead"])
+	if !containsString(denyRead, "~/") {
+		t.Error("filesystem.denyRead missing '~/' (home not blocked)")
+	}
+	if !containsString(denyRead, "./**/.env") {
+		t.Error("filesystem.denyRead missing in-project secret glob")
 	}
 
 	// Second run is a no-op.
@@ -70,7 +85,9 @@ func TestClaudeSetupPreservesExistingSettings(t *testing.T) {
 		"model": "opus",
 		"permissions": map[string]any{
 			"allow": []any{"Bash(npm test *)"},
-			"deny":  []any{"Read(.env)", "WebFetch"},
+			// User already has the **/ form; the baseline uses the same form
+			// but the equivalence check must also collapse the bare form.
+			"deny": []any{"Read(**/.env)", "Read(.env.*)", "WebFetch"},
 		},
 	}
 	if err := writeJSONMap(path, existing); err != nil {
@@ -93,14 +110,39 @@ func TestClaudeSetupPreservesExistingSettings(t *testing.T) {
 	if !containsString(deny, "WebFetch") {
 		t.Error("user deny rule was dropped")
 	}
-	count := 0
-	for _, r := range deny {
-		if r == "Read(.env)" {
-			count++
+	// Neither the user's Read(**/.env) nor Read(.env.*) may be duplicated by
+	// the baseline's equivalent Read(**/.env) / Read(**/.env.*).
+	for _, key := range []string{"Read(.env)", "Read(.env.*)"} {
+		count := 0
+		for _, r := range deny {
+			if denyRuleKey(r) == key {
+				count++
+			}
+		}
+		if count != 1 {
+			t.Errorf("%s equivalent duplicated: %d occurrences in %v", key, count, deny)
 		}
 	}
-	if count != 1 {
-		t.Errorf("Read(.env) duplicated: %d occurrences", count)
+}
+
+func TestDenyRuleKeyEquivalence(t *testing.T) {
+	cases := []struct{ a, b string }{
+		{"Read(.env)", "Read(**/.env)"},
+		{"Read(.env.*)", "Read(**/.env.*)"},
+		{"Read(secrets/**)", "Read(**/secrets/**)"},
+	}
+	for _, c := range cases {
+		if denyRuleKey(c.a) != denyRuleKey(c.b) {
+			t.Errorf("%q and %q should share a key, got %q vs %q", c.a, c.b, denyRuleKey(c.a), denyRuleKey(c.b))
+		}
+	}
+	// Distinct rules must not collapse.
+	if denyRuleKey("Read(**/*.pem)") == denyRuleKey("Read(**/*.key)") {
+		t.Error("distinct globs collapsed to the same key")
+	}
+	// Non-Read rules key on themselves.
+	if denyRuleKey("WebFetch") != "WebFetch" {
+		t.Error("non-Read rule should key on itself")
 	}
 }
 
@@ -425,15 +467,198 @@ func TestCopilotStatusWarnsOnBroadTrustedFolders(t *testing.T) {
 
 func TestAgentsRegistry(t *testing.T) {
 	agents := Agents()
-	if len(agents) != 3 {
-		t.Fatalf("expected 3 supported agents, got %d", len(agents))
+	if len(agents) != 5 {
+		t.Fatalf("expected 5 supported agents, got %d", len(agents))
 	}
-	for _, name := range []string{"claude-code", "codex", "github-copilot"} {
+	for _, name := range []string{"claude-code", "codex", "github-copilot", "cursor", "gemini-cli"} {
 		if !Supported(name) {
 			t.Errorf("%s should be supported", name)
 		}
 	}
-	if Supported("cursor") {
-		t.Error("cursor should not be supported")
+	if Supported("windsurf") {
+		t.Error("windsurf should not be supported")
+	}
+}
+
+func TestHasProjectConfigGating(t *testing.T) {
+	isolate(t)
+	project := t.TempDir()
+
+	byName := map[string]Agent{}
+	for _, a := range Agents() {
+		byName[a.Name] = a
+	}
+
+	// Codex is global-only: no project artifact hook.
+	if byName["codex"].HasProjectConfig != nil {
+		t.Error("codex should have no project-config hook")
+	}
+
+	// Before setup, no project artifacts exist.
+	for _, name := range []string{"claude-code", "cursor", "github-copilot", "gemini-cli"} {
+		if hp := byName[name].HasProjectConfig; hp != nil && hp(project) {
+			t.Errorf("%s reports project config before setup", name)
+		}
+	}
+
+	// A bare .gemini/settings.json without tools.sandbox must NOT be claimed
+	// (it commonly exists for unrelated settings).
+	if err := writeJSONMap(geminiProjectSettingsPath(project), map[string]any{"theme": "dark"}); err != nil {
+		t.Fatal(err)
+	}
+	if byName["gemini-cli"].HasProjectConfig(project) {
+		t.Error("gemini claimed a settings.json that has no tools.sandbox")
+	}
+
+	// After setup, each agent with a project artifact reports true.
+	for _, name := range []string{"claude-code", "cursor", "github-copilot", "gemini-cli"} {
+		if _, err := byName[name].Apply(project); err != nil {
+			t.Fatalf("%s apply: %v", name, err)
+		}
+		if !byName[name].HasProjectConfig(project) {
+			t.Errorf("%s should report project config after setup", name)
+		}
+	}
+}
+
+// ─── Cursor ───────────────────────────────────────────────────────────────────
+
+func TestCursorSetupWritesDenyRules(t *testing.T) {
+	isolate(t)
+	project := t.TempDir()
+
+	changes, err := cursorSetup(project, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(changes) != 1 || !changes[0].Create {
+		t.Fatalf("expected one create change, got %+v", changes)
+	}
+
+	settings, exists, err := readJSONMap(cursorConfigPath(project))
+	if err != nil || !exists {
+		t.Fatalf("cli.json not written: exists=%v err=%v", exists, err)
+	}
+	perms := settings["permissions"].(map[string]any)
+	deny := stringSlice(perms["deny"])
+	if !containsString(deny, "Read(**/.env)") {
+		t.Errorf("expected secret deny rule, got %v", deny)
+	}
+
+	if changes, _ := cursorSetup(project, false); len(changes) != 0 {
+		t.Fatalf("expected idempotent setup, got %+v", changes)
+	}
+}
+
+func TestCursorSetupPreservesExistingPermissions(t *testing.T) {
+	isolate(t)
+	project := t.TempDir()
+	path := cursorConfigPath(project)
+	if err := writeJSONMap(path, map[string]any{
+		"permissions": map[string]any{
+			"allow": []any{"Shell(git)"},
+			"deny":  []any{"Read(**/.env)", "Shell(rm)"},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := cursorSetup(project, true); err != nil {
+		t.Fatal(err)
+	}
+	settings, _, _ := readJSONMap(path)
+	perms := settings["permissions"].(map[string]any)
+	if allow := stringSlice(perms["allow"]); len(allow) != 1 || allow[0] != "Shell(git)" {
+		t.Errorf("allow rules changed: %v", allow)
+	}
+	deny := stringSlice(perms["deny"])
+	if !containsString(deny, "Shell(rm)") {
+		t.Error("user deny rule dropped")
+	}
+	// Existing Read(**/.env) must not be duplicated.
+	count := 0
+	for _, r := range deny {
+		if r == "Read(**/.env)" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("Read(**/.env) duplicated: %d", count)
+	}
+}
+
+// ─── Gemini ───────────────────────────────────────────────────────────────────
+
+func TestGeminiSetupWritesTrustAndSandbox(t *testing.T) {
+	isolate(t)
+	project := t.TempDir()
+
+	changes, err := geminiSetup(project, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(changes) != 2 {
+		t.Fatalf("expected 2 changes (user trust + project sandbox), got %+v", changes)
+	}
+
+	user, _, _ := readJSONMap(geminiUserSettingsPath())
+	sec := user["security"].(map[string]any)
+	ft := sec["folderTrust"].(map[string]any)
+	if ft["enabled"] != true {
+		t.Error("folderTrust not enabled in user settings")
+	}
+
+	proj, _, _ := readJSONMap(geminiProjectSettingsPath(project))
+	tools := proj["tools"].(map[string]any)
+	if !geminiSandboxEnabled(tools["sandbox"]) {
+		t.Errorf("sandbox not enabled: %v", tools["sandbox"])
+	}
+
+	if changes, _ := geminiSetup(project, false); len(changes) != 0 {
+		t.Fatalf("expected idempotent setup, got %+v", changes)
+	}
+}
+
+func TestGeminiKeepsExistingSandboxMechanism(t *testing.T) {
+	isolate(t)
+	project := t.TempDir()
+	// User already picked podman — must not be overwritten.
+	if err := writeJSONMap(geminiProjectSettingsPath(project), map[string]any{
+		"tools": map[string]any{"sandbox": "podman"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := geminiSetup(project, true); err != nil {
+		t.Fatal(err)
+	}
+	proj, _, _ := readJSONMap(geminiProjectSettingsPath(project))
+	tools := proj["tools"].(map[string]any)
+	if tools["sandbox"] != "podman" {
+		t.Errorf("existing sandbox mechanism overwritten: %v", tools["sandbox"])
+	}
+}
+
+func TestGeminiStatusReportsUnsupportedReadBlocking(t *testing.T) {
+	isolate(t)
+	project := t.TempDir()
+	if _, err := geminiSetup(project, true); err != nil {
+		t.Fatal(err)
+	}
+	checks, err := geminiStatus(project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	states := map[string]CheckState{}
+	for _, c := range checks {
+		states[c.Name] = c.State
+	}
+	if states["Folder trust"] != StateOK {
+		t.Errorf("folder trust should be ok, got %s", states["Folder trust"])
+	}
+	if states["Tool sandbox"] != StateOK {
+		t.Errorf("tool sandbox should be ok, got %s", states["Tool sandbox"])
+	}
+	if states["Secret read blocking"] != StateUnsupported {
+		t.Errorf("secret read blocking should be unsupported, got %s", states["Secret read blocking"])
 	}
 }
