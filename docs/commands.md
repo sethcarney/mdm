@@ -47,10 +47,13 @@ mdm
 │   ├── list                                # Show configured agents (alias: ls)
 │   ├── add [agents...]                     # Add agents (interactive with no args)
 │   └── remove [agents...]                  # Remove agents & their unique files
-└── rules                                   # Manage agent instruction files
-    ├── link                                # Symlink instruction files to one AGENTS.md
-    ├── status                              # Show which files exist/are symlinked/missing
-    └── unlink                              # Remove symlinks, restore per-agent files
+├── rules                                   # Manage agent instruction files
+│   ├── link                                # Symlink instruction files to one AGENTS.md
+│   ├── status                              # Show which files exist/are symlinked/missing
+│   └── unlink                              # Remove symlinks, restore per-agent files
+└── sandbox                                 # Harden agent sandboxes (secrets & workspace confinement)
+    ├── setup                               # Apply the recommended baseline (aliases: init, apply)
+    └── status                              # Check current config against the baseline
 ```
 
 ---
@@ -231,6 +234,29 @@ friends) by pointing them all at a single source of truth.
 | `--json` | Output status as a JSON array (`status`) |
 
 [:octicons-arrow-right-24: Details](rules.md)
+
+---
+
+## `mdm sandbox`
+
+Configure Claude Code, Codex, and GitHub Copilot CLI so they cannot read
+secret files and stay confined to the project working directory. Each tool is
+hardened through its own native mechanism; mdm only adds or tightens settings
+and never removes entries you wrote yourself.
+
+| Command | Description |
+| --- | --- |
+| `sandbox setup` <small>(`init`, `apply`)</small> | Apply the recommended sandbox baseline |
+| `sandbox status` | Check current configuration against the baseline |
+
+| Flag | Applies to | Description |
+| --- | --- | --- |
+| `--agent`, `-a` | all | Limit to specific agents (repeatable) |
+| `--dry-run` | `setup` | Show what would change without writing anything |
+| `--yes`, `-y` | `setup` | Apply without prompting (all supported agents unless `--agent` is given) |
+| `--json` | `status` | Output status as a JSON array |
+
+[:octicons-arrow-right-24: Details](sandbox.md)
 
 ---
 

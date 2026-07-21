@@ -92,10 +92,13 @@ mdm
 │   ├── list                                # Show configured agents for the current scope (alias: ls)
 │   ├── add [agents...]                     # Add agents to the configured list (interactive picker with no args)
 │   └── remove [agents...]                  # Remove agents and their unique skill/instruction files
-└── rules                                   # Manage agent instruction files (CLAUDE.md, AGENTS.md, .cursorrules, etc.)
-    ├── link                                # Symlink all agent instruction files to a single AGENTS.md source of truth
-    ├── status                              # Show which instruction files exist, are symlinked, or are missing
-    └── unlink                              # Remove symlinks and restore per-agent instruction files
+├── rules                                   # Manage agent instruction files (CLAUDE.md, AGENTS.md, .cursorrules, etc.)
+│   ├── link                                # Symlink all agent instruction files to a single AGENTS.md source of truth
+│   ├── status                              # Show which instruction files exist, are symlinked, or are missing
+│   └── unlink                              # Remove symlinks and restore per-agent instruction files
+└── sandbox                                 # Harden agent sandboxes: block secret reads, confine to the workspace
+    ├── setup                               # Apply the recommended baseline for Claude Code, Codex, Copilot CLI (aliases: init, apply)
+    └── status                              # Check current agent config against the baseline (--json)
 ```
 
 ## Architecture
@@ -117,6 +120,7 @@ mdm
 │   ├── sync.go          # `mdm skills sync`: syncs from node_modules
 │   ├── agents.go        # `mdm agents` group: list/add/remove configured agents (project + global scope)
 │   ├── rules.go         # `mdm rules` group: link/status/unlink agent instruction files
+│   ├── sandbox.go       # `mdm sandbox` group: setup/status for agent sandbox hardening
 │   ├── selfupdate.go    # `mdm upgrade`: downloads and replaces the mdm binary from GitHub releases
 │   ├── uninstall.go     # `mdm uninstall`: removes the mdm binary from the system
 │   ├── hidden_scan.go   # Hidden-character pre-install scan shared by add/update
@@ -133,6 +137,7 @@ mdm
     ├── lock/            # skills-lock.json + knowledge-lock.json read/write; tracks hashes, versions, timestamps, configuredAgents
     ├── git/             # Shallow git clone; branch/ref handling
     ├── blob/            # GitHub API tree/blob queries for skill discovery
+    ├── sandbox/         # Sandbox baselines per agent: Claude Code settings.json, Codex config.toml, Copilot hooks
     ├── security/        # markdownscan: hidden-character / prompt-smuggling detection
     ├── update/          # Shared helpers for self-update and skill update flows
     ├── ui/              # ANSI color constants; Bubbletea spinner

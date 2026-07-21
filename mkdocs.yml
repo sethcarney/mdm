@@ -98,6 +98,7 @@ nav:
   - Command reference: commands.md
   - Guides:
       - Rules — instruction files: rules.md
+      - Sandbox — agent hardening: sandbox.md
       - Agents: agents.md
       - Doctor: doctor.md
       - Experimental features: experimental.md
