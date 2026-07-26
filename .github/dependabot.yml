@@ -5,9 +5,41 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      # One PR for all non-breaking Go module bumps. Major bumps stay
+      # separate so they can be reviewed and tested individually.
+      go-modules:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci
+      include: scope
+    groups:
+      # codeql-action/init, /analyze and /upload-sarif are separate
+      # dependencies to Dependabot but must be pinned to the same SHA,
+      # so they always ship in a single PR — including major bumps.
+      codeql-action:
+        patterns:
+          - "github/codeql-action*"
+      # Everything else: one PR for non-breaking bumps, individual PRs
+      # for majors.
+      actions:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "github/codeql-action*"
+        update-types:
+          - minor
+          - patch
