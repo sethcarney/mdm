@@ -1,7 +1,7 @@
 version: "2"
 
-# This project uses golangci-lint's default (standard) linter set. See
-# https://golangci-lint.run/ for what "standard" enables: errcheck, govet,
+# This project uses golangci-lint's default (standard) linter set plus gocyclo.
+# See https://golangci-lint.run/ for what "standard" enables: errcheck, govet,
 # ineffassign, staticcheck, and unused. Formatting is handled by gofmt via
 # `golangci-lint fmt`.
 #
@@ -10,6 +10,14 @@ version: "2"
 
 linters:
   default: standard
+  enable:
+    # Carries over the cyclomatic-complexity gate that used to run as a
+    # standalone `gocyclo -over 16` step in the Makefile. gocyclo reports
+    # functions *above* min-complexity, so 16 here is the same threshold.
+    - gocyclo
+  settings:
+    gocyclo:
+      min-complexity: 16
 
 formatters:
   enable:
