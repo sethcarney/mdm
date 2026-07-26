@@ -57,6 +57,38 @@ go test ./internal/skill/ -run TestFindSkills
 
 Run with the debugger via `.vscode/launch.json` (Delve is configured).
 
+## Dev container
+
+`.devcontainer/` provides a reproducible environment with the exact toolchain CI
+uses — no local Go install required. Open the repo in VS Code and choose
+**Reopen in Container**, or run it headless:
+
+```bash
+npx @devcontainers/cli up --workspace-folder .
+```
+
+What it pins:
+
+| Tool | Version | Why |
+| --- | --- | --- |
+| Go | 1.26.5 | Matches the `go` directive in `go.mod` |
+| git | Debian `os-provided` | `internal/git` shells out to the git binary, so `mdm skills add` needs it |
+| golangci-lint | v2.12.2 | Same version and `.golangci.yml` config as the CI lint step |
+| govulncheck | v1.5.0 | Same version as the CI vulnerability step |
+| goreleaser | v2.15.4 | Matches `.github/workflows/release.yml` for local release dry-runs |
+
+`postCreateCommand` runs `.devcontainer/post-create.sh`, which does `go mod
+download` and installs the three tools above. The tools are built with
+`go install` under a pinned `GOTOOLCHAIN` rather than downloaded as prebuilt
+binaries — golangci-lint has to be compiled with the project's Go to parse its
+go1.26 sources, the same reason `.github/workflows/ci.yml` sets
+`GOTOOLCHAIN=go1.26.5` before installing it. The script is idempotent, so
+re-running it on a rebuild skips tools already at the pinned version.
+
+Bumping the Go version means changing it in three places: `go.mod`, the `go`
+feature in `.devcontainer/devcontainer.json`, and the `GOTOOLCHAIN` value in
+that file's `containerEnv`.
+
 ## CLI reference
 
 ```

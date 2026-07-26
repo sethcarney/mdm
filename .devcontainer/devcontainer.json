@@ -1,0 +1,58 @@
+{
+  // Reproducible development environment for mdm.
+  //
+  // Toolchain versions are pinned here and in .devcontainer/post-create.sh so a
+  // fresh container matches what CI runs (.github/workflows/ci.yml and
+  // release.yml). When bumping the Go version, change it in three places:
+  // go.mod, the "go" feature below, and the GOTOOLCHAIN value in containerEnv.
+  "name": "mdm",
+
+  "image": "mcr.microsoft.com/devcontainers/base:bookworm",
+
+  "features": {
+    // Exact Go version, matching the `go` directive in go.mod. Also installs
+    // gopls and dlv, which .vscode/launch.json expects for debugging.
+    "ghcr.io/devcontainers/features/go:1": {
+      "version": "1.26.5"
+    },
+    // mdm shells out to the git binary (internal/git) for clone/fetch, so git
+    // has to be present for `mdm skills add` to work inside the container.
+    // "os-provided" installs Debian's package instead of building from source.
+    "ghcr.io/devcontainers/features/git:1": {
+      "version": "os-provided"
+    }
+  },
+
+  "containerEnv": {
+    // Pin the toolchain so `go build`, `go test`, and every `go install` of a
+    // pinned tool use 1.26.5 rather than silently downloading another version.
+    "GOTOOLCHAIN": "go1.26.5"
+  },
+
+  // Installs golangci-lint, govulncheck, and goreleaser at their CI-pinned
+  // versions, then warms the module cache with `go mod download`.
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "golang.go"
+      ],
+      "settings": {
+        "go.toolsManagement.checkForUpdates": "off",
+        "go.lintTool": "golangci-lint",
+        "go.lintFlags": [
+          "run"
+        ],
+        "gopls": {
+          "formatting.gofumpt": false
+        },
+        "[go]": {
+          "editor.formatOnSave": true
+        }
+      }
+    }
+  },
+
+  "remoteUser": "vscode"
+}
