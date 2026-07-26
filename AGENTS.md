@@ -57,6 +57,58 @@ go test ./internal/skill/ -run TestFindSkills
 
 Run with the debugger via `.vscode/launch.json` (Delve is configured).
 
+## Dev container
+
+`.devcontainer/` provides a reproducible environment with the exact toolchain CI
+uses — no local Go install required. Open the repo in VS Code and choose
+**Reopen in Container**, or run it headless:
+
+```bash
+npx @devcontainers/cli up --workspace-folder .
+```
+
+What it pins:
+
+| Tool | Version | Why |
+| --- | --- | --- |
+| Go | derived from `go.mod` | The `go` directive is the only place the version is written |
+| git | Debian `os-provided` | `internal/git` shells out to the git binary, so `mdm skills add` needs it |
+| golangci-lint | v2.12.2 | Same version and `.golangci.yml` config as the CI lint step |
+| govulncheck | v1.5.0 | Same version as the CI vulnerability step |
+| goreleaser | v2.15.4 | Matches `.github/workflows/release.yml` for local release dry-runs |
+
+`postCreateCommand` runs `.devcontainer/post-create.sh`, which does `go mod
+download` and installs the three tools above. The tools are built with
+`go install` under a pinned `GOTOOLCHAIN` rather than downloaded as prebuilt
+binaries — golangci-lint has to be compiled with the project's Go to parse its
+go1.26 sources, the same reason `.github/workflows/ci.yml` sets
+`GOTOOLCHAIN=go1.26.5` before installing it. The script is idempotent, so
+re-running it on a rebuild skips tools already at the pinned version.
+
+### Why the Go version isn't in `devcontainer.json`
+
+Bumping `go.mod` is enough to move the container. `post-create.sh` reads the
+`go` directive and runs `go env -w GOTOOLCHAIN=go<version>`, which every `go`
+command honours in any shell. The dev container feature only installs a
+bootstrap Go, so the first `go` command in a fresh container may download the
+pinned toolchain — a one-time cost that buys an exact match with CI.
+
+The explicit pin matters: under the default `GOTOOLCHAIN=auto` the `go.mod`
+version is only a *minimum*, so a newer toolchain in the base image would
+silently win.
+
+### Drift protection
+
+`tests/devcontainer_test.go` fails the build when any pin disagrees with its
+source of truth — the `go` directive for the toolchain, and the `*_VERSION`
+assignments in `post-create.sh` for the tools. It covers the workflows, the
+`Makefile`, this file, and the dev container.
+
+Dependabot cannot do this job: it never rewrites go.mod's `go` directive, it
+does not parse `GOTOOLCHAIN` strings or `go install ...@v` lines inside workflow
+steps, and a `groups` block never spans package ecosystems — so the bumps could
+not land in one PR even in principle.
+
 ## CLI reference
 
 ```

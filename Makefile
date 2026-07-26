@@ -6,10 +6,17 @@ build:
 test:
 	go test -v ./...
 
-ci: fmt
+# Mirrors the three jobs in .github/workflows/ci.yml, at the same pinned tool
+# versions. GOTOOLCHAIN matches go.mod so the tools are built with the Go that
+# can parse this module's sources; tests/devcontainer_test.go fails the build if
+# any of these versions drift.
+#
+# This target does not reformat anything — golangci-lint reports formatting the
+# same way CI does. Use `make fmt` (or `golangci-lint fmt`) to fix it.
+ci:
 	go test ./...
-	GOTOOLCHAIN=go1.26.4 go install golang.org/x/vuln/cmd/govulncheck@v1.5.0 && govulncheck ./...
-	go install github.com/fzipp/gocyclo/cmd/gocyclo@v0.6.0 && gocyclo -over 16 .
+	GOTOOLCHAIN=go1.26.5 go install golang.org/x/vuln/cmd/govulncheck@v1.5.0 && govulncheck ./...
+	GOTOOLCHAIN=go1.26.5 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 && golangci-lint run ./...
 
 clean:
 	rm -f mdm resource_windows.syso
