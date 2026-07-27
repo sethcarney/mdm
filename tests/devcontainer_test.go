@@ -241,9 +241,10 @@ var commentLine = regexp.MustCompile(`(?m)^\s*//.*$`)
 // and the only symptom is being asked to log in again after every rebuild.
 func TestClaudeCodeCredentialsPersist(t *testing.T) {
 	var dc struct {
-		RemoteUser string                     `json:"remoteUser"`
-		Mounts     []string                   `json:"mounts"`
-		Features   map[string]json.RawMessage `json:"features"`
+		RemoteUser   string                     `json:"remoteUser"`
+		Mounts       []string                   `json:"mounts"`
+		Features     map[string]json.RawMessage `json:"features"`
+		ContainerEnv map[string]string          `json:"containerEnv"`
 	}
 
 	raw := commentLine.ReplaceAllString(readRepoFile(t, devcontainerJSON), "")
@@ -265,6 +266,17 @@ func TestClaudeCodeCredentialsPersist(t *testing.T) {
 	if dc.RemoteUser == "" {
 		t.Fatalf("%s must set remoteUser: Claude Code refuses to run as root, and the "+
 			"credential volume is mounted into that user's home", devcontainerJSON)
+	}
+
+	// Mounting the volume is only half of it. Claude Code keeps its OAuth
+	// session in ~/.claude.json, which sits beside ~/.claude rather than inside
+	// it, so a volume on the directory alone still loses the login on every
+	// rebuild. CLAUDE_CONFIG_DIR pulls .claude.json into the config directory.
+	wantConfigDir := "/home/" + dc.RemoteUser + "/.claude"
+	if got := dc.ContainerEnv["CLAUDE_CONFIG_DIR"]; got != wantConfigDir {
+		t.Errorf("%s sets CLAUDE_CONFIG_DIR=%q, want %q: without it ~/.claude.json "+
+			"stays outside the mounted volume and the OAuth session is discarded on rebuild",
+			devcontainerJSON, got, wantConfigDir)
 	}
 
 	wantTarget := "target=/home/" + dc.RemoteUser + "/.claude"

@@ -32,9 +32,11 @@
     "ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {}
   },
 
-  // Claude Code keeps its credentials, settings, and session history in
-  // ~/.claude. The container home directory is discarded on rebuild, so without
-  // this volume every rebuild means signing in again.
+  // Claude Code keeps its settings, session history, and OAuth session across
+  // two locations by default: the ~/.claude directory, and a separate
+  // ~/.claude.json file that sits *next to* it in the home directory. The
+  // container home directory is discarded on rebuild, so without this volume
+  // every rebuild means signing in again.
   //
   // A named volume rather than a bind mount: no host credential file is exposed
   // to the container. ${devcontainerId} scopes the volume to this project, so
@@ -44,6 +46,20 @@
   "mounts": [
     "source=claude-code-config-${devcontainerId},target=/home/vscode/.claude,type=volume"
   ],
+
+  "containerEnv": {
+    // Mounting a volume at ~/.claude alone is NOT enough to stay signed in:
+    // ~/.claude.json holds the OAuth session and lives outside that directory,
+    // so it lands on the container's throwaway filesystem and disappears on
+    // rebuild. The symptom is a "Claude configuration file not found" message
+    // pointing at a backup under ~/.claude/backups — the backup survives
+    // because it is inside the volume, while the file it was copied from is not.
+    //
+    // CLAUDE_CONFIG_DIR moves the whole config directory, .claude.json
+    // included, so everything lands inside the volume. It must match the mount
+    // target above; tests/devcontainer_test.go checks that too.
+    "CLAUDE_CONFIG_DIR": "/home/vscode/.claude"
+  },
 
   // Pins GOTOOLCHAIN from go.mod, installs golangci-lint, govulncheck, and
   // goreleaser at their CI-pinned versions, then warms the module cache.

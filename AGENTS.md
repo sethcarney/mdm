@@ -104,14 +104,32 @@ The container installs the Claude Code CLI, plus the VS Code extension when
 opened in VS Code or Codespaces. Run `claude` in the container terminal and
 follow the sign-in prompt.
 
-Credentials, settings, and session history live in `~/.claude`, which is
-otherwise thrown away on every rebuild. A named volume keeps it:
+Settings, session history, and the OAuth session are otherwise thrown away on
+every rebuild. A named volume plus `CLAUDE_CONFIG_DIR` keeps them:
 
 ```jsonc
 "mounts": [
   "source=claude-code-config-${devcontainerId},target=/home/vscode/.claude,type=volume"
-]
+],
+"containerEnv": {
+  "CLAUDE_CONFIG_DIR": "/home/vscode/.claude"
+}
 ```
+
+Both halves are required. Claude Code splits its state between the `~/.claude`
+directory and a separate `~/.claude.json` file that sits *beside* it, and
+`~/.claude.json` is the one holding the OAuth session. Mounting a volume on the
+directory alone leaves that file on the container's throwaway filesystem, so
+the login is gone after every rebuild. The giveaway is:
+
+```
+Claude configuration file not found at: /home/vscode/.claude.json
+A backup file exists at: /home/vscode/.claude/backups/.claude.json.backup.<ts>
+```
+
+— the backup survived because `backups/` is inside the volume; the file it was
+copied from was not. `CLAUDE_CONFIG_DIR` moves the whole config directory,
+`.claude.json` included, into the volume.
 
 `${devcontainerId}` scopes the volume to this project, so mdm does not share a
 session with every other repo on your machine. The target has to be
