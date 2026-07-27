@@ -37,6 +37,17 @@ fi
 go env -w "GOTOOLCHAIN=go${GO_VERSION}"
 echo "==> pinned GOTOOLCHAIN=go${GO_VERSION} (from go.mod)"
 
+# Claude Code's credentials live in the named volume mounted at ~/.claude (see
+# devcontainer.json). Docker creates a fresh volume owned by root when its mount
+# point does not already exist in the image, which would leave Claude Code
+# unable to write its token. Fix that once, only when it actually needs fixing —
+# a recursive chown over an established session history is not free.
+CLAUDE_DIR="${HOME}/.claude"
+if [ -d "$CLAUDE_DIR" ] && [ ! -w "$CLAUDE_DIR" ]; then
+	echo "==> taking ownership of ${CLAUDE_DIR}"
+	sudo chown -R "$(id -u):$(id -g)" "$CLAUDE_DIR"
+fi
+
 # installed_version prints the module version a Go binary on PATH was built
 # from, or nothing if the binary is missing or wasn't built by Go.
 installed_version() {
