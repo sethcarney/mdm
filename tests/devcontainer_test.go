@@ -1,6 +1,7 @@
 package tests_test
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -228,4 +229,60 @@ func TestDevContainerDerivesGoVersion(t *testing.T) {
 	if !strings.Contains(script, `go env -w "GOTOOLCHAIN=go${GO_VERSION}"`) {
 		t.Errorf("%s no longer pins GOTOOLCHAIN from the go.mod directive", postCreateScript)
 	}
+}
+
+// commentLine matches a whole-line // comment, which is the only comment style
+// used in devcontainer.json. Stripping those makes the file parseable as JSON.
+var commentLine = regexp.MustCompile(`(?m)^\s*//.*$`)
+
+// TestClaudeCodeCredentialsPersist guards the volume that keeps Claude Code
+// signed in across rebuilds. The failure mode is silent — a mount target that
+// no longer matches remoteUser's home just quietly stops persisting anything,
+// and the only symptom is being asked to log in again after every rebuild.
+func TestClaudeCodeCredentialsPersist(t *testing.T) {
+	var dc struct {
+		RemoteUser string                     `json:"remoteUser"`
+		Mounts     []string                   `json:"mounts"`
+		Features   map[string]json.RawMessage `json:"features"`
+	}
+
+	raw := commentLine.ReplaceAllString(readRepoFile(t, devcontainerJSON), "")
+	if err := json.Unmarshal([]byte(raw), &dc); err != nil {
+		t.Fatalf("parse %s: %v", devcontainerJSON, err)
+	}
+
+	hasFeature := false
+	for id := range dc.Features {
+		if strings.HasPrefix(id, "ghcr.io/anthropics/devcontainer-features/claude-code") {
+			hasFeature = true
+			break
+		}
+	}
+	if !hasFeature {
+		t.Errorf("%s no longer installs the claude-code feature", devcontainerJSON)
+	}
+
+	if dc.RemoteUser == "" {
+		t.Fatalf("%s must set remoteUser: Claude Code refuses to run as root, and the "+
+			"credential volume is mounted into that user's home", devcontainerJSON)
+	}
+
+	wantTarget := "target=/home/" + dc.RemoteUser + "/.claude"
+	for _, m := range dc.Mounts {
+		if !strings.Contains(m, "/.claude") {
+			continue
+		}
+		if !strings.Contains(m, wantTarget) {
+			t.Errorf("%s mounts the Claude Code volume at a path that is not remoteUser %q's home:\n\t%s\n\twant %s",
+				devcontainerJSON, dc.RemoteUser, m, wantTarget)
+		}
+		if !strings.Contains(m, "type=volume") {
+			t.Errorf("%s should use a named volume, not a host bind mount, so no host "+
+				"credential file is exposed to the container:\n\t%s", devcontainerJSON, m)
+		}
+		return
+	}
+
+	t.Errorf("%s has no ~/.claude mount; Claude Code credentials will be discarded on every rebuild",
+		devcontainerJSON)
 }

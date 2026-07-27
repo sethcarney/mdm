@@ -73,6 +73,7 @@ What it pins:
 | --- | --- | --- |
 | Go | derived from `go.mod` | The `go` directive is the only place the version is written |
 | git | Debian `os-provided` | `internal/git` shells out to the git binary, so `mdm skills add` needs it |
+| Claude Code | latest (feature-managed) | Runs against the same toolchain as the rest of the project |
 | golangci-lint | v2.12.2 | Same version and `.golangci.yml` config as the CI lint step |
 | govulncheck | v1.5.0 | Same version as the CI vulnerability step |
 | goreleaser | v2.15.4 | Matches `.github/workflows/release.yml` for local release dry-runs |
@@ -96,6 +97,38 @@ pinned toolchain — a one-time cost that buys an exact match with CI.
 The explicit pin matters: under the default `GOTOOLCHAIN=auto` the `go.mod`
 version is only a *minimum*, so a newer toolchain in the base image would
 silently win.
+
+### Claude Code
+
+The container installs the Claude Code CLI, plus the VS Code extension when
+opened in VS Code or Codespaces. Run `claude` in the container terminal and
+follow the sign-in prompt.
+
+Credentials, settings, and session history live in `~/.claude`, which is
+otherwise thrown away on every rebuild. A named volume keeps it:
+
+```jsonc
+"mounts": [
+  "source=claude-code-config-${devcontainerId},target=/home/vscode/.claude,type=volume"
+]
+```
+
+`${devcontainerId}` scopes the volume to this project, so mdm does not share a
+session with every other repo on your machine. The target has to be
+`remoteUser`'s home directory — `tests/devcontainer_test.go` fails the build if
+those two stop agreeing, because the symptom otherwise is just being asked to
+sign in again after every rebuild, with no error to trace.
+
+The volume is a *named volume*, not a bind mount: no credential file from the
+host is exposed to the container. Note that anything running in the container
+can still read the token in `~/.claude`, so treat it the way you would any
+other credential in your dev environment.
+
+The feature tag (`:1.0`) pins the feature's install script, not the CLI — the
+feature installs the latest Claude Code, which then auto-updates itself. To pin
+a specific release instead, install it from a Dockerfile with
+`npm install -g @anthropic-ai/claude-code@X.Y.Z` and set `DISABLE_AUTOUPDATER=1`
+in `containerEnv`.
 
 ### Drift protection
 

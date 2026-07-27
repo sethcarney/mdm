@@ -24,8 +24,26 @@
     // "os-provided" installs Debian's package instead of building from source.
     "ghcr.io/devcontainers/features/git:1": {
       "version": "os-provided"
-    }
+    },
+    // Claude Code CLI, plus the VS Code extension when opened in VS Code or
+    // Codespaces. The :1.0 tag pins the feature's install script, not the CLI
+    // release — the feature installs the latest Claude Code, which then
+    // auto-updates itself inside the container.
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {}
   },
+
+  // Claude Code keeps its credentials, settings, and session history in
+  // ~/.claude. The container home directory is discarded on rebuild, so without
+  // this volume every rebuild means signing in again.
+  //
+  // A named volume rather than a bind mount: no host credential file is exposed
+  // to the container. ${devcontainerId} scopes the volume to this project, so
+  // mdm does not share a Claude Code session with every other repo on the
+  // machine. The target must be the home directory of "remoteUser" below —
+  // tests/devcontainer_test.go checks that they agree.
+  "mounts": [
+    "source=claude-code-config-${devcontainerId},target=/home/vscode/.claude,type=volume"
+  ],
 
   // Pins GOTOOLCHAIN from go.mod, installs golangci-lint, govulncheck, and
   // goreleaser at their CI-pinned versions, then warms the module cache.
