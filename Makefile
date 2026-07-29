@@ -1,4 +1,4 @@
-.PHONY: build test clean install fmt icon syso ci
+.PHONY: build test clean install fmt icon syso ci docs-lock
 
 build:
 	go build -o mdm .
@@ -17,6 +17,14 @@ ci:
 	go test ./...
 	GOTOOLCHAIN=go1.26.5 go install golang.org/x/vuln/cmd/govulncheck@v1.5.0 && govulncheck ./...
 	GOTOOLCHAIN=go1.26.5 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2 && golangci-lint run ./...
+
+# Re-resolve docs/requirements.in into the hashed docs/requirements.txt that
+# .github/workflows/docs.yml installs with `pip install --require-hashes`.
+# The Python version matches setup-python in that workflow, so the resolution
+# is the one CI will actually get. pip-tools works too:
+#   pip-compile --generate-hashes docs/requirements.in -o docs/requirements.txt
+docs-lock:
+	uv pip compile --generate-hashes --python-version 3.12 docs/requirements.in -o docs/requirements.txt
 
 clean:
 	rm -f mdm resource_windows.syso
