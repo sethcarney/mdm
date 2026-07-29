@@ -30,8 +30,12 @@ jobs:
         with:
           python-version: "3.12"
 
+      # --require-hashes makes pip refuse anything whose artifact hash isn't
+      # recorded in the lock file, and refuse the install outright if any
+      # dependency is missing a hash or an == pin. docs/requirements.txt is
+      # generated from docs/requirements.in by `make docs-lock`.
       - name: Install dependencies
-        run: pip install -r docs/requirements.txt
+        run: pip install --require-hashes -r docs/requirements.txt
 
       - name: Build site
         run: mkdocs build --strict --site-dir site

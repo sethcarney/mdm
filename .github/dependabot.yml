@@ -21,7 +21,9 @@ updates:
   # The docs site pins its Python deps by hand, so nothing bumps them unless
   # Dependabot watches this directory — that is how mkdocs-material sat on a
   # release whose pymdown-extensions cap excluded the fix for
-  # GHSA-9xwg-3r6f-jcx2.
+  # GHSA-9xwg-3r6f-jcx2. requirements.in holds the direct deps and
+  # requirements.txt is the hashed lock beside it, which Dependabot recompiles
+  # as a pair (see the Makefile's docs-lock target for the local equivalent).
   - package-ecosystem: pip
     directory: /docs
     schedule:

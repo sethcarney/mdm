@@ -160,6 +160,31 @@ does not parse `GOTOOLCHAIN` strings or `go install ...@v` lines inside workflow
 steps, and a `groups` block never spans package ecosystems — so the bumps could
 not land in one PR even in principle.
 
+## Docs site dependencies
+
+The MkDocs build installs Python packages, so its dependencies are pinned by
+hash the same way the Actions are pinned by SHA:
+
+| File | Role |
+| --- | --- |
+| `docs/requirements.in` | Direct dependencies — the file you edit |
+| `docs/requirements.txt` | Generated lock: every transitive dependency, `==` pinned, with artifact hashes |
+| `.github/workflows/docs.yml` | Installs the lock with `pip install --require-hashes` |
+
+Regenerate the lock after editing `requirements.in`:
+
+```bash
+make docs-lock   # uv pip compile --generate-hashes, resolved for the Python the workflow uses
+```
+
+`--require-hashes` is what makes OpenSSF Scorecard count the pip command as
+pinned, and it is all-or-nothing: pip fails the whole install if any requirement
+lacks a hash or an `==` pin, so `requirements.txt` cannot be edited by hand.
+`tests/docs_requirements_test.go` enforces all of that — the flag in the
+workflow, a fully hashed lock, the lock agreeing with `requirements.in`, and the
+`--python-version` in `make docs-lock` matching `setup-python` in the workflow.
+Dependabot watches `/docs` and recompiles the pair together.
+
 ## CLI reference
 
 ```

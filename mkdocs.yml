@@ -9,6 +9,7 @@ copyright: Copyright &copy; Seth Carney — MIT Licensed
 
 # Build helper files live in docs/ but shouldn't be published.
 exclude_docs: |
+  requirements.in
   requirements.txt
 
 theme:
