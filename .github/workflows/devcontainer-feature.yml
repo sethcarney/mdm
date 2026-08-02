@@ -79,9 +79,11 @@ jobs:
       - name: Validate feature metadata
         uses: devcontainers/action@1082abd5d2bf3a11abccba70eef98df068277772 # v1.4.3
         with:
-          publish-features: "true"
-          base-path-to-features: "./src"
+          # validate-only refuses to run alongside publish-features — it is the
+          # non-publishing half of the action, and reads the features path on
+          # its own. Setting both fails with "publishing steps and validateOnly
+          # are mutually exclusive."
           validate-only: "true"
-          devcontainer-cli-version: ${{ env.DEVCONTAINER_CLI_VERSION }}
+          base-path-to-features: "./src"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
