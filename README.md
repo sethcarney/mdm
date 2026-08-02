@@ -50,6 +50,18 @@ To install to a different directory, set `INSTALL_DIR` before running:
 INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/sethcarney/mdm/main/install.sh | bash
 ```
 
+**Dev container**
+
+mdm is published as a [Dev Container Feature](https://containers.dev/implementors/features/), so a repo can declare it instead of scripting an install:
+
+```jsonc
+"features": {
+  "ghcr.io/sethcarney/mdm/mdm:1": {}
+}
+```
+
+The feature installs the release binary for the container's architecture to `/usr/local/bin/mdm`, verified against the release checksums — no Go toolchain needed in the image. Pin a release with `{"version": "1.9.1"}`, and pair it with `"postCreateCommand": "mdm skills install"` to restore the skills in `skills-lock.json` on create. See [src/mdm/README.md](src/mdm/README.md) for the full options.
+
 ## Usage
 
 ```

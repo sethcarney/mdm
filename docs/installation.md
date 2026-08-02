@@ -27,6 +27,59 @@ Set `INSTALL_DIR` before running the installer:
 INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/sethcarney/mdm/main/install.sh | bash
 ```
 
+## Dev container
+
+mdm is published as a
+[Dev Container Feature](https://containers.dev/implementors/features/), so a
+repository can declare the CLI in `devcontainer.json` instead of scripting an
+install:
+
+```jsonc
+"features": {
+  "ghcr.io/sethcarney/mdm/mdm:1": {}
+}
+```
+
+The feature detects the container's architecture, downloads the matching release
+binary, verifies it against that release's `sha256sums.txt`, and installs it to
+`/usr/local/bin/mdm` — on `PATH` for every user, and no Go toolchain required in
+the image.
+
+Pin a release when the container needs to be reproducible:
+
+```jsonc
+"features": {
+  "ghcr.io/sethcarney/mdm/mdm:1": {
+    "version": "1.9.1"
+  }
+}
+```
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `version` | string | `latest` | Release of mdm to install. `latest`, or a release tag such as `1.9.1` (the leading `v` is optional). |
+
+Features install during **image build**, before the workspace is mounted, so the
+feature only puts the binary on `PATH`. Anything that reads or writes the repo
+goes in a lifecycle command:
+
+```jsonc
+"features": {
+  "ghcr.io/sethcarney/mdm/mdm:1": {}
+},
+"postCreateCommand": "mdm skills install"
+```
+
+That restores every skill recorded in the repo's `skills-lock.json` when the
+container is created — see [`mdm skills install`](skills/install.md). `mdm rules
+link` fits the same slot.
+
+!!! note "Supported platforms"
+
+    Debian- and Ubuntu-based images on `linux/amd64` and `linux/arm64`. On an
+    Apple Silicon host the container is normally arm64 and gets the arm64
+    binary; an amd64 container under emulation gets the x64 one.
+
 ## Other methods
 
 === "Go install"
