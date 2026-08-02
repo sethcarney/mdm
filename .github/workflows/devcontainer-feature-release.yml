@@ -53,3 +53,19 @@ jobs:
           generate-docs: "false"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # The publish above writes only `dev.containers.metadata` and
+      # `com.github.package.type` onto the manifest — neither the CLI nor the
+      # action can add any others — so the package page reads "No description
+      # provided". This adds `org.opencontainers.image.description` and friends
+      # after the fact, which is the only route for an OCI artifact: there is no
+      # Dockerfile here to carry a LABEL.
+      #
+      # Runs on every push to main, not just the ones that publish a new
+      # version: the script is idempotent and exits without pushing when the
+      # annotations already match, so it is also what backfills a version that
+      # was published before this step existed.
+      - name: Annotate the published package
+        run: .github/scripts/annotate-feature-package.sh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -182,6 +182,7 @@ repos can install the CLI with one entry in their `devcontainer.json`:
 | `test/mdm/scenarios.json` + `test/mdm/*.sh` | Option, non-root, and slim-image scenarios |
 | `.github/workflows/devcontainer-feature.yml` | Builds the feature into real containers on PRs |
 | `.github/workflows/devcontainer-feature-release.yml` | Publishes to GHCR on merge to `main` |
+| `.github/scripts/annotate-feature-package.sh` | Adds the OCI annotations GHCR reads as the package description |
 
 The layout is fixed by the devcontainer CLI: it addresses a feature by its
 directory name under `src/`, looks for the tests in `test/<same name>/`, and
@@ -202,6 +203,36 @@ repo is a foot-gun waiting for the first version collision.
 **A newly published GHCR package is private.** After the first publish, set it
 to public under *Packages → mdm → Package settings → Change visibility*, or
 consumers get a 401 from the registry when their container builds.
+
+### The package description
+
+`devcontainer features publish` writes exactly two manifest annotations —
+`dev.containers.metadata` and `com.github.package.type` — and neither the CLI nor
+`devcontainers/action` takes a flag for any others. GHCR reads a package's
+caption from `org.opencontainers.image.description`, so left alone the package
+page says *No description provided*; every feature under
+`ghcr.io/devcontainers/features` has the same blank caption for the same reason.
+A feature is an OCI artifact rather than an image, so the usual fix — a `LABEL`
+in a Dockerfile — has nowhere to go.
+
+`.github/scripts/annotate-feature-package.sh` closes the gap by merging the
+annotations into the manifest after the push, and the release workflow runs it
+on every push to `main`. Two properties to keep if it is edited:
+
+- **It is idempotent.** Every value is derived from
+  `devcontainer-feature.json` — nothing from the run, no timestamp, no commit
+  sha — so a run that changes nothing pushes nothing. Re-pushing a manifest gives
+  it a new digest and orphans the old one, so an unconditional push would leave a
+  dead untagged version behind on every merge. It is also what backfills a
+  version published before the step existed.
+- **It merges into `.annotations`, never assigns it.** `dev.containers.metadata`
+  is how a resolver reads the options without downloading the tarball, and
+  `com.github.package.type` is what files the package as a dev container feature.
+  Dropping either would break consumers to fix a caption.
+
+`tests/devcontainer_feature_test.go` fails if the workflow stops running the
+script, if the script stops setting `image.description` or `image.source`, or if
+it starts repeating the description instead of reading it from the metadata.
 
 ### Why the feature only installs a binary
 

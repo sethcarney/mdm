@@ -30,6 +30,7 @@ const (
 	featureReadmePath  = "src/mdm/README.md"
 	featureTestWfPath  = ".github/workflows/devcontainer-feature.yml"
 	featureReleaseWf   = ".github/workflows/devcontainer-feature-release.yml"
+	featureAnnotateSh  = ".github/scripts/annotate-feature-package.sh"
 )
 
 type featureOption struct {
@@ -428,6 +429,69 @@ func TestFeatureWorkflowsAgree(t *testing.T) {
 		if !regexp.MustCompile(`(?m)^\s*-\s*` + regexp.QuoteMeta(id) + `\s*$`).MatchString(testWf) {
 			t.Errorf("%s: feature %q is missing from the test matrix", featureTestWfPath, id)
 		}
+	}
+}
+
+// TestFeaturePackageIsAnnotated covers the step that gives the GHCR package a
+// description. `devcontainer features publish` writes only
+// `dev.containers.metadata` and `com.github.package.type`, and a feature is an
+// OCI artifact rather than an image, so there is no Dockerfile to hold a LABEL —
+// the annotations are added to the manifest after the push instead. Nothing
+// fails if that step is dropped; the package page just quietly goes back to
+// reading "No description provided", months after anyone would connect the two.
+func TestFeaturePackageIsAnnotated(t *testing.T) {
+	root, err := findModRoot()
+	if err != nil {
+		t.Fatalf("could not locate module root: %v", err)
+	}
+
+	info, err := os.Stat(filepath.Join(root, filepath.FromSlash(featureAnnotateSh)))
+	if err != nil {
+		t.Fatalf("stat %s: %v", featureAnnotateSh, err)
+	}
+	if info.Mode().Perm()&0o111 == 0 {
+		t.Errorf("%s is not executable (mode %v); the workflow runs it directly, so "+
+			"run `chmod +x %s` and commit it", featureAnnotateSh, info.Mode().Perm(), featureAnnotateSh)
+	}
+
+	if releaseWf := readRepoFile(t, featureReleaseWf); !strings.Contains(releaseWf, featureAnnotateSh) {
+		t.Errorf("%s no longer runs %s, so published versions get no description",
+			featureReleaseWf, featureAnnotateSh)
+	}
+
+	script := readRepoFile(t, featureAnnotateSh)
+
+	// image.description is the annotation GHCR renders as the package caption —
+	// the whole reason the step exists. image.source is what links the package
+	// back to this repository.
+	for _, annotation := range []string{
+		"org.opencontainers.image.description",
+		"org.opencontainers.image.source",
+	} {
+		if !strings.Contains(script, annotation) {
+			t.Errorf("%s no longer sets %s", featureAnnotateSh, annotation)
+		}
+	}
+
+	// The description has to come out of devcontainer-feature.json rather than
+	// be repeated in the script: two copies of a sentence drift, and the copy
+	// consumers see in the feature index is the one in the JSON.
+	meta := featureIDs(t)["mdm"]
+	if strings.Contains(script, meta.Description) {
+		t.Errorf("%s hardcodes the feature description; it should read it from %s "+
+			"so the package caption and the feature index cannot disagree",
+			featureAnnotateSh, featureMetadata)
+	}
+	if !strings.Contains(script, `jq -r '.description`) {
+		t.Errorf("%s no longer reads .description from %s", featureAnnotateSh, featureMetadata)
+	}
+
+	// The SPDX identifier is the one value in the script that is spelled out
+	// rather than derived, so it is the one that can silently outlive a
+	// relicense.
+	if !strings.Contains(readRepoFile(t, "LICENSE"), "Apache License") {
+		t.Errorf("LICENSE is no longer Apache; %s annotates the package "+
+			"org.opencontainers.image.licenses=Apache-2.0 and must be updated", featureAnnotateSh)
 	}
 }
 
