@@ -1,0 +1,55 @@
+name: Publish Dev Container Feature
+
+# Publishes src/mdm as an OCI artifact to
+# ghcr.io/sethcarney/mdm/mdm:<version>, so consumers can install the CLI with a
+# single entry in devcontainer.json.
+#
+# The feature's own version lives in src/mdm/devcontainer-feature.json and is
+# independent of the mdm release tags: it tracks changes to install.sh, not to
+# the binary being installed. Bump it there and this workflow publishes the new
+# version — the action skips any version already in the registry, so a run that
+# changes nothing is a no-op.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - ".github/workflows/devcontainer-feature-release.yml"
+  workflow_dispatch:
+
+permissions: read-all
+
+env:
+  # Keep in step with .github/workflows/devcontainer-feature.yml, so the CLI
+  # that validated the feature on the PR is the one that publishes it.
+  DEVCONTAINER_CLI_VERSION: "0.88.0"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      # Push the OCI artifact to GHCR. Deliberately no `contents: write`:
+      # repo tagging is disabled below, so the job never writes to the repo.
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Publish feature to GHCR
+        uses: devcontainers/action@1082abd5d2bf3a11abccba70eef98df068277772 # v1.4.3
+        with:
+          publish-features: "true"
+          base-path-to-features: "./src"
+          devcontainer-cli-version: ${{ env.DEVCONTAINER_CLI_VERSION }}
+          # The action would otherwise push a git tag for each published
+          # feature version. This repo's release workflow fires on `v*` tags
+          # and runs GoReleaser, so no CI job here gets to create tags — the
+          # published artifact and the version in devcontainer-feature.json
+          # are the record instead.
+          disable-repo-tagging: "true"
+          # src/mdm/README.md is written by hand;
+          # tests/devcontainer_feature_test.go keeps it in step with the
+          # options in devcontainer-feature.json.
+          generate-docs: "false"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

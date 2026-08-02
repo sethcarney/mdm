@@ -1,0 +1,31 @@
+{
+    "pinned_version": {
+        "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+        "features": {
+            "mdm": {
+                "version": "1.9.1"
+            }
+        }
+    },
+    "pinned_version_with_v_prefix": {
+        "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+        "features": {
+            "mdm": {
+                "version": "v1.9.1"
+            }
+        }
+    },
+    "non_root_user": {
+        "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+        "remoteUser": "vscode",
+        "features": {
+            "mdm": {}
+        }
+    },
+    "debian_slim": {
+        "image": "debian:bookworm-slim",
+        "features": {
+            "mdm": {}
+        }
+    }
+}

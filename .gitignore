@@ -1,5 +1,8 @@
-mdm
-mdm.exe
+# The build output of `make build`. Anchored to the repo root: an unanchored
+# `mdm` also matches every directory named mdm, which silently swallowed
+# src/mdm and test/mdm (the dev container feature and its tests).
+/mdm
+/mdm.exe
 resource_windows.syso
 .agents
 .claude
