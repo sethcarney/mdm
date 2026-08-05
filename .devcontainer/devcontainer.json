@@ -10,7 +10,15 @@
   // drifts from go.mod or from the CI workflows.
   "name": "mdm",
 
-  "image": "mcr.microsoft.com/devcontainers/base:bookworm",
+  // The Dockerfile only wraps mcr.microsoft.com/devcontainers/base:bookworm to
+  // pre-install the packages the features would otherwise apt-get during their
+  // own install steps. That matters under podman: a buildah bug
+  // (containers/buildah#6503) breaks /tmp's permissions in the layer each
+  // feature step commits, so any feature after the first that runs
+  // `apt-get update` fails GPG verification. See the Dockerfile for details.
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
 
   "features": {
     // Bootstrap Go — the exact build toolchain is pinned from go.mod in
@@ -31,6 +39,15 @@
     // auto-updates itself inside the container.
     "ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {}
   },
+
+  // claude-code is the one feature that still needs apt during install (it
+  // sets up the nodesource repo when node is absent), so it must run in the
+  // first feature step — the only one that sees an intact /tmp under the
+  // podman bug described above. The other features find their packages
+  // pre-installed by the Dockerfile and never touch apt.
+  "overrideFeatureInstallOrder": [
+    "ghcr.io/anthropics/devcontainer-features/claude-code"
+  ],
 
   // Claude Code keeps its settings, session history, and OAuth session across
   // two locations by default: the ~/.claude directory, and a separate

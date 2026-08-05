@@ -98,6 +98,28 @@ The explicit pin matters: under the default `GOTOOLCHAIN=auto` the `go.mod`
 version is only a *minimum*, so a newer toolchain in the base image would
 silently win.
 
+### Podman compatibility
+
+The container builds under docker and podman, but podman needs three
+accommodations for a buildah bug
+([containers/buildah#6503](https://github.com/containers/buildah/issues/6503)):
+every feature installs in a build step that bind-mounts under `/tmp`, and the
+layer that step commits loses `/tmp`'s `1777` mode. The first feature step sees
+a healthy `/tmp`; in any later one, `apt-get update` fails with *"Couldn't
+create temporary file /tmp/apt.conf.* for passing config to apt-key"* and every
+repository reports as unsigned.
+
+1. `.devcontainer/Dockerfile` pre-installs the packages the features would
+   apt-get, so their install scripts skip apt entirely.
+2. `overrideFeatureInstallOrder` puts claude-code — the one feature that still
+   needs apt, for the nodesource repo — in the first feature step.
+3. `post-create.sh` restores `/tmp` to `1777` at runtime, because the final
+   image inherits the broken mode from the last feature step.
+
+All three are no-ops under docker. If a feature update starts failing this way
+again under podman, its install script has begun apt-getting something new —
+add the package to the Dockerfile list.
+
 ### Claude Code
 
 The container installs the Claude Code CLI, plus the VS Code extension when

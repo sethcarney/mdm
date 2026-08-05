@@ -21,6 +21,16 @@ GORELEASER_VERSION="v2.15.4"
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
+# Under podman, a buildah bug (containers/buildah#6503) drops /tmp's 1777 mode
+# in the layer committed by every feature-install build step, and the container
+# inherits whatever the last feature left behind. With /tmp at 0755, non-root
+# processes cannot create temp files — go build's work directories included —
+# so repair it before anything below needs one. No-op under docker.
+if [ "$(stat -c '%a' /tmp)" != "1777" ]; then
+	echo "==> restoring /tmp permissions (1777)"
+	sudo chmod 1777 /tmp
+fi
+
 # The Go version has exactly one source of truth: the `go` directive in go.mod.
 #
 # The pin has to be explicit, because under the default GOTOOLCHAIN=auto the
