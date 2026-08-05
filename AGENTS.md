@@ -86,6 +86,33 @@ go1.26 sources, the same reason `.github/workflows/ci.yml` sets
 `GOTOOLCHAIN=go1.26.5` before installing it. The script is idempotent, so
 re-running it on a rebuild skips tools already at the pinned version.
 
+### Why there is a `Dockerfile`
+
+`devcontainer.json` uses `build.dockerfile` rather than a plain `image` key, and
+the Dockerfile is a single `RUN` on top of the same
+`mcr.microsoft.com/devcontainers/base:bookworm`. It exists to keep the feature
+install chain working under **rootless podman**.
+
+apt drops privileges to the unprivileged `_apt` user before invoking gpgv, then
+writes a temp config into `/tmp`. Under podman that write gets refused part-way
+through the build, and every apt-using feature installed after that point fails
+with:
+
+```
+Couldn't create temporary file /tmp/apt.conf.XXXXXX for passing config to apt-key
+E: The repository 'http://deb.debian.org/debian bookworm InRelease' is not signed.
+ERROR: Feature "Go" (ghcr.io/devcontainers/features/go) failed to install!
+```
+
+The "not signed" line is misleading — apt never got as far as checking a
+signature. Setting `APT::Sandbox::User "root"` stops apt from dropping
+privileges, so `/tmp`'s mode stops mattering for the rest of the build. That is
+deliberately stronger than a `chmod 1777 /tmp`, which only holds until the next
+feature disturbs `/tmp` and so makes the build depend on feature install order.
+
+Under Docker the layer is inert; the sandbox was never failing there. Drop the
+Dockerfile and restore the `image` key if podman support stops being needed.
+
 ### Why the Go version isn't in `devcontainer.json`
 
 Bumping `go.mod` is enough to move the container. `post-create.sh` reads the

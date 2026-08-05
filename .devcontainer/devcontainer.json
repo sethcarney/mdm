@@ -10,7 +10,13 @@
   // drifts from go.mod or from the CI workflows.
   "name": "mdm",
 
-  "image": "mcr.microsoft.com/devcontainers/base:bookworm",
+  // The base image is mcr.microsoft.com/devcontainers/base:bookworm, wrapped in
+  // a one-layer Dockerfile so apt survives the feature install chain under
+  // rootless podman. See .devcontainer/Dockerfile for why that layer exists;
+  // under Docker it is a no-op.
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
 
   "features": {
     // Bootstrap Go — the exact build toolchain is pinned from go.mod in
