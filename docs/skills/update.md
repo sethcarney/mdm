@@ -12,6 +12,20 @@ Re-fetches each skill from its recorded source and ref in the lock file. Updated
 
 Alias: `check`
 
+## One fetch per repository
+
+Skills that share a source repository and upgrade to the same tag are re-fetched together, in a single `mdm skills add` pass. A repository holding 28 skills is cloned **once** per update run, not once per skill — which matters most for private repos, where every clone is also a credential handshake.
+
+The same batching applies to the up-to-date check: `git ls-remote --tags` runs once per repository for the whole run and the result is reused across every skill installed from it, in both scopes.
+
+```
+Checking alpha...
+  → upgrading v1.2.0 → v1.3.0
+Checking bravo...
+  → upgrading v1.2.0 → v1.3.0
+Fetching 2 skills from acme/skills#v1.3.0 in one pass...
+```
+
 ## Up-to-date detection
 
 | Source | Method |
