@@ -113,8 +113,11 @@ repository reports as unsigned.
    apt-get, so their install scripts skip apt entirely.
 2. `overrideFeatureInstallOrder` puts claude-code — the one feature that still
    needs apt, for the nodesource repo — in the first feature step.
-3. `post-create.sh` restores `/tmp` to `1777` at runtime, because the final
-   image inherits the broken mode from the last feature step.
+3. `runArgs` mounts a tmpfs over `/tmp`, because the final image inherits the
+   broken mode from the last feature step, and VS Code's attach sequence needs
+   a writable `/tmp` (`mkdir -p /tmp/.X11-unix`) before any lifecycle hook
+   could repair it. `post-create.sh` keeps a `chmod 1777` fallback for hosts
+   that ignore `runArgs`.
 
 All three are no-ops under docker. If a feature update starts failing this way
 again under podman, its install script has begun apt-getting something new —

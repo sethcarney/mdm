@@ -22,10 +22,11 @@ GORELEASER_VERSION="v2.15.4"
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 # Under podman, a buildah bug (containers/buildah#6503) drops /tmp's 1777 mode
-# in the layer committed by every feature-install build step, and the container
-# inherits whatever the last feature left behind. With /tmp at 0755, non-root
-# processes cannot create temp files — go build's work directories included —
-# so repair it before anything below needs one. No-op under docker.
+# in the layer committed by every feature-install build step. The tmpfs in
+# devcontainer.json's runArgs normally masks that, so this is a fallback for
+# hosts that ignore runArgs: with /tmp at 0755, non-root processes cannot
+# create temp files — go build's work directories included — so repair it
+# before anything below needs one. No-op under docker or behind the tmpfs.
 if [ "$(stat -c '%a' /tmp)" != "1777" ]; then
 	echo "==> restoring /tmp permissions (1777)"
 	sudo chmod 1777 /tmp

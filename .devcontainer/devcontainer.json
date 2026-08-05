@@ -49,6 +49,18 @@
     "ghcr.io/anthropics/devcontainer-features/claude-code"
   ],
 
+  // The build-time accommodations above still leave the *final* image with the
+  // broken /tmp under podman — the last feature step commits it. That bites
+  // before any lifecycle hook can repair it: VS Code's attach sequence runs
+  // `mkdir -p /tmp/.X11-unix` as the remote user and aborts when it fails.
+  // Mounting a fresh tmpfs over /tmp sidesteps the image's mode entirely, on
+  // both engines (and matches what most Linux distros do for /tmp anyway).
+  // exec is required because `go build`/`go test` run binaries out of their
+  // /tmp work directories.
+  "runArgs": [
+    "--tmpfs", "/tmp:rw,exec,nosuid,nodev,mode=1777,size=2g"
+  ],
+
   // Claude Code keeps its settings, session history, and OAuth session across
   // two locations by default: the ~/.claude directory, and a separate
   // ~/.claude.json file that sits *next to* it in the home directory. The
