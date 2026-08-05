@@ -169,13 +169,17 @@ func enrichAllResults(results []auditSkillResult, showProgress bool) {
 	if showProgress {
 		fmt.Printf("\n%sAuditing %d skill(s)...%s\n\n", ansiDim, len(results), ansiReset)
 	}
+	// Read the lock and build the tag cache once for the whole run: skills that
+	// share a repository then cost a single `git ls-remote` between them.
+	globalLock := lock.ReadSkillLock()
+	tags := newRemoteTagCache()
 	for i := range results {
 		r := &results[i]
 		var spin *ui.Spinner
 		if showProgress {
 			spin = ui.NewSpinner(fmt.Sprintf("Checking %s...", r.Name))
 		}
-		enrichResult(r)
+		enrichResult(r, globalLock, tags)
 		if spin != nil {
 			spin.Stop("")
 		}
@@ -235,7 +239,7 @@ func auditEntryFromLocal(name string, entry lock.LocalSkillLockEntry) auditSkill
 
 // ── Enrichment ─────────────────────────────────────────────
 
-func enrichResult(r *auditSkillResult) {
+func enrichResult(r *auditSkillResult, globalLock lock.SkillLockFile, tags *remoteTagCache) {
 	if !isGitSourceType(r.SourceType) {
 		vlog(verboseFlag, "%s: source type %q has no remote to check, marking local", r.Name, r.SourceType)
 		r.SyncStatus = "local"
@@ -245,9 +249,8 @@ func enrichResult(r *auditSkillResult) {
 
 	// Sync status: compare installed tag against latest remote tag
 	if r.Scope == "global" {
-		globalLock := lock.ReadSkillLock()
 		if e, ok := globalLock.Skills[r.Name]; ok {
-			upToDate, _, err := checkSkillUpToDate(e)
+			upToDate, _, err := checkRemoteTagUpToDate(source.ParseSource(e.Source).URL, e.Ref, tags)
 			if err != nil {
 				r.SyncStatus = "unknown"
 			} else if upToDate {
