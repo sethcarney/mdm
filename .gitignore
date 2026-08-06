@@ -10,3 +10,7 @@ resource_windows.syso
 # MkDocs build output
 /site
 .venv
+
+# `npm ci` output for the pinned devcontainer CLI (package.json is build
+# tooling only; nothing in the mdm binary comes from npm).
+/node_modules

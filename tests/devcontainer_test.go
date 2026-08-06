@@ -231,6 +231,44 @@ func TestDevContainerDerivesGoVersion(t *testing.T) {
 	}
 }
 
+// dockerfileFrom matches a FROM line, capturing the tag and the digest
+// separately so each can be checked on its own.
+var dockerfileFrom = regexp.MustCompile(`(?m)^FROM\s+(\S+?)(?::([^\s@]+))?(?:@(sha256:[0-9a-f]{64}))?[ \t]*$`)
+
+// TestDevContainerBaseImageIsPinnedByDigest guards the base image pin. A tag
+// alone is not a pin: `bookworm` moves whenever upstream rebuilds it, so two
+// builds of the same commit can start from different images, and the second one
+// is the one that fails. Nothing here breaks when the digest is dropped — the
+// container still builds, just not reproducibly — so this test is the only
+// thing standing between a tag-only FROM and a silently unpinned base.
+func TestDevContainerBaseImageIsPinnedByDigest(t *testing.T) {
+	const dockerfile = ".devcontainer/Dockerfile"
+
+	matches := dockerfileFrom.FindAllStringSubmatch(readRepoFile(t, dockerfile), -1)
+	if len(matches) == 0 {
+		t.Fatalf("%s has no FROM line", dockerfile)
+	}
+
+	for _, m := range matches {
+		image, tag, digest := m[1], m[2], m[3]
+		ref := image
+		if tag != "" {
+			ref += ":" + tag
+		}
+		if digest == "" {
+			t.Errorf("%s: FROM %s is pinned by tag only; resolve it with\n"+
+				"\tdocker buildx imagetools inspect %s\n"+
+				"and write it as %s@sha256:<digest>", dockerfile, ref, ref, ref)
+		}
+		// The tag is redundant to the daemon but not to the reader: it is the
+		// only thing saying which Debian release the digest points at.
+		if tag == "" {
+			t.Errorf("%s: FROM %s carries a digest but no tag; keep both so the pin "+
+				"stays readable", dockerfile, image)
+		}
+	}
+}
+
 // commentLine matches a whole-line // comment, which is the only comment style
 // used in devcontainer.json. Stripping those makes the file parseable as JSON.
 var commentLine = regexp.MustCompile(`(?m)^\s*//.*$`)

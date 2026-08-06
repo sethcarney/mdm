@@ -59,6 +59,14 @@ jobs:
     # determine which binary release to download; a SHA reference breaks that
     # lookup. This is a documented upstream requirement:
     # https://github.com/slsa-framework/slsa-github-generator#referencing-slsa-builders-and-generators
+    #
+    # OpenSSF Scorecard reports this line as an unpinned third-party action. It
+    # is the only unpinned dependency left in the repo and it is accepted, not
+    # outstanding: the only way to clear it is to swap the generator for
+    # actions/attest-build-provenance, which drops the release from SLSA Build
+    # Level 3 to Level 2 and invalidates the slsa-verifier instructions in
+    # SECURITY.md. Scorecard has no suppression syntax, so this comment is the
+    # record. See "Dependency pinning" in AGENTS.md.
     uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
     with:
       base64-subjects: "${{ needs.release.outputs.hashes }}"

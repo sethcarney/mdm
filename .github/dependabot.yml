@@ -40,6 +40,33 @@ updates:
           - minor
           - patch
 
+  # The root package.json exists only to pin the devcontainer CLI that
+  # .github/workflows/devcontainer-feature.yml installs with `npm ci`. Nothing
+  # in the mdm binary comes from npm — this entry keeps that one pin, and the
+  # integrity hashes in package-lock.json beside it, from going stale.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci
+      include: scope
+
+  # The dev container base image is pinned by digest, which is a moving target
+  # in a way a tag is not: the digest goes stale the moment upstream rebuilds
+  # bookworm, and nothing in a build fails when it does. Only Dependabot's
+  # docker ecosystem rewrites a `FROM image:tag@sha256:...` pin, and only when
+  # it is pointed at the directory holding the Dockerfile.
+  - package-ecosystem: docker
+    directory: /.devcontainer
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci
+      include: scope
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
