@@ -241,6 +241,22 @@ It also installs to `/usr/local/bin` rather than `~/.local/bin` (where
 and only a shared path is on `PATH` for whichever `remoteUser` the image ends up
 running as.
 
+### Why /usr/local/bin holds a symlink
+
+The binary itself goes to `/usr/local/lib/mdm/mdm`, chowned to `_REMOTE_USER`,
+and `/usr/local/bin/mdm` is a symlink to it. That is what makes `mdm upgrade`
+work inside the container: replacing a running executable means unlinking and
+recreating it, which is a permission on the *directory*, not on the file — so a
+binary sitting directly in a root-owned `/usr/local/bin` cannot be upgraded by
+the container's user at all, leaving an image rebuild as the only route to a
+new release. Chowning `/usr/local/bin` itself would hand that user every other
+feature's binaries too, hence the private directory.
+
+`tests/devcontainer_feature_test.go` pins both halves, and
+`test/mdm/non_root_user.sh` performs the unlink-and-replace as the non-root
+user, because nothing else fails when this regresses — the container still
+builds, and only upgrades break, in someone else's container.
+
 ### Drift protection
 
 `tests/devcontainer_feature_test.go` ties the feature to the release it

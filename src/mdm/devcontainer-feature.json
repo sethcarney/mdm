@@ -1,6 +1,6 @@
 {
     "id": "mdm",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "name": "mdm (markdown management CLI)",
     "documentationURL": "https://github.com/sethcarney/mdm/tree/main/src/mdm",
     "licenseURL": "https://github.com/sethcarney/mdm/blob/main/LICENSE",

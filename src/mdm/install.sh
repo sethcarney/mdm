@@ -23,9 +23,20 @@ REPO="sethcarney/mdm"
 
 # /usr/local/bin rather than ~/.local/bin: it is on PATH for every user in a
 # container, so the feature works regardless of which remoteUser the image ends
-# up running as, and root-owned it stays out of reach of the dev user.
+# up running as.
 INSTALL_DIR="/usr/local/bin"
 BINARY_NAME="mdm"
+
+# The binary itself lives here, and INSTALL_DIR gets a symlink to it.
+#
+# Replacing a running executable means unlinking and recreating it, which is a
+# permission on the *directory*, not on the file — so with the binary directly
+# in a root-owned /usr/local/bin, `mdm upgrade` fails for the remoteUser with
+# "permission denied" and rebuilding the image is the only way to take a new
+# release. This directory is handed to that user below, which makes the upgrade
+# work without giving them write access to /usr/local/bin, where every other
+# feature's binaries live.
+BINARY_DIR="/usr/local/lib/mdm"
 
 # Name of the checksum manifest GoReleaser attaches to each release.
 CHECKSUM_FILE="sha256sums.txt"
@@ -159,9 +170,27 @@ fi
 
 # --- install ----------------------------------------------------------------
 
-install -m 0755 "${WORK_DIR}/${ASSET}" "${INSTALL_DIR}/${BINARY_NAME}"
+mkdir -p "$BINARY_DIR"
+install -m 0755 "${WORK_DIR}/${ASSET}" "${BINARY_DIR}/${BINARY_NAME}"
+ln -sfn "${BINARY_DIR}/${BINARY_NAME}" "${INSTALL_DIR}/${BINARY_NAME}"
 
-echo "==> installed ${TAG} to ${INSTALL_DIR}/${BINARY_NAME}"
+# _REMOTE_USER is the user the container will actually run as, set by the
+# devcontainer CLI for every feature install. Hand it the directory so it can
+# replace the binary — the symlink in /usr/local/bin stays root-owned, so the
+# only thing this user gains is the ability to upgrade its own mdm.
+#
+# Running this script by hand there is no _REMOTE_USER, and a base image can
+# name a remoteUser that does not exist yet; either way the directory stays
+# root-owned and upgrades need sudo, exactly as before.
+OWNER="${_REMOTE_USER:-}"
+if [ -n "$OWNER" ] && id "$OWNER" >/dev/null 2>&1; then
+	chown -R "${OWNER}:$(id -gn "$OWNER")" "$BINARY_DIR"
+	echo "==> ${BINARY_DIR} handed to ${OWNER} so 'mdm upgrade' works in the container"
+else
+	echo "==> no remote user to own ${BINARY_DIR}; 'mdm upgrade' will need sudo"
+fi
+
+echo "==> installed ${TAG} to ${INSTALL_DIR}/${BINARY_NAME} -> ${BINARY_DIR}/${BINARY_NAME}"
 
 # Also a smoke test: a binary built for the wrong architecture, or truncated
 # despite matching its checksum, fails here instead of at first use.

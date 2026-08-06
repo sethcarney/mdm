@@ -239,6 +239,48 @@ func TestFeatureInstallsToASharedPath(t *testing.T) {
 	}
 }
 
+// TestFeatureBinaryIsOwnedByTheRemoteUser locks in the other half of the
+// install location. /usr/local/bin holds a symlink; the binary itself sits in
+// its own directory, chowned to _REMOTE_USER.
+//
+// That indirection exists for one reason: replacing a running executable means
+// unlinking and recreating it, which is a permission on the directory. Put the
+// binary straight into a root-owned /usr/local/bin and `mdm upgrade` fails for
+// the remoteUser with "permission denied", leaving an image rebuild as the only
+// route to a new release. Nothing in a container build fails when this
+// regresses — the feature installs fine and only upgrades break, months later
+// and in someone else's container.
+func TestFeatureBinaryIsOwnedByTheRemoteUser(t *testing.T) {
+	script := readRepoFile(t, featureInstallPath)
+
+	binaryDir := shellAssign(t, script, "BINARY_DIR")
+	if binaryDir == shellAssign(t, script, "INSTALL_DIR") {
+		t.Errorf("%s puts the binary in %s itself; it belongs in its own "+
+			"directory so the remoteUser can own it without owning every "+
+			"other feature's binaries", featureInstallPath, binaryDir)
+	}
+
+	if !strings.Contains(script, `chown -R "${OWNER}:$(id -gn "$OWNER")" "$BINARY_DIR"`) {
+		t.Errorf("%s no longer hands %s to the remote user, so `mdm upgrade` "+
+			"inside the container is back to permission denied",
+			featureInstallPath, binaryDir)
+	}
+	if !strings.Contains(script, `OWNER="${_REMOTE_USER:-}"`) {
+		t.Errorf("%s no longer reads _REMOTE_USER, the only thing that names "+
+			"the user the container will run as", featureInstallPath)
+	}
+	if !strings.Contains(script, `ln -sfn "${BINARY_DIR}/${BINARY_NAME}" "${INSTALL_DIR}/${BINARY_NAME}"`) {
+		t.Errorf("%s no longer links the binary onto PATH", featureInstallPath)
+	}
+
+	// The scenario that would catch a regression at container-build time.
+	nonRoot := readRepoFile(t, "test/mdm/non_root_user.sh")
+	if !strings.Contains(nonRoot, "non-root user can replace the binary") {
+		t.Error("test/mdm/non_root_user.sh no longer exercises replacing the " +
+			"binary as the remote user, which is what `mdm upgrade` does")
+	}
+}
+
 // --- tests, scenarios, and the scripts behind them --------------------------
 
 // TestEveryFeatureHasTests keeps a new feature from shipping untested: the
