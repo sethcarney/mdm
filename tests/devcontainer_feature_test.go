@@ -425,37 +425,134 @@ func TestFeatureScriptsAreExecutable(t *testing.T) {
 
 // --- workflows and docs -----------------------------------------------------
 
-var cliVersionPin = regexp.MustCompile(`DEVCONTAINER_CLI_VERSION:\s*"([^"]+)"`)
+const (
+	packageJSON = "package.json"
+	packageLock = "package-lock.json"
+	cliPackage  = "@devcontainers/cli"
+)
+
+// yamlComment matches a whole-line # comment. Workflow prose routinely quotes
+// the commands a test forbids, so a substring check over the raw file would
+// fail on the comment explaining the rule.
+var yamlComment = regexp.MustCompile(`(?m)^\s*#.*$`)
+
+func stripYAMLComments(s string) string { return yamlComment.ReplaceAllString(s, "") }
+
+// pinnedCLIVersion reads the devcontainer CLI version out of package.json,
+// which is the single source of truth for it: the test workflow installs it
+// with `npm ci`, and the publish workflow reads this same field at run time.
+func pinnedCLIVersion(t *testing.T) string {
+	t.Helper()
+
+	var pkg struct {
+		DevDependencies map[string]string `json:"devDependencies"`
+	}
+	if err := json.Unmarshal([]byte(readRepoFile(t, packageJSON)), &pkg); err != nil {
+		t.Fatalf("parse %s: %v", packageJSON, err)
+	}
+
+	v := pkg.DevDependencies[cliPackage]
+	if v == "" {
+		t.Fatalf("%s no longer pins %s", packageJSON, cliPackage)
+	}
+	if !semverPattern.MatchString(v) {
+		t.Errorf("%s pins %s as %q; it must be an exact major.minor.patch version — "+
+			"a range (^, ~, *) lets a CLI release change what CI runs", packageJSON, cliPackage, v)
+	}
+	return v
+}
+
+// TestDevcontainerCLIIsHashPinned covers the reason package.json exists at all.
+// `npm install -g @devcontainers/cli@<version>` pins a version but not an
+// artifact: a republish under the same version changes what CI executes, and
+// OpenSSF Scorecard reads any such command as an unpinned dependency. `npm ci`
+// against a lockfile carrying integrity hashes is the pinned form, and it only
+// stays pinned while the lock agrees with the manifest — `npm ci` hard-fails
+// otherwise, which is a red build for a reason nobody would guess from here.
+func TestDevcontainerCLIIsHashPinned(t *testing.T) {
+	want := pinnedCLIVersion(t)
+
+	var lock struct {
+		Packages map[string]struct {
+			Version   string `json:"version"`
+			Integrity string `json:"integrity"`
+		} `json:"packages"`
+	}
+	if err := json.Unmarshal([]byte(readRepoFile(t, packageLock)), &lock); err != nil {
+		t.Fatalf("parse %s: %v", packageLock, err)
+	}
+
+	entry, ok := lock.Packages["node_modules/"+cliPackage]
+	switch {
+	case !ok:
+		t.Fatalf("%s has no entry for %s; run `npm install --package-lock-only` and commit it",
+			packageLock, cliPackage)
+	case entry.Version != want:
+		t.Errorf("%s locks %s@%s but %s pins %s — run `npm install --package-lock-only`",
+			packageLock, cliPackage, entry.Version, packageJSON, want)
+	case entry.Integrity == "":
+		t.Errorf("%s locks %s with no integrity hash, which is the whole point of the lock",
+			packageLock, cliPackage)
+	}
+
+	// A global install would reintroduce the unpinned download the lock exists
+	// to replace, and would silently win over the locked copy on PATH. Comments
+	// are stripped first — the header of that workflow explains the rule by
+	// quoting the command it forbids.
+	testWf := stripYAMLComments(readRepoFile(t, featureTestWfPath))
+	if strings.Contains(testWf, "npm install -g") {
+		t.Errorf("%s installs the devcontainer CLI globally again; use `npm ci` plus "+
+			"`npx devcontainer` so the run is pinned to %s", featureTestWfPath, packageLock)
+	}
+	if !strings.Contains(testWf, "npm ci") {
+		t.Errorf("%s no longer runs `npm ci`, so nothing installs the pinned CLI", featureTestWfPath)
+	}
+	if !strings.Contains(testWf, "npx devcontainer features test") {
+		t.Errorf("%s no longer runs `npx devcontainer features test`; a bare "+
+			"`devcontainer` resolves to whatever the runner image happens to ship",
+			featureTestWfPath)
+	}
+
+	// A bump to the pin has to run the tests the pin governs. Without these
+	// paths the workflow never triggers on Dependabot's npm PR, and the CLI
+	// version CI publishes with is one nothing ever exercised.
+	for _, path := range []string{packageJSON, packageLock} {
+		if !strings.Contains(testWf, `"`+path+`"`) {
+			t.Errorf("%s does not list %s in its paths filter, so a bump to the "+
+				"devcontainer CLI would merge without these tests running",
+				featureTestWfPath, path)
+		}
+	}
+}
 
 // TestFeatureWorkflowsAgree keeps the workflow that tests a feature and the one
 // that publishes it pointed at the same features, with the same CLI.
 func TestFeatureWorkflowsAgree(t *testing.T) {
+	pinned := pinnedCLIVersion(t)
 	testWf := readRepoFile(t, featureTestWfPath)
 	releaseWf := readRepoFile(t, featureReleaseWf)
 
-	testPin := cliVersionPin.FindStringSubmatch(testWf)
-	releasePin := cliVersionPin.FindStringSubmatch(releaseWf)
-	switch {
-	case testPin == nil:
-		t.Errorf("%s no longer pins DEVCONTAINER_CLI_VERSION", featureTestWfPath)
-	case releasePin == nil:
-		t.Errorf("%s no longer pins DEVCONTAINER_CLI_VERSION", featureReleaseWf)
-	case testPin[1] != releasePin[1]:
-		t.Errorf("devcontainer CLI pins disagree: %s uses %s, %s uses %s — the CLI that "+
-			"validated the feature should be the one that publishes it",
-			featureTestWfPath, testPin[1], featureReleaseWf, releasePin[1])
+	// The publish workflow must derive the CLI version from package.json rather
+	// than repeat it, so the CLI that validated the feature on the PR is
+	// necessarily the one that publishes it.
+	if strings.Contains(releaseWf, "DEVCONTAINER_CLI_VERSION") {
+		t.Errorf("%s pins the devcontainer CLI version itself; it must read the pin from %s "+
+			"so the two workflows cannot drift apart", featureReleaseWf, packageJSON)
+	}
+	if !strings.Contains(releaseWf, `require('./package.json').devDependencies['`+cliPackage+`']`) {
+		t.Errorf("%s no longer reads the CLI version out of %s", featureReleaseWf, packageJSON)
+	}
+	if !strings.Contains(releaseWf, "devcontainer-cli-version: ${{ steps.cli.outputs.version }}") {
+		t.Errorf("%s does not pass the version it read to devcontainers/action", featureReleaseWf)
 	}
 
 	// The docs tell people to install that same CLI to reproduce a CI failure
 	// locally, so a stale copy sends them to a version CI never ran.
-	if testPin != nil {
-		npmPin := regexp.MustCompile(`@devcontainers/cli@([0-9][^\s"']*)`)
-		for _, rel := range []string{featureReadmePath, "AGENTS.md"} {
-			for _, m := range npmPin.FindAllStringSubmatch(readRepoFile(t, rel), -1) {
-				if m[1] != testPin[1] {
-					t.Errorf("%s installs @devcontainers/cli@%s but %s pins %s",
-						rel, m[1], featureTestWfPath, testPin[1])
-				}
+	npmPin := regexp.MustCompile(regexp.QuoteMeta(cliPackage) + `@([0-9][^\s"']*)`)
+	for _, rel := range []string{featureReadmePath, "AGENTS.md"} {
+		for _, m := range npmPin.FindAllStringSubmatch(readRepoFile(t, rel), -1) {
+			if m[1] != pinned {
+				t.Errorf("%s installs %s@%s but %s pins %s", rel, cliPackage, m[1], packageJSON, pinned)
 			}
 		}
 	}

@@ -20,11 +20,6 @@ on:
 
 permissions: read-all
 
-env:
-  # Keep in step with .github/workflows/devcontainer-feature.yml, so the CLI
-  # that validated the feature on the PR is the one that publishes it.
-  DEVCONTAINER_CLI_VERSION: "0.88.0"
-
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -35,12 +30,21 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # package.json is the single source of truth for the devcontainer CLI
+      # version, so the CLI that validated the feature on the PR
+      # (devcontainer-feature.yml runs `npm ci`) is the one that publishes it.
+      # Reading it here rather than repeating the number removes the drift.
+      - name: Read pinned devcontainer CLI version
+        id: cli
+        run: |
+          echo "version=$(node -p "require('./package.json').devDependencies['@devcontainers/cli']")" >> "$GITHUB_OUTPUT"
+
       - name: Publish feature to GHCR
         uses: devcontainers/action@1082abd5d2bf3a11abccba70eef98df068277772 # v1.4.3
         with:
           publish-features: "true"
           base-path-to-features: "./src"
-          devcontainer-cli-version: ${{ env.DEVCONTAINER_CLI_VERSION }}
+          devcontainer-cli-version: ${{ steps.cli.outputs.version }}
           # The action would otherwise push a git tag for each published
           # feature version. This repo's release workflow fires on `v*` tags
           # and runs GoReleaser, so no CI job here gets to create tags — the

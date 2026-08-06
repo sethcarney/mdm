@@ -18,7 +18,13 @@
 # any feature bind mount exists — keeps the feature steps apt-free. Under
 # docker this is a harmless no-op (the packages would have been installed
 # anyway). post-create.sh repairs /tmp's mode for the running container.
-FROM mcr.microsoft.com/devcontainers/base:bookworm
+# Pinned by digest, not just by tag: `bookworm` is a moving target, so a tag-only
+# reference means two builds of the same commit can start from different base
+# images. The tag is kept alongside it for readability — the digest is what
+# actually resolves. Dependabot's docker ecosystem watches this directory and
+# bumps the pair together; tests/devcontainer_test.go fails the build if the
+# digest is ever dropped.
+FROM mcr.microsoft.com/devcontainers/base:bookworm@sha256:73d85a96694a2cadca1ba3fcb5721f2312a64f1d571dd86f6c77e10a708931dc
 
 # The full check_packages list of ghcr.io/devcontainers/features/go. git is
 # already in the base image, but it is load-bearing twice: the go feature
