@@ -32,7 +32,8 @@ Pin a release when you want the container to be reproducible:
 
 The feature downloads the `mdm-linux-x64` or `mdm-linux-arm64` binary for the
 selected release, verifies it against that release's `sha256sums.txt`, and
-installs it to `/usr/local/bin/mdm`.
+installs it to `/usr/local/lib/mdm/mdm`, with a symlink at `/usr/local/bin/mdm`
+so it is on `PATH`.
 
 - **No Go toolchain required.** The release binary is statically linked, so the
   base image needs nothing beyond `curl` and a CA bundle — which the feature
@@ -41,8 +42,30 @@ installs it to `/usr/local/bin/mdm`.
   works on an x86_64 host and on an Apple Silicon host running an arm64
   container.
 - **`/usr/local/bin`, not `~/.local/bin`.** It is on `PATH` for every user, so
-  the binary works whatever `remoteUser` the image ends up running as, and is
-  not writable by that user.
+  the binary works whatever `remoteUser` the image ends up running as.
+- **The binary is owned by `remoteUser`**, so `mdm upgrade` works inside the
+  container — see below.
+
+## Upgrading inside the container
+
+`/usr/local/bin/mdm` is a symlink; the binary behind it lives in
+`/usr/local/lib/mdm`, and that directory is chowned to the container's
+`remoteUser`. Replacing a running executable means unlinking and recreating it,
+which is a permission on the *directory* — so with the binary sitting directly
+in a root-owned `/usr/local/bin`, `mdm upgrade` fails with `permission denied`
+and rebuilding the image is the only way to take a new release.
+
+Giving the user its own directory instead of write access to `/usr/local/bin`
+keeps every other feature's binaries out of reach. The symlink stays
+root-owned, so the only thing the user can replace is its own mdm.
+
+Two things to know about upgrading this way:
+
+- **It lasts as long as the container does.** A rebuild reinstalls whatever the
+  `version` option says, so bump that (or leave it at `latest`) to make a new
+  release stick.
+- **`mdm uninstall` leaves the symlink behind**, dangling, since it removes the
+  binary it resolves to. `sudo rm /usr/local/bin/mdm` finishes the job.
 
 ## Running mdm against your repository
 

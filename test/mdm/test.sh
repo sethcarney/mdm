@@ -27,6 +27,11 @@ check "mdm --help works" bash -c "mdm --help"
 check "installed to /usr/local/bin" bash -c "test -x /usr/local/bin/mdm"
 check "resolves to /usr/local/bin/mdm" bash -c '[ "$(command -v mdm)" = /usr/local/bin/mdm ]'
 
+# What is on PATH is a symlink to a binary in its own directory, which the
+# remoteUser owns — that is what lets `mdm upgrade` replace it from inside the
+# container. See non_root_user.sh, which exercises the replacement.
+check "binary lives in /usr/local/lib/mdm" bash -c '[ "$(readlink -f /usr/local/bin/mdm)" = /usr/local/lib/mdm/mdm ]'
+
 # Exercises a real subcommand rather than just the version banner.
 check "lists agents" bash -c "mdm agents list"
 
