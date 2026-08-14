@@ -1,6 +1,12 @@
 package blob
 
-import "testing"
+import (
+	"encoding/json"
+	"io"
+	"net/http"
+	"strings"
+	"testing"
+)
 
 func TestSkillDirPrefix(t *testing.T) {
 	cases := map[string]string{
@@ -65,6 +71,100 @@ func TestAPIErrorMessage(t *testing.T) {
 	}
 	if got := (&APIError{Status: 404}).Error(); got == "" {
 		t.Error("status APIError should have a non-empty message")
+	}
+}
+
+// fakeTransport serves canned bodies keyed by full URL; unknown URLs get 404.
+type fakeTransport struct {
+	responses map[string]string
+}
+
+func (f *fakeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	body, ok := f.responses[req.URL.String()]
+	status := http.StatusOK
+	if !ok {
+		status = http.StatusNotFound
+	}
+	return &http.Response{
+		StatusCode: status,
+		Body:       io.NopCloser(strings.NewReader(body)),
+		Header:     http.Header{},
+	}, nil
+}
+
+// installFakeRepo points http.DefaultClient at a fake GitHub repo whose tree
+// holds the given SKILL.md paths, each served with the given frontmatter name.
+func installFakeRepo(t *testing.T, skillsByPath map[string]string) {
+	t.Helper()
+	type treeEntryJSON struct {
+		Path string `json:"path"`
+		Type string `json:"type"`
+	}
+	var entries []treeEntryJSON
+	responses := map[string]string{}
+	for path, name := range skillsByPath {
+		entries = append(entries, treeEntryJSON{Path: path, Type: "blob"})
+		responses["https://raw.githubusercontent.com/owner/repo/main/"+path] =
+			"---\nname: " + name + "\ndescription: a skill\n---\nbody\n"
+	}
+	treeBody, err := json.Marshal(map[string]interface{}{"sha": "abc", "tree": entries})
+	if err != nil {
+		t.Fatal(err)
+	}
+	responses["https://api.github.com/repos/owner/repo/git/trees/main?recursive=1"] = string(treeBody)
+
+	orig := http.DefaultClient.Transport
+	http.DefaultClient.Transport = &fakeTransport{responses: responses}
+	t.Cleanup(func() { http.DefaultClient.Transport = orig })
+}
+
+// A repo that contains installed copies of its skills committed under agent
+// directories (.claude/skills/, .cursor/skills/, …) must offer each skill once,
+// not once per copy — that's what the git-clone discovery path already does.
+func TestTryBlobInstallDeduplicatesSkillCopies(t *testing.T) {
+	installFakeRepo(t, map[string]string{
+		".claude/skills/foo/SKILL.md": "foo",
+		".cursor/skills/foo/SKILL.md": "foo",
+		"skills/foo/SKILL.md":         "foo",
+		".claude/skills/bar/SKILL.md": "bar",
+		"skills/bar/SKILL.md":         "bar",
+	})
+
+	result, err := TryBlobInstall("owner/repo", InstallOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result == nil {
+		t.Fatal("expected skills, got nil result")
+	}
+	if len(result.Skills) != 2 {
+		var names []string
+		for _, s := range result.Skills {
+			names = append(names, s.Name)
+		}
+		t.Fatalf("expected 2 deduplicated skills, got %d: %v", len(result.Skills), names)
+	}
+	seen := map[string]bool{}
+	for _, s := range result.Skills {
+		if seen[s.Name] {
+			t.Fatalf("skill %q returned more than once", s.Name)
+		}
+		seen[s.Name] = true
+	}
+}
+
+func TestFetchRemoteSkillListDeduplicatesSkillCopies(t *testing.T) {
+	installFakeRepo(t, map[string]string{
+		".claude/skills/foo/SKILL.md": "foo",
+		"skills/foo/SKILL.md":         "foo",
+	})
+
+	metas, err := FetchRemoteSkillList("owner/repo", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(metas) != 1 || metas[0].Name != "foo" {
+		t.Fatalf("expected single deduplicated skill \"foo\", got %+v", metas)
 	}
 }
 

@@ -171,7 +171,9 @@ func filterWellKnownByName(skills []*registry.WellKnownSkill, filters []string) 
 }
 
 func selectWellKnownSkills(filtered []*registry.WellKnownSkill, opts AddOptions) ([]*registry.WellKnownSkill, bool) {
-	if (len(opts.Skills) > 0 && opts.Skills[0] == "*") || len(filtered) == 1 || opts.Yes {
+	// Explicitly named skills (or "*") were already filtered — install them
+	// without re-prompting, matching the clone path's selectSkills behavior.
+	if len(opts.Skills) > 0 || len(filtered) == 1 || opts.Yes {
 		return filtered, true
 	}
 	var front, rest []*registry.WellKnownSkill
@@ -499,10 +501,18 @@ func runAddGitOrHub(parsed source.ParsedSource, opts AddOptions, cwd, sourceInpu
 
 // ─── Blob fast install ─────────────────────────────────────────────────────────
 
+// blobSkillNameMatches mirrors skillNameMatches for blob skills, additionally
+// accepting the skills.sh slug form. Lock files record sanitizeName(name), so
+// the sanitized comparison is what lets `mdm skills install` re-match skills
+// whose display names contain characters both normalizations treat differently.
+func blobSkillNameMatches(skillName, filter string) bool {
+	return skillNameMatches(skillName, filter) || strings.EqualFold(blob.ToSkillSlug(skillName), filter)
+}
+
 func filterBlobSkillsByName(skills []*blob.BlobSkill, filter string) []*blob.BlobSkill {
 	var keep []*blob.BlobSkill
 	for _, s := range skills {
-		if strings.EqualFold(s.Name, filter) || strings.EqualFold(blob.ToSkillSlug(s.Name), filter) {
+		if blobSkillNameMatches(s.Name, filter) {
 			keep = append(keep, s)
 		}
 	}
@@ -513,7 +523,7 @@ func filterBlobSkillsByNames(skills []*blob.BlobSkill, names []string) []*blob.B
 	var keep []*blob.BlobSkill
 	for _, s := range skills {
 		for _, name := range names {
-			if strings.EqualFold(s.Name, name) || strings.EqualFold(blob.ToSkillSlug(s.Name), name) {
+			if blobSkillNameMatches(s.Name, name) {
 				keep = append(keep, s)
 				break
 			}
@@ -523,7 +533,11 @@ func filterBlobSkillsByNames(skills []*blob.BlobSkill, names []string) []*blob.B
 }
 
 func selectBlobSkills(skills []*blob.BlobSkill, opts AddOptions) ([]*blob.BlobSkill, bool) {
-	if (len(opts.Skills) > 0 && opts.Skills[0] == "*") || opts.Yes || len(skills) == 1 {
+	// Explicitly named skills (or "*") were already filtered by runAddBlob —
+	// install them without re-prompting, matching the clone path's selectSkills.
+	// This keeps `mdm skills install` / `mdm skills update` non-interactive on
+	// the API fast path.
+	if len(opts.Skills) > 0 || opts.Yes || len(skills) == 1 {
 		return skills, true
 	}
 	options := make([]ui.UIOption, len(skills))

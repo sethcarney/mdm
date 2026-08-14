@@ -4,6 +4,10 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/sethcarney/mdm/internal/blob"
+	"github.com/sethcarney/mdm/internal/registry"
+	"github.com/sethcarney/mdm/internal/skill"
 )
 
 func TestToRelSourcePath(t *testing.T) {
@@ -50,6 +54,53 @@ func TestToRelSourcePath(t *testing.T) {
 				t.Errorf("toRelSourcePath(%q, %q) = %q, want %q", tc.absPath, tc.cwd, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestBlobSkillNameMatches(t *testing.T) {
+	cases := []struct {
+		skillName, filter string
+		want              bool
+	}{
+		// Exact and case-insensitive matches.
+		{"my-skill", "my-skill", true},
+		{"My-Skill", "my-skill", true},
+		// Lock files store sanitizeName(name); dots survive sanitizeName but
+		// not ToSkillSlug, so both normalizations must be accepted.
+		{"Web v1.2 Tool", "web-v1.2-tool", true}, // sanitizeName form
+		{"Web v1.2 Tool", "web-v12-tool", true},  // ToSkillSlug form
+		{"my-skill", "other-skill", false},
+	}
+	for _, c := range cases {
+		if got := blobSkillNameMatches(c.skillName, c.filter); got != c.want {
+			t.Errorf("blobSkillNameMatches(%q, %q) = %v, want %v", c.skillName, c.filter, got, c.want)
+		}
+	}
+}
+
+// Explicitly named skills must install without an interactive picker on the
+// blob fast path, matching the clone path — this is what keeps
+// `mdm skills install` and `mdm skills update` non-interactive.
+func TestSelectBlobSkillsExplicitNamesSkipPrompt(t *testing.T) {
+	skills := []*blob.BlobSkill{
+		{Skill: skill.Skill{Name: "foo"}},
+		{Skill: skill.Skill{Name: "bar"}},
+	}
+	// No TTY in tests: reaching the picker would return not-ok and fail this.
+	selected, ok := selectBlobSkills(skills, AddOptions{Skills: []string{"foo", "bar"}})
+	if !ok || len(selected) != 2 {
+		t.Fatalf("expected 2 skills without prompting, got ok=%v len=%d", ok, len(selected))
+	}
+}
+
+func TestSelectWellKnownSkillsExplicitNamesSkipPrompt(t *testing.T) {
+	skills := []*registry.WellKnownSkill{
+		{Name: "foo", InstallName: "foo"},
+		{Name: "bar", InstallName: "bar"},
+	}
+	selected, ok := selectWellKnownSkills(skills, AddOptions{Skills: []string{"foo", "bar"}})
+	if !ok || len(selected) != 2 {
+		t.Fatalf("expected 2 skills without prompting, got ok=%v len=%d", ok, len(selected))
 	}
 }
 
