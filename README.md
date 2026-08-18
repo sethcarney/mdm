@@ -70,6 +70,7 @@ mdm rules status           Show the state of all agent instruction files
 mdm rules unlink           Remove symlinks created by mdm rules link
 
 mdm skills add <package>   Add a skill from GitHub or URL
+mdm skills cherry-pick     Fork third-party skills into ./skills as your own
 mdm skills remove          Remove installed skills
 mdm skills list            List installed skills
 mdm skills find [query]    Search the registry

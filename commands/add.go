@@ -805,6 +805,13 @@ func filterSkillsByName(skills []*skill.Skill, names []string) []*skill.Skill {
 }
 
 func selectSkills(skills []*skill.Skill, opts AddOptions) ([]*skill.Skill, bool) {
+	return selectSkillsWithPrompt(skills, opts, "Which skills would you like to install?")
+}
+
+// selectSkillsWithPrompt is selectSkills with a caller-supplied picker heading,
+// so commands that do something other than install (cherry-pick) can reuse the
+// same filtering and preselection rules without lying about what happens next.
+func selectSkillsWithPrompt(skills []*skill.Skill, opts AddOptions, message string) ([]*skill.Skill, bool) {
 	if (len(opts.Skills) > 0 && opts.Skills[0] == "*") || opts.Yes || len(skills) == 1 {
 		if len(opts.Skills) > 0 && opts.Skills[0] != "*" {
 			filtered := filterSkillsByName(skills, opts.Skills)
@@ -831,7 +838,7 @@ func selectSkills(skills []*skill.Skill, opts AddOptions) ([]*skill.Skill, bool)
 	for i, s := range skills {
 		options[i] = ui.UIOption{Label: s.Name, Value: sanitizeName(s.Name), Hint: s.Description}
 	}
-	indices, ok := ui.UiSearchMultiselect("Which skills would you like to install?", options, nil, initSel, true)
+	indices, ok := ui.UiSearchMultiselect(message, options, nil, initSel, true)
 	if !ok {
 		fmt.Println("Cancelled.")
 		return nil, false

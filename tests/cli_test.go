@@ -1,6 +1,7 @@
 package tests_test
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -392,4 +393,214 @@ func hiddenSkillFixturePath(t *testing.T) string {
 		t.Fatalf("finding module root: %v", err)
 	}
 	return filepath.Join(root, "tests", "testdata", "hidden-skill")
+}
+
+// ─── cherry-pick ───────────────────────────────────────────────────────────────
+
+func TestCherryPickHelp(t *testing.T) {
+	stdout, _, code := runMdm(t, "skills", "cherry-pick", "--help")
+	if code != 0 {
+		t.Fatalf("mdm skills cherry-pick --help exited %d", code)
+	}
+	for _, expected := range []string{"--as", "--dir", "--status", "--force", "ATTRIBUTION.md"} {
+		if !strings.Contains(stdout, expected) {
+			t.Errorf("expected cherry-pick help to contain %q, got: %q", expected, stdout)
+		}
+	}
+}
+
+// writeUpstreamFixture builds a source repository with one licensed skill and
+// returns its root.
+func writeUpstreamFixture(t *testing.T, root string) string {
+	t.Helper()
+	files := map[string]string{
+		"LICENSE":                            "MIT License\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\n",
+		"skills/code-review/SKILL.md":        "---\nname: code-review\ndescription: Review a diff for bugs.\n---\n\n# Code review\n",
+		"skills/code-review/references/x.md": "reference material\n",
+	}
+	for rel, contents := range files {
+		path := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatalf("creating %s: %v", rel, err)
+		}
+		if err := os.WriteFile(path, []byte(contents), 0644); err != nil {
+			t.Fatalf("writing %s: %v", rel, err)
+		}
+	}
+	return root
+}
+
+// cherryPickFixture is an isolated project directory plus an upstream source to
+// fork from, with an environment that touches neither the real HOME nor the
+// user's global lock file.
+type cherryPickFixture struct {
+	project  string
+	upstream string
+	env      []string
+}
+
+func setupCherryPick(t *testing.T) cherryPickFixture {
+	t.Helper()
+	parentDir := t.TempDir()
+	if realParent, err := filepath.EvalSymlinks(parentDir); err == nil {
+		parentDir = realParent
+	}
+	projectDir := filepath.Join(parentDir, "project")
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		t.Fatalf("creating project dir: %v", err)
+	}
+	return cherryPickFixture{
+		project:  projectDir,
+		upstream: writeUpstreamFixture(t, filepath.Join(parentDir, "upstream")),
+		env: []string{
+			"PATH=" + os.Getenv("PATH"),
+			"HOME=" + parentDir,
+			"XDG_STATE_HOME=" + filepath.Join(parentDir, "state"),
+		},
+	}
+}
+
+func (f cherryPickFixture) run(t *testing.T, args ...string) (string, string, int) {
+	t.Helper()
+	return runMdmInDir(t, f.project, f.env, args...)
+}
+
+// fork runs the standard cherry-pick used by these tests and returns the fork dir.
+func (f cherryPickFixture) fork(t *testing.T, extra ...string) string {
+	t.Helper()
+	args := append([]string{"skills", "cherry-pick", f.upstream, "-s", "code-review", "--as", "our-review", "-y"}, extra...)
+	stdout, stderr, code := f.run(t, args...)
+	if code != 0 {
+		t.Fatalf("cherry-pick exited %d: stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	return filepath.Join(f.project, "skills", "our-review")
+}
+
+type forkOrigin struct {
+	Skill    string `json:"skill"`
+	Upstream struct {
+		Name        string `json:"name"`
+		SourceType  string `json:"sourceType"`
+		SkillPath   string `json:"skillPath"`
+		License     string `json:"license"`
+		LicenseFile string `json:"licenseFile"`
+	} `json:"upstream"`
+	ContentHash string `json:"contentHash"`
+}
+
+func readForkOrigin(t *testing.T, forkDir string) forkOrigin {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(forkDir, ".mdm-origin.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var origin forkOrigin
+	if err := json.Unmarshal(data, &origin); err != nil {
+		t.Fatalf("origin file is not valid JSON: %v", err)
+	}
+	return origin
+}
+
+func TestCherryPickVendorsTheSkill(t *testing.T) {
+	f := setupCherryPick(t)
+	forkDir := f.fork(t)
+
+	for _, rel := range []string{"SKILL.md", "references/x.md", "ATTRIBUTION.md", "LICENSE.upstream", ".mdm-origin.json"} {
+		if _, err := os.Stat(filepath.Join(forkDir, filepath.FromSlash(rel))); err != nil {
+			t.Errorf("expected %s in the fork: %v", rel, err)
+		}
+	}
+
+	skillMd, err := os.ReadFile(filepath.Join(forkDir, "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(skillMd), "name: our-review") {
+		t.Errorf("expected the fork to carry its new name, got: %q", skillMd)
+	}
+}
+
+func TestCherryPickRecordsProvenance(t *testing.T) {
+	f := setupCherryPick(t)
+	origin := readForkOrigin(t, f.fork(t))
+
+	if origin.Skill != "our-review" || origin.Upstream.Name != "code-review" {
+		t.Errorf("unexpected origin record: %+v", origin)
+	}
+	if origin.Upstream.SourceType != "local" || origin.Upstream.SkillPath != "skills/code-review/SKILL.md" {
+		t.Errorf("unexpected upstream location: %+v", origin)
+	}
+	if origin.Upstream.License != "MIT" || origin.Upstream.LicenseFile != "LICENSE.upstream" {
+		t.Errorf("expected the repository license to be recorded and copied: %+v", origin)
+	}
+	if !strings.HasPrefix(origin.ContentHash, "sha256:") {
+		t.Errorf("expected a content hash, got %q", origin.ContentHash)
+	}
+}
+
+// The fork is the project's own file now: nothing may replace it silently.
+func TestCherryPickRefusesToOverwriteWithoutForce(t *testing.T) {
+	f := setupCherryPick(t)
+	forkDir := f.fork(t)
+	edited := "---\nname: our-review\ndescription: ours now.\n---\nour own paragraph\n"
+	if err := os.WriteFile(filepath.Join(forkDir, "SKILL.md"), []byte(edited), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, stderr, code := f.run(t, "skills", "cherry-pick", f.upstream, "-s", "code-review", "--as", "our-review", "-y")
+	if code == 0 {
+		t.Errorf("expected a second cherry-pick to fail without --force: stdout=%q stderr=%q", stdout, stderr)
+	}
+	if !strings.Contains(stdout+stderr, "--force") {
+		t.Errorf("expected the refusal to mention --force, got stdout=%q stderr=%q", stdout, stderr)
+	}
+	got, err := os.ReadFile(filepath.Join(forkDir, "SKILL.md"))
+	if err != nil || string(got) != edited {
+		t.Errorf("the refused overwrite must leave local edits intact, got %q (%v)", got, err)
+	}
+
+	if _, _, code = f.run(t, "skills", "cherry-pick", f.upstream, "-s", "code-review", "--as", "our-review", "-y", "--force"); code != 0 {
+		t.Errorf("expected --force to replace the fork, exited %d", code)
+	}
+}
+
+func TestCherryPickStatusReportsEdits(t *testing.T) {
+	f := setupCherryPick(t)
+	forkDir := f.fork(t)
+
+	stdout, stderr, code := f.run(t, "skills", "cherry-pick", "--status")
+	if code != 0 {
+		t.Fatalf("cherry-pick --status exited %d: %q %q", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "our-review") || !strings.Contains(stdout, "unmodified") {
+		t.Errorf("expected status to list the untouched fork, got: %q", stdout)
+	}
+
+	skillMd := filepath.Join(forkDir, "SKILL.md")
+	data, err := os.ReadFile(skillMd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(skillMd, append(data, []byte("\nour own paragraph\n")...), 0644); err != nil {
+		t.Fatal(err)
+	}
+	stdout, _, _ = f.run(t, "skills", "cherry-pick", "--status")
+	if !strings.Contains(stdout, "edited since fork") {
+		t.Errorf("expected status to notice the edit, got: %q", stdout)
+	}
+}
+
+func TestCherryPickDryRunWritesNothing(t *testing.T) {
+	f := setupCherryPick(t)
+
+	stdout, stderr, code := f.run(t, "skills", "cherry-pick", f.upstream, "-s", "*", "-y", "--dry-run")
+	if code != 0 {
+		t.Fatalf("dry run exited %d: stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "Dry run") {
+		t.Errorf("expected a dry-run notice, got: %q", stdout)
+	}
+	if _, err := os.Stat(filepath.Join(f.project, "skills")); !os.IsNotExist(err) {
+		t.Error("a dry run must not create the forks directory")
+	}
 }

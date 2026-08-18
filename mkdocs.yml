@@ -106,6 +106,7 @@ nav:
       - Uninstall: uninstall.md
   - Skills commands:
       - add: skills/add.md
+      - cherry-pick: skills/cherry-pick.md
       - find: skills/find.md
       - list: skills/list.md
       - remove: skills/remove.md

@@ -29,6 +29,7 @@ func buildSkillsCmd(ver string) *cobra.Command {
 
 %sExamples:%s
   mdm skills add vercel-labs/agent-skills
+  mdm skills cherry-pick vercel-labs/agent-skills
   mdm skills find typescript
   mdm skills list
   mdm skills remove my-skill
@@ -41,6 +42,7 @@ func buildSkillsCmd(ver string) *cobra.Command {
 
 	cmd.AddCommand(
 		buildAddCmd(ver),
+		buildCherryPickCmd(ver),
 		buildRemoveCmd(),
 		buildListCmd(),
 		buildFindCmd(),
