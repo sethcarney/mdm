@@ -101,6 +101,18 @@ mdm skills add vercel-labs/agent-skills --list
 mdm skills add owner/repo -a claude-code cursor
 ```
 
+## Installing vs forking
+
+`add` keeps a skill in sync with its author: `mdm skills update` re-fetches it
+from the recorded source and ref, replacing whatever is on disk. That makes it
+the wrong command for a skill you intend to *change* — your edits are gone at
+the next update.
+
+To take a third-party skill and build on it, use
+[`mdm skills cherry-pick`](cherry-pick.md) instead. It copies the skill into
+`./skills` as part of your own repository, records where it came from and under
+what license, and is deliberately left alone by `mdm skills update`.
+
 ## Security audit
 
 When installing public skills from GitHub, mdm checks the skills.sh registry for any known security advisories. If an advisory is found you are shown the details and asked to confirm before proceeding. Pass `--skip-audit` to disable this check.
