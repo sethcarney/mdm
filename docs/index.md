@@ -85,6 +85,16 @@ solves exactly that.
 
     [:octicons-arrow-right-24: skills add](skills/add.md)
 
+-   :material-source-fork:{ .lg .middle } __Fork and make it yours__
+
+    ---
+
+    `mdm skills cherry-pick` vendors a third-party skill into your own repo to
+    edit and ship, with its source, ref, commit, and license recorded alongside
+    it. Updates never overwrite a fork.
+
+    [:octicons-arrow-right-24: skills cherry-pick](skills/cherry-pick.md)
+
 -   :material-lock-check:{ .lg .middle } __Security-focused by default__
 
     ---
@@ -120,7 +130,7 @@ solves exactly that.
 
 ```text
 mdm
-├── skills        Manage skills for AI agents (add · remove · list · find · update · audit · init · install · sync)
+├── skills        Manage skills for AI agents (add · cherry-pick · remove · list · find · update · audit · init · install · sync)
 ├── rules         Link/unlink agent instruction files to a single AGENTS.md
 ├── agents        Manage the configured agent list used as default install targets
 ├── knowledge     [experimental] Manage OKF knowledge bundles

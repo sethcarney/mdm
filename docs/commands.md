@@ -23,6 +23,7 @@ mdm
 │   └── install                             # Write completion into your shell rc
 ├── skills                                  # Manage skills for AI agents
 │   ├── add <package>                       # Install a skill (alias: a)
+│   ├── cherry-pick <source>                # Fork skills into ./skills as your own (aliases: fork, cp)
 │   ├── remove [skills...]                  # Uninstall skills (aliases: rm, r)
 │   ├── list                                # List installed skills (alias: ls)
 │   ├── find [query]                        # Search skills.sh and install interactively (aliases: search, f, s)
@@ -87,6 +88,31 @@ git URL with a `#ref`, a local path, or a well-known alias (`vercel`,
 | `--allow-hidden-chars` | Allow markdown files with hidden Unicode characters |
 
 [:octicons-arrow-right-24: Details](skills/add.md)
+
+### `skills cherry-pick` <small>aliases: `fork`, `cp`</small>
+
+Fork third-party skills into `./skills` so you can edit them and ship them as
+your own. Unlike `skills add`, nothing updates them afterwards — the copy is
+yours, with its provenance and license recorded inside it.
+
+```bash
+mdm skills cherry-pick <source>
+```
+
+| Flag | Description |
+| --- | --- |
+| `--dir`, `-d` | Directory to fork into (default `skills`) |
+| `--skill`, `-s` | Skill names to fork (repeatable; `*` for all) |
+| `--as` | Rename the forked skill (single skill only) |
+| `--install`, `-i` | Also install the forks into your agents |
+| `--agent`, `-a` | Agents to install the forks to (implies `--install`) |
+| `--force` | Replace an existing fork, discarding local edits |
+| `--dry-run` | Show what would be forked without writing anything |
+| `--list`, `-l` | List the skills available at the source without forking |
+| `--status` | Show this project's forks and whether they have been edited |
+| `--no-attribution` | Do not write `ATTRIBUTION.md` |
+
+[:octicons-arrow-right-24: Details](skills/cherry-pick.md)
 
 ### `skills remove` <small>aliases: `rm`, `r`</small>
 

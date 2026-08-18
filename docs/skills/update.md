@@ -33,6 +33,11 @@ Fetching 2 skills from acme/skills#v1.3.0 in one pass...
 | GitHub / GitLab / other git | Semver tag comparison via `git ls-remote --tags` — no clone needed |
 | Local path | Always skipped — local skills stay in sync with the source code they live alongside |
 
+Skills [cherry-picked](cherry-pick.md) into `./skills` are recorded as local
+sources for exactly this reason: they are your files, and `mdm skills update`
+will never re-fetch over your edits. To take a newer upstream version of a fork,
+cherry-pick it again with `--force` (or into a new name with `--as`).
+
 Remote skills must be pinned to a semver tag (e.g. `#v1.2.0`) to use automatic update detection. mdm fetches all tags from the remote, finds the highest stable release, and upgrades if a newer one exists. Skills installed from a branch (e.g. `main`) are skipped with a prompt to pin to a tag instead.
 
 Pre-release tags (e.g. `v2.0.0-beta.1`) are ignored by the update check. You can install a pre-release explicitly with `mdm skills add <source>#v2.0.0-beta.1`, but the update command only promotes to stable releases.

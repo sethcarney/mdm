@@ -39,6 +39,26 @@ chore/go1.26.3-toolchain
 docs/pre-pr-checklist
 ```
 
+This applies to AI agents too, and overrides whatever branch a coding-agent
+harness assigns. Claude Code on the web, for example, opens each session on a
+generated `claude/<description>-<id>` branch; move the work to a branch named by
+the convention above before pushing, rather than pushing the generated name.
+
+### Commit authorship
+
+Commits are authored by the person running the tool, not by the tool. An agent
+that finds a bot identity in `git config user.name` / `user.email` — some
+hosted environments preset one — should commit under the repository owner's
+identity instead, matching what `git log` already shows:
+
+```
+Seth <48496865+sethcarney@users.noreply.github.com>
+```
+
+Agent involvement is recorded in the message, not the author field: keep the
+`Co-Authored-By:` trailer on anything an agent wrote. Authorship says who owns
+the change; the trailer says who helped write it, and both should be true.
+
 ## Commands
 
 All commands run from the repo root:
@@ -359,6 +379,7 @@ mdm
 │   └── install                             # Write completion into shell rc file
 ├── skills                                  # Manage skills for AI agents
 │   ├── add <package>                       # Install a skill from GitHub, GitLab, URL, or local path (alias: a)
+│   ├── cherry-pick <source>                # Fork skills into ./skills as your own, with provenance (aliases: fork, cp)
 │   ├── remove [skills...]                  # Uninstall skills (aliases: rm, r)
 │   ├── list                                # List installed skills (alias: ls)
 │   ├── find [query]                        # Search the skills.sh registry and install interactively (aliases: search, f, s)
@@ -398,6 +419,7 @@ mdm
 │   ├── skills.go        # `mdm skills` group; registers all skills subcommands
 │   ├── add.go           # `mdm skills add`: install flow; multi-agent/skill prompts, scope selection
 │   ├── installer.go     # Shared install logic: clone → discover → copy → lock; sanitizeName, isPathSafe, skillNameMatches
+│   ├── cherrypick.go    # `mdm skills cherry-pick`: vendor third-party skills into ./skills; license resolution, --status
 │   ├── remove.go        # `mdm skills remove`
 │   ├── list.go          # `mdm skills list`
 │   ├── find.go          # `mdm skills find`: queries skills.sh search API
@@ -417,6 +439,7 @@ mdm
 ├── internal/
     ├── agent/           # AllAgents registry (45+ agents); skill dir paths; detection
     ├── skill/           # Skill discovery (SKILL.md parsing); frontmatter; filtering
+    ├── fork/            # Cherry-pick provenance: .mdm-origin.json, ATTRIBUTION.md, content hashing, license detection
     ├── okf/             # [EXPERIMENTAL] OKF bundle parsing, discovery, validation, content hashing
     ├── experimental/    # Named feature gates (MDM_EXPERIMENTAL env var + persisted opt-ins)
     ├── source/          # URL/path parsing into ParsedSource (GitHub, GitLab, local, well-known)
@@ -439,6 +462,20 @@ mdm
 4. User is prompted for which agents to install to (or `--agent` flag)
 5. Skill dirs are copied into each agent's skills directory
 6. `lock/` records the installation in `skills-lock.json`
+
+`mdm skills cherry-pick` → `cherrypick.go` reuses steps 1–3, then diverges:
+
+4. The skill directory is copied into `./skills/<name>` — the project's own tree,
+   not an agent's
+5. `fork/` writes `.mdm-origin.json` (source, ref, commit, license, content hash)
+   and `ATTRIBUTION.md`, and the upstream license text is copied in when the
+   skill directory did not carry its own
+6. Nothing is recorded upstream-wards: with `--install` the lock entry points at
+   `./skills`, a *local* source, and `planUpdates` skips local sources — which is
+   what keeps `mdm skills update` from overwriting a fork
+
+That last point is the whole design. A fork is a file in the user's repository;
+anything that re-fetches it would defeat the purpose of having forked it.
 
 ### Adding a new agent
 

@@ -450,3 +450,70 @@ func DiscoverNodeModuleSkills(cwd string) []NodeModuleSkill {
 
 // Needed for the DiscoverNodeModuleSkills return
 var _ fs.DirEntry // suppress unused import warning
+
+// SetFrontmatterName rewrites the top-level `name:` value in a SKILL.md's YAML
+// frontmatter and returns the new document. Only that one line is touched — the
+// rest of the file, including comments, key order, and line endings, is
+// preserved byte for byte, because re-marshalling the YAML would silently
+// rewrite skills that are about to become someone's own source of truth.
+// Reports false when there is no frontmatter or no top-level name key.
+func SetFrontmatterName(raw, name string) (string, bool) {
+	const delim = "---"
+	if !strings.HasPrefix(raw, delim) {
+		return raw, false
+	}
+	offset := len(delim)
+	rest := raw[offset:]
+	switch {
+	case strings.HasPrefix(rest, "\r\n"):
+		offset += 2
+	case strings.HasPrefix(rest, "\n"):
+		offset++
+	default:
+		return raw, false
+	}
+	rest = raw[offset:]
+
+	end := strings.Index(rest, "\n---")
+	if end < 0 {
+		return raw, false
+	}
+
+	pos := offset
+	for _, line := range strings.Split(rest[:end], "\n") {
+		if isTopLevelNameLine(strings.TrimSuffix(line, "\r")) {
+			replacement := "name: " + quoteYAMLScalar(name)
+			if strings.HasSuffix(line, "\r") {
+				replacement += "\r"
+			}
+			return raw[:pos] + replacement + raw[pos+len(line):], true
+		}
+		pos += len(line) + 1
+	}
+	return raw, false
+}
+
+func isTopLevelNameLine(line string) bool {
+	if !strings.HasPrefix(line, "name:") {
+		return false
+	}
+	value := line[len("name:"):]
+	return value == "" || strings.HasPrefix(value, " ") || strings.HasPrefix(value, "\t")
+}
+
+// quoteYAMLScalar returns name as a YAML scalar, quoting it unless it is plainly
+// safe unquoted.
+func quoteYAMLScalar(name string) string {
+	if name != "" &&
+		name == strings.TrimSpace(name) &&
+		!strings.ContainsAny(name, ":#\"'{}[],&*?|<>=!%@`\\\n\r\t") &&
+		isAlnum(rune(name[0])) {
+		return name
+	}
+	escaped := strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\n`, "\r", `\r`, "\t", `\t`).Replace(name)
+	return `"` + escaped + `"`
+}
+
+func isAlnum(r rune) bool {
+	return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9'
+}
