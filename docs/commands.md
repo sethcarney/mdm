@@ -23,6 +23,7 @@ mdm
 │   └── install                             # Write completion into your shell rc
 ├── skills                                  # Manage skills for AI agents
 │   ├── add <package>                       # Install a skill (alias: a)
+│   ├── cherry-pick <source>                # Fork skills into ./skills as your own (aliases: fork, cp)
 │   ├── remove [skills...]                  # Uninstall skills (aliases: rm, r)
 │   ├── list                                # List installed skills (alias: ls)
 │   ├── find [query]                        # Search skills.sh and install interactively (aliases: search, f, s)

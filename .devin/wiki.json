@@ -24,6 +24,9 @@
     },
     {
       "content": "Pre-PR / CI checks are: gofmt -s, go test ./..., govulncheck, and gocyclo -over 16. All four must pass. The /go-report-card skill (see .agents/skills/) runs all four in order. Any doc page on contributing must mention all four, not just tests."
+    },
+    {
+      "content": "Two distinct ownership models exist for skills, and conflating them produces wrong documentation. An INSTALLED skill (mdm skills add) is maintained upstream: it lives in agent skills directories, is recorded in skills-lock.json with its source and ref, and mdm skills update replaces it. A FORKED skill (mdm skills cherry-pick) is maintained by the project: it lives in ./skills, carries its provenance in .mdm-origin.json, and nothing re-fetches it — divergence from upstream is the point. internal/fork owns the provenance, hashing, and license detection for the second model."
     }
   ],
   "pages": [
@@ -41,7 +44,7 @@
     },
     {
       "title": "Skills Management",
-      "purpose": "Parent overview page for the `mdm skills` command group. Describe the lifecycle: discover (find) → install (add) → list / audit / update / remove → reproduce via lockfile (install) → publish via init. Show the full CLI tree for `mdm skills` and link each subcommand to its dedicated page. Define what a 'skill' is: a directory containing a SKILL.md with optional frontmatter, packaged in a GitHub/GitLab repo, URL, or local path."
+      "purpose": "Parent overview page for the `mdm skills` command group. Describe the lifecycle: discover (find) → install (add) → list / audit / update / remove → reproduce via lockfile (install) → publish via init. Note the one branch off that lifecycle: cherry-pick forks a third-party skill into the project's own tree, deliberately ending its relationship with upstream — an installed skill is maintained by its author, a forked one by you. Show the full CLI tree for `mdm skills` and link each subcommand to its dedicated page. Define what a 'skill' is: a directory containing a SKILL.md with optional frontmatter, packaged in a GitHub/GitLab repo, URL, or local path."
     },
     {
       "title": "Installing skills (mdm skills add)",
@@ -53,6 +56,22 @@
         },
         {
           "content": "The --agent and --skill flags accept BOTH `-a claude-code cursor` (space-separated, normalized by normalizeMultiFlags in commands/root.go) and `-a claude-code -a cursor` (repeated). Both forms are supported intentionally — document both."
+        }
+      ]
+    },
+    {
+      "title": "Forking skills (mdm skills cherry-pick)",
+      "purpose": "Document `mdm skills cherry-pick <source>` (aliases: fork, cp), implemented in commands/cherrypick.go with provenance handling in internal/fork. Explain what makes it different from `mdm skills add`: add installs into each agent's skills directory and records the upstream source so `mdm skills update` can replace the skill, while cherry-pick copies it into ./skills as part of the user's own repository and is never re-fetched. Cover the flow (fetch → discover → picker → hidden-character scan → license resolution and confirmation → copy → write provenance → optional install), the three artifacts written into every fork (.mdm-origin.json, ATTRIBUTION.md, LICENSE.upstream), and every flag (--dir/-d, --skill/-s, --as, --install/-i, --agent/-a, --global/-g, --project/-p, --copy, --yes/-y, --force, --dry-run, --list/-l, --status, --full-depth, --allow-hidden-chars, --no-attribution).",
+      "parent": "Skills Management",
+      "page_notes": [
+        {
+          "content": "The mechanism that keeps a fork from being overwritten is not special-cased: with --install the lock entry records ./skills as a LOCAL source, and planUpdates in commands/update.go already skips local sources. Explain it that way rather than implying cherry-pick adds new update logic."
+        },
+        {
+          "content": "Provenance lives inside the fork, not in a lock file, so it survives the directory being committed, renamed, or republished in another repo. .mdm-origin.json is dot-prefixed so copyDirectory omits it from installed copies, while ATTRIBUTION.md is deliberately NOT dot-prefixed so the notice travels with the material."
+        },
+        {
+          "content": "./skills is also OpenClaw's project skills directory. Guards exist because of that: cherry-pick --install skips any agent whose skills directory is the forks directory (installing would replace the fork with a symlink to a copy of itself), and both `mdm skills remove` and `mdm agents remove` refuse to delete a directory carrying .mdm-origin.json. Hand-written skills in ./skills carry no marker and are NOT protected — see docs/troubleshooting.md."
         }
       ]
     },
