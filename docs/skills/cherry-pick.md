@@ -133,7 +133,8 @@ code rather than an install, so:
   symlink to a copy of itself.
 
 Hand-written skills in `./skills` that were never cherry-picked carry no origin
-file and are not covered by these guards. Pass `--dir` to keep forks somewhere
+file and are **not** covered by these guards — `mdm agents remove openclaw` still
+deletes them (see [Troubleshooting](../troubleshooting.md)). Pass `--dir` to keep forks somewhere
 else if you would rather not share the directory at all.
 
 ## Updating a fork

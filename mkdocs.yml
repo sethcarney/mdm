@@ -102,6 +102,7 @@ nav:
       - Agents: agents.md
       - Doctor: doctor.md
       - Experimental features: experimental.md
+      - Troubleshooting: troubleshooting.md
       - Upgrade: upgrade.md
       - Uninstall: uninstall.md
   - Skills commands:
