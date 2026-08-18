@@ -39,6 +39,26 @@ chore/go1.26.3-toolchain
 docs/pre-pr-checklist
 ```
 
+This applies to AI agents too, and overrides whatever branch a coding-agent
+harness assigns. Claude Code on the web, for example, opens each session on a
+generated `claude/<description>-<id>` branch; move the work to a branch named by
+the convention above before pushing, rather than pushing the generated name.
+
+### Commit authorship
+
+Commits are authored by the person running the tool, not by the tool. An agent
+that finds a bot identity in `git config user.name` / `user.email` — some
+hosted environments preset one — should commit under the repository owner's
+identity instead, matching what `git log` already shows:
+
+```
+Seth <48496865+sethcarney@users.noreply.github.com>
+```
+
+Agent involvement is recorded in the message, not the author field: keep the
+`Co-Authored-By:` trailer on anything an agent wrote. Authorship says who owns
+the change; the trailer says who helped write it, and both should be true.
+
 ## Commands
 
 All commands run from the repo root:
