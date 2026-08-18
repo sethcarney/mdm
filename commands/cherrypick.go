@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/sethcarney/mdm/internal/agent"
 	"github.com/sethcarney/mdm/internal/fork"
 	"github.com/sethcarney/mdm/internal/git"
 	"github.com/sethcarney/mdm/internal/lock"
@@ -488,6 +489,51 @@ func printCherryPickSummary(forked []string, licenses map[string]licenseInfo, op
 	}
 }
 
+// clobbersForks reports whether installing to this agent would write over the
+// forks directory itself. Installing a skill replaces the agent's <skills
+// dir>/<name>, so when that directory is the forks directory — OpenClaw reads
+// ./skills, mdm's own default — the install would destroy the very source it is
+// installing from.
+func clobbersForks(agentName string, global bool, cwd, forksRoot string) bool {
+	forksAbs, err := filepath.Abs(forksRoot)
+	if err != nil {
+		return false
+	}
+	forksAbs = filepath.Clean(forksAbs)
+	for _, base := range []string{getAgentBaseDir(agentName, global, cwd), getCanonicalSkillsDir(global, cwd)} {
+		if base == "" {
+			continue
+		}
+		abs, err := filepath.Abs(base)
+		if err != nil {
+			continue
+		}
+		if filepath.Clean(abs) == forksAbs {
+			return true
+		}
+	}
+	return false
+}
+
+// dropClobberingAgents removes agents that read the forks directory directly.
+// They need no install: the fork is already sitting where they look for skills.
+func dropClobberingAgents(agents []string, global bool, cwd, forksRoot string) []string {
+	kept := make([]string, 0, len(agents))
+	for _, name := range agents {
+		if clobbersForks(name, global, cwd, forksRoot) {
+			display := name
+			if a := agent.AllAgents[name]; a != nil {
+				display = a.DisplayName
+			}
+			ui.LogInfo(fmt.Sprintf("%s already reads %s — skipping its install so the fork is not overwritten",
+				display, shortenPath(forksRoot, cwd)))
+			continue
+		}
+		kept = append(kept, name)
+	}
+	return kept
+}
+
 func installForks(forked []string, opts CherryPickOptions, cwd string) {
 	var skills []*skill.Skill
 	for _, dir := range forked {
@@ -515,6 +561,10 @@ func installForks(forked []string, opts CherryPickOptions, cwd string) {
 	// these skills now update from your copy, and `mdm skills update` skips
 	// local sources entirely, so nothing upstream can overwrite your edits.
 	forksRoot := filepath.Join(cwd, opts.Dir)
+	if agents = dropClobberingAgents(agents, global, cwd, forksRoot); len(agents) == 0 {
+		return
+	}
+
 	fmt.Println()
 	installSkillsForAgents(skills, agents, global, mode, lock.SkillLockEntry{
 		Source:     forksRoot,

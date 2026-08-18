@@ -117,6 +117,25 @@ A fork redistributes someone else's work, and mdm cannot make that lawful for yo
 
 Honouring the terms — attribution, share-alike, or simply asking first — remains yours to do. `--no-attribution` omits the generated notice; it does not omit the obligation.
 
+## The forks directory and OpenClaw
+
+`./skills` is also OpenClaw's project skills directory, which is what makes it a
+publishable location — but it means agent-level commands can reach your forks
+through it. mdm treats a directory carrying `.mdm-origin.json` as your source
+code rather than an install, so:
+
+- `mdm skills remove` uninstalls the skill from your agents and leaves the fork
+  in `./skills` alone.
+- `mdm agents remove openclaw` cleans the directory but keeps the forks in it,
+  reporting how many it kept.
+- `--install` skips any agent that reads the forks directory directly — the fork
+  is already where that agent looks, and installing would replace it with a
+  symlink to a copy of itself.
+
+Hand-written skills in `./skills` that were never cherry-picked carry no origin
+file and are not covered by these guards. Pass `--dir` to keep forks somewhere
+else if you would rather not share the directory at all.
+
 ## Updating a fork
 
 Forks never update themselves; that is the deal. To take a newer upstream version:

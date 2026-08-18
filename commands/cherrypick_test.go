@@ -250,3 +250,96 @@ func TestForkLabels(t *testing.T) {
 		t.Errorf("state label = %q, want 'edited since fork'", got)
 	}
 }
+
+// ─── Guards against destroying a fork ──────────────────────────────────────────
+//
+// A fork lives in ./skills, which is also OpenClaw's project skills directory.
+// Every command that treats an agent's skills directory as disposable can reach
+// a fork through it, so each guard is pinned here.
+
+func writeTestFork(t *testing.T, dir string) {
+	t.Helper()
+	writeTestFile(t, filepath.Join(dir, "SKILL.md"), "---\nname: forked\ndescription: b\n---\nour edits\n")
+	if err := fork.WriteOrigin(dir, fork.NewOrigin("forked", fork.Upstream{Name: "theirs", Source: "owner/repo"})); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestIsCherryPickedSource(t *testing.T) {
+	root := t.TempDir()
+
+	forked := filepath.Join(root, "forked")
+	writeTestFork(t, forked)
+	if !isCherryPickedSource(forked) {
+		t.Error("a directory with an origin file is a fork")
+	}
+
+	plain := filepath.Join(root, "plain")
+	writeTestFile(t, filepath.Join(plain, "SKILL.md"), "---\nname: plain\ndescription: b\n---\n")
+	if isCherryPickedSource(plain) {
+		t.Error("an installed skill is not a fork")
+	}
+
+	// A symlink into a fork is an install, and removing it must stay possible.
+	link := filepath.Join(root, "link")
+	if err := os.Symlink(forked, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if isCherryPickedSource(link) {
+		t.Error("a symlink pointing at a fork is an install, not the fork itself")
+	}
+}
+
+func TestRemoveAgentSkillsDirKeepsForks(t *testing.T) {
+	skillsDir := t.TempDir()
+	writeTestFork(t, filepath.Join(skillsDir, "forked"))
+	writeTestFile(t, filepath.Join(skillsDir, "installed", "SKILL.md"), "---\nname: installed\ndescription: b\n---\n")
+
+	kept, removed := removeAgentSkillsDir(skillsDir)
+	if !removed || kept != 1 {
+		t.Fatalf("kept = %d, removed = %v; want 1, true", kept, removed)
+	}
+	if _, err := os.Stat(filepath.Join(skillsDir, "forked", "SKILL.md")); err != nil {
+		t.Error("the fork must survive an agent removal")
+	}
+	if _, err := os.Stat(filepath.Join(skillsDir, "installed")); !os.IsNotExist(err) {
+		t.Error("the installed skill should have been removed")
+	}
+}
+
+func TestRemoveAgentSkillsDirRemovesEverythingWhenNoForks(t *testing.T) {
+	parent := t.TempDir()
+	skillsDir := filepath.Join(parent, "skills")
+	writeTestFile(t, filepath.Join(skillsDir, "installed", "SKILL.md"), "---\nname: installed\ndescription: b\n---\n")
+
+	kept, removed := removeAgentSkillsDir(skillsDir)
+	if !removed || kept != 0 {
+		t.Fatalf("kept = %d, removed = %v; want 0, true", kept, removed)
+	}
+	if _, err := os.Stat(skillsDir); !os.IsNotExist(err) {
+		t.Error("a directory with no forks in it should be removed whole, as before")
+	}
+}
+
+// Installing a fork into an agent that reads the forks directory would replace
+// the fork with a symlink to a copy of itself — destroying the source.
+func TestClobbersForks(t *testing.T) {
+	cwd := t.TempDir()
+	forksRoot := filepath.Join(cwd, defaultForksDir)
+
+	if !clobbersForks("openclaw", false, cwd, forksRoot) {
+		t.Error("OpenClaw reads ./skills — installing there would overwrite the fork")
+	}
+	if clobbersForks("claude-code", false, cwd, forksRoot) {
+		t.Error("claude-code has its own directory and is safe to install to")
+	}
+	// A fork directory pointed at the canonical tree is the same hazard.
+	if !clobbersForks("claude-code", false, cwd, filepath.Join(cwd, ".agents", "skills")) {
+		t.Error("the canonical skills directory must be treated as clobbering too")
+	}
+
+	kept := dropClobberingAgents([]string{"openclaw", "claude-code"}, false, cwd, forksRoot)
+	if len(kept) != 1 || kept[0] != "claude-code" {
+		t.Errorf("kept = %v, want only claude-code", kept)
+	}
+}

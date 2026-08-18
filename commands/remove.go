@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/sethcarney/mdm/internal/fork"
 	"github.com/sethcarney/mdm/internal/lock"
 	"github.com/sethcarney/mdm/internal/source"
 	"github.com/sethcarney/mdm/internal/ui"
@@ -152,9 +153,24 @@ func removeAgentSkillDir(agentBase, name, localSourceAbs string) {
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
 		_ = os.Remove(agentSkillDir)
-	} else {
-		_ = os.RemoveAll(agentSkillDir)
+		return
 	}
+	if isCherryPickedSource(agentSkillDir) {
+		return
+	}
+	_ = os.RemoveAll(agentSkillDir)
+}
+
+// isCherryPickedSource reports whether a directory is a cherry-picked fork —
+// the project's own source, carrying edits that exist nowhere else. Uninstalling
+// a skill must never delete one. This is reachable because an agent's skills
+// directory can be the forks directory itself (OpenClaw reads ./skills), which
+// makes a fork look like an installed skill to every scan.
+func isCherryPickedSource(dir string) bool {
+	if info, err := os.Lstat(dir); err != nil || info.Mode()&os.ModeSymlink != 0 {
+		return false
+	}
+	return fork.IsFork(dir)
 }
 
 func removeSkillFromDisk(sk *InstalledSkill, agentsToRemove []string, global bool, cwd string) error {
@@ -176,7 +192,8 @@ func removeSkillFromDisk(sk *InstalledSkill, agentsToRemove []string, global boo
 	canonicalDir := getCanonicalPath(sk.Name, global)
 	canonicalAbs, _ := filepath.Abs(canonicalDir)
 	skipCanonical := localSourceAbs != "" && isInsideOrEqual(canonicalAbs, localSourceAbs)
-	if !skipCanonical && canonicalDir != "" && isPathSafe(getCanonicalSkillsDir(global, cwd), canonicalDir) {
+	if !skipCanonical && canonicalDir != "" && !isCherryPickedSource(canonicalDir) &&
+		isPathSafe(getCanonicalSkillsDir(global, cwd), canonicalDir) {
 		_ = os.RemoveAll(canonicalDir)
 	}
 
