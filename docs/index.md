@@ -112,6 +112,15 @@ solves exactly that.
 
     [:octicons-arrow-right-24: Experimental features](experimental.md)
 
+-   :material-flask-outline:{ .lg .middle } __Agent Plugins__ _(experimental)_
+
+    ---
+
+    `mdm plugins` installs and validates Agent Plugins — portable packages of
+    skills and MCP servers — behind an experimental flag.
+
+    [:octicons-arrow-right-24: Experimental features](experimental.md)
+
 </div>
 
 ---
@@ -124,6 +133,7 @@ mdm
 ├── rules         Link/unlink agent instruction files to a single AGENTS.md
 ├── agents        Manage the configured agent list used as default install targets
 ├── knowledge     [experimental] Manage OKF knowledge bundles
+├── plugins       [experimental] Manage Agent Plugins (skills + MCP servers)
 ├── doctor        Check installed skills and project markdown for health issues
 ├── experimental  Manage experimental feature gates
 ├── upgrade       Self-update the mdm binary from GitHub releases
