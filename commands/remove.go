@@ -8,7 +8,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/sethcarney/mdm/internal/experimental"
 	"github.com/sethcarney/mdm/internal/fork"
 	"github.com/sethcarney/mdm/internal/lock"
 	"github.com/sethcarney/mdm/internal/source"
@@ -307,11 +306,10 @@ func runRemove(positional []string, opts RemoveOptions) {
 }
 
 // excludePluginOwnedSkills drops skills that an installed plugin owns —
-// those are managed by plugins-lock.json, so `mdm plugins remove` is the
-// right tool. Only project scope can be plugin-owned, and only when the
-// experimental plugins gate is on.
+// those are managed by the plugins lock section, so `mdm plugins remove` is
+// the right tool. Only project scope can be plugin-owned.
 func excludePluginOwnedSkills(toRemove []*InstalledSkill, global bool, cwd string) []*InstalledSkill {
-	if global || !experimental.Enabled(experimental.Plugins) {
+	if global {
 		return toRemove
 	}
 	var keep []*InstalledSkill

@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/sethcarney/mdm/internal/agent"
-	"github.com/sethcarney/mdm/internal/experimental"
 	"github.com/sethcarney/mdm/internal/lock"
 	"github.com/sethcarney/mdm/internal/registry"
 	"github.com/sethcarney/mdm/internal/skill"
@@ -295,11 +294,10 @@ func performSymlinkInstall(canonicalDir, agentDir, agentName string, global bool
 }
 
 // refuseIfPluginOwned blocks a standalone skill install from clobbering a
-// skill that an installed plugin owns; plugins-lock is the sole manager of
-// those. Only project scope can be plugin-owned, and only when the
-// experimental plugins gate is on.
+// skill that an installed plugin owns; the plugins lock section is the sole
+// manager of those. Only project scope can be plugin-owned.
 func refuseIfPluginOwned(canonicalDir string, global bool) error {
-	if global || !experimental.Enabled(experimental.Plugins) {
+	if global {
 		return nil
 	}
 	cwd, _ := os.Getwd()
@@ -612,15 +610,14 @@ func mergeCanonicalSkillIntoMap(skillsMap map[string]*InstalledSkill, mapKey str
 	}
 }
 
-// isSkillDirEntry reports whether a scope-dir entry can hold a skill. Plain
-// directories always qualify; symlinked directories only when the plugins
-// gate is on — plugin skills link the canonical dir into the plugin's own
-// directory rather than copying.
+// isSkillDirEntry reports whether a scope-dir entry can hold a skill: a
+// plain directory, or a symlinked directory — plugin skills link the
+// canonical dir into the plugin's own directory rather than copying.
 func isSkillDirEntry(base string, e os.DirEntry) bool {
 	if e.IsDir() {
 		return true
 	}
-	if e.Type()&os.ModeSymlink == 0 || !experimental.Enabled(experimental.Plugins) {
+	if e.Type()&os.ModeSymlink == 0 {
 		return false
 	}
 	info, err := os.Stat(filepath.Join(base, e.Name()))
@@ -697,11 +694,9 @@ func listInstalledSkills(global *bool, agentFilter []string) ([]*InstalledSkill,
 		}
 	}
 
-	if experimental.Enabled(experimental.Plugins) {
-		for _, s := range skillsMap {
-			if s.Scope == "project" {
-				s.Plugin = pluginOwningSkill(s.Name, cwd)
-			}
+	for _, s := range skillsMap {
+		if s.Scope == "project" {
+			s.Plugin = pluginOwningSkill(s.Name, cwd)
 		}
 	}
 

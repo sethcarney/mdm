@@ -22,7 +22,7 @@ exempt from semantic versioning until they graduate.
 Features can also be enabled for a single invocation with the %s
 environment variable (comma-separated feature names, or "all"):
 
-  %s=knowledge mdm knowledge list`, experimental.EnvVar, experimental.EnvVar),
+  %s=<feature> mdm <command>`, experimental.EnvVar, experimental.EnvVar),
 		Run: func(cmd *cobra.Command, args []string) {
 			_ = cmd.Help()
 		},
@@ -51,6 +51,10 @@ func buildExperimentalListCmd() *cobra.Command {
 		Aliases: []string{"ls"},
 		Args:    cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
+			if len(experimental.All) == 0 {
+				fmt.Printf("\n%sNo experimental features in this release.%s\n\n", ansiDim, ansiReset)
+				return
+			}
 			fmt.Println()
 			for _, info := range experimental.All {
 				status := ansiDim + "disabled" + ansiReset

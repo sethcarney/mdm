@@ -17,10 +17,6 @@ import (
 // Feature is a named experimental capability.
 type Feature string
 
-const Knowledge Feature = "knowledge"
-
-const Plugins Feature = "plugins"
-
 // EnvVar enables features for a single invocation without persisting
 // anything, e.g. MDM_EXPERIMENTAL=knowledge or MDM_EXPERIMENTAL=all.
 const EnvVar = "MDM_EXPERIMENTAL"
@@ -31,19 +27,10 @@ type Info struct {
 	SpecURL     string
 }
 
-// All lists every known experimental feature, in display order.
-var All = []Info{
-	{
-		Feature:     Knowledge,
-		Description: "Manage OKF knowledge bundles (mdm knowledge)",
-		SpecURL:     "https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf",
-	},
-	{
-		Feature:     Plugins,
-		Description: "Manage Agent Plugins — skills + MCP servers (mdm plugins)",
-		SpecURL:     "https://agent-plugins.org",
-	},
-}
+// All lists every known experimental feature, in display order. It is empty
+// when a release ships no experimental features — knowledge and plugins
+// graduated to full support in v2.
+var All = []Info{}
 
 func IsKnown(name string) bool {
 	for _, info := range All {

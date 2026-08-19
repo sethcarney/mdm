@@ -11,7 +11,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/sethcarney/mdm/internal/agent"
-	"github.com/sethcarney/mdm/internal/experimental"
 	"github.com/sethcarney/mdm/internal/lock"
 	"github.com/sethcarney/mdm/internal/skill"
 )
@@ -149,12 +148,8 @@ func runDoctor(opts DoctorOptions) {
 		instrIssues = checkInstructionFiles(cwd)
 		unlinkedRulesIssues = checkUnlinkedRulesAgents(cwd)
 		missingSkillLinkIssues = checkMissingAgentSkillLinks(cwd)
-		if experimental.Enabled(experimental.Knowledge) {
-			knowledgeIssues = checkKnowledgeBundles(cwd)
-		}
-		if experimental.Enabled(experimental.Plugins) {
-			pluginIssues = checkInstalledPlugins(cwd)
-		}
+		knowledgeIssues = checkKnowledgeBundles(cwd)
+		pluginIssues = checkInstalledPlugins(cwd)
 		mdIssues, mdTruncated = checkProjectMarkdown(cwd, skipDirs, skipFiles)
 		if mdTruncated {
 			vlog(verboseFlag, "project markdown walk hit the %d-entry limit; results truncated", markdownWalkLimit)

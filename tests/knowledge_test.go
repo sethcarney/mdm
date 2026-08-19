@@ -16,75 +16,22 @@ func freshEnv(t *testing.T, extra ...string) []string {
 	return append(isolatedEnv(t.TempDir(), t.TempDir()), extra...)
 }
 
-func TestKnowledgeHiddenWhenGateOff(t *testing.T) {
+func TestKnowledgeGraduated(t *testing.T) {
 	dir := t.TempDir()
 	stdout, _, code := runMdmInDir(t, dir, freshEnv(t), "--help")
 	if code != 0 {
 		t.Fatalf("mdm --help exited %d", code)
 	}
-	if strings.Contains(stdout, "knowledge") {
-		t.Errorf("knowledge should be hidden from --help while the experimental gate is off, got: %q", stdout)
-	}
-}
-
-func TestKnowledgeRefusesWhenGateOff(t *testing.T) {
-	dir := t.TempDir()
-	stdout, stderr, code := runMdmInDir(t, dir, freshEnv(t), "knowledge")
-	if code == 0 {
-		t.Fatal("expected non-zero exit while the experimental gate is off")
-	}
-	combined := stdout + stderr
-	if !strings.Contains(combined, "mdm experimental enable knowledge") {
-		t.Errorf("expected refusal to point at the enable command, got stdout=%q stderr=%q", stdout, stderr)
-	}
-	if !strings.Contains(combined, "MDM_EXPERIMENTAL") {
-		t.Errorf("expected refusal to mention the env var, got stdout=%q stderr=%q", stdout, stderr)
-	}
-}
-
-func TestKnowledgeEnabledViaEnv(t *testing.T) {
-	dir := t.TempDir()
-	env := freshEnv(t, "MDM_EXPERIMENTAL=knowledge")
-
-	_, stderr, code := runMdmInDir(t, dir, env, "knowledge")
-	if code != 0 {
-		t.Fatalf("mdm knowledge exited %d with gate on: %s", code, stderr)
-	}
-	if !strings.Contains(stderr, "experimental") {
-		t.Errorf("expected experimental banner on stderr, got: %q", stderr)
-	}
-
-	stdout, _, code := runMdmInDir(t, dir, env, "--help")
-	if code != 0 {
-		t.Fatalf("mdm --help exited %d", code)
-	}
 	if !strings.Contains(stdout, "knowledge") {
-		t.Errorf("expected knowledge in --help with gate on, got: %q", stdout)
+		t.Errorf("knowledge graduated and should appear in --help, got: %q", stdout)
 	}
-}
 
-func TestExperimentalEnableDisableRoundTrip(t *testing.T) {
-	dir := t.TempDir()
-	env := freshEnv(t)
-
-	_, stderr, code := runMdmInDir(t, dir, env, "experimental", "enable", "knowledge")
+	_, stderr, code := runMdmInDir(t, dir, freshEnv(t), "knowledge")
 	if code != 0 {
-		t.Fatalf("experimental enable exited %d: %s", code, stderr)
+		t.Fatalf("mdm knowledge should run without any experimental gate, exited %d: %s", code, stderr)
 	}
-
-	_, stderr, code = runMdmInDir(t, dir, env, "knowledge")
-	if code != 0 {
-		t.Fatalf("mdm knowledge should run after enable, exited %d: %s", code, stderr)
-	}
-
-	_, stderr, code = runMdmInDir(t, dir, env, "experimental", "disable", "knowledge")
-	if code != 0 {
-		t.Fatalf("experimental disable exited %d: %s", code, stderr)
-	}
-
-	_, _, code = runMdmInDir(t, dir, env, "knowledge")
-	if code == 0 {
-		t.Fatal("expected refusal after disable")
+	if strings.Contains(stderr, "experimental") {
+		t.Errorf("no experimental banner expected after graduation, got: %q", stderr)
 	}
 }
 
@@ -96,6 +43,11 @@ func TestExperimentalEnableUnknownFeature(t *testing.T) {
 	}
 	if !strings.Contains(stdout+stderr, "unknown experimental feature") {
 		t.Errorf("expected unknown-feature error, got stdout=%q stderr=%q", stdout, stderr)
+	}
+	// The graduated features are no longer enableable gates either.
+	_, _, code = runMdmInDir(t, dir, freshEnv(t), "experimental", "enable", "knowledge")
+	if code == 0 {
+		t.Error("knowledge graduated and should no longer be an enableable feature")
 	}
 }
 
@@ -111,7 +63,7 @@ func okfFixturePath(t *testing.T, name string) string {
 
 func TestKnowledgeInitValidateRoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	env := freshEnv(t, "MDM_EXPERIMENTAL=knowledge")
+	env := freshEnv(t)
 
 	_, stderr, code := runMdmInDir(t, dir, env, "knowledge", "init", "my-bundle")
 	if code != 0 {
@@ -128,7 +80,7 @@ func TestKnowledgeInitValidateRoundTrip(t *testing.T) {
 }
 
 func TestKnowledgeValidateFailsOnBrokenBundle(t *testing.T) {
-	env := freshEnv(t, "MDM_EXPERIMENTAL=knowledge")
+	env := freshEnv(t)
 	stdout, stderr, code := runMdmInDir(t, t.TempDir(), env, "knowledge", "validate", okfFixturePath(t, "broken-link"))
 	if code == 0 {
 		t.Fatal("expected non-zero exit for bundle with broken links")
@@ -139,7 +91,7 @@ func TestKnowledgeValidateFailsOnBrokenBundle(t *testing.T) {
 }
 
 func TestKnowledgeValidateJSON(t *testing.T) {
-	env := freshEnv(t, "MDM_EXPERIMENTAL=knowledge")
+	env := freshEnv(t)
 	stdout, stderr, code := runMdmInDir(t, t.TempDir(), env, "knowledge", "validate", "--json", okfFixturePath(t, "valid-bundle"))
 	if code != 0 {
 		t.Fatalf("validate --json exited %d: %s", code, stderr)
@@ -179,7 +131,7 @@ func TestKnowledgeAddListRemoveLocal(t *testing.T) {
 	project := t.TempDir()
 	src := filepath.Join(project, "src-bundle")
 	writeSourceBundle(t, src)
-	env := freshEnv(t, "MDM_EXPERIMENTAL=knowledge")
+	env := freshEnv(t)
 
 	// add
 	stdout, stderr, code := runMdmInDir(t, project, env, "knowledge", "add", "./src-bundle", "-y")
@@ -227,7 +179,7 @@ func TestKnowledgeAddDryRunWritesNothing(t *testing.T) {
 	project := t.TempDir()
 	src := filepath.Join(project, "src-bundle")
 	writeSourceBundle(t, src)
-	env := freshEnv(t, "MDM_EXPERIMENTAL=knowledge")
+	env := freshEnv(t)
 
 	stdout, stderr, code := runMdmInDir(t, project, env, "knowledge", "add", "./src-bundle", "-y", "--dry-run")
 	if code != 0 {
@@ -243,7 +195,7 @@ func TestKnowledgeAddDryRunWritesNothing(t *testing.T) {
 
 func TestKnowledgeAddBlocksHiddenChars(t *testing.T) {
 	project := t.TempDir()
-	env := freshEnv(t, "MDM_EXPERIMENTAL=knowledge")
+	env := freshEnv(t)
 	root, err := findModRoot()
 	if err != nil {
 		t.Fatal(err)
@@ -267,7 +219,7 @@ func TestKnowledgeLockSurvivesSkillsOperations(t *testing.T) {
 	project := t.TempDir()
 	src := filepath.Join(project, "src-bundle")
 	writeSourceBundle(t, src)
-	env := freshEnv(t, "MDM_EXPERIMENTAL=knowledge")
+	env := freshEnv(t)
 
 	if _, stderr, code := runMdmInDir(t, project, env, "knowledge", "add", "./src-bundle", "-y"); code != 0 {
 		t.Fatalf("knowledge add exited %d: %s", code, stderr)
@@ -323,7 +275,7 @@ func TestKnowledgeInstallRestoresFromLock(t *testing.T) {
 	project := t.TempDir()
 	src := filepath.Join(project, "src-bundle")
 	writeSourceBundle(t, src)
-	env := freshEnv(t, "MDM_EXPERIMENTAL=knowledge")
+	env := freshEnv(t)
 
 	if _, stderr, code := runMdmInDir(t, project, env, "knowledge", "add", "./src-bundle", "-y"); code != 0 {
 		t.Fatalf("knowledge add exited %d: %s", code, stderr)
@@ -345,7 +297,7 @@ func TestKnowledgeUpdateRefetchesSource(t *testing.T) {
 	project := t.TempDir()
 	src := filepath.Join(project, "src-bundle")
 	writeSourceBundle(t, src)
-	env := freshEnv(t, "MDM_EXPERIMENTAL=knowledge")
+	env := freshEnv(t)
 
 	if _, stderr, code := runMdmInDir(t, project, env, "knowledge", "add", "./src-bundle", "-y"); code != 0 {
 		t.Fatalf("knowledge add exited %d: %s", code, stderr)
@@ -370,13 +322,13 @@ func TestKnowledgeUpdateRefetchesSource(t *testing.T) {
 	}
 }
 
-func TestDoctorKnowledgeSectionGated(t *testing.T) {
+func TestDoctorReportsKnowledgeIssues(t *testing.T) {
 	project := t.TempDir()
 	src := filepath.Join(project, "src-bundle")
 	writeSourceBundle(t, src)
-	envOn := freshEnv(t, "MDM_EXPERIMENTAL=knowledge")
+	env := freshEnv(t)
 
-	if _, stderr, code := runMdmInDir(t, project, envOn, "knowledge", "add", "./src-bundle", "-y"); code != 0 {
+	if _, stderr, code := runMdmInDir(t, project, env, "knowledge", "add", "./src-bundle", "-y"); code != 0 {
 		t.Fatalf("knowledge add exited %d: %s", code, stderr)
 	}
 	// Break the install so doctor has something to report.
@@ -384,24 +336,12 @@ func TestDoctorKnowledgeSectionGated(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Gate on: doctor reports the missing bundle.
-	stdout, _, code := runMdmInDir(t, project, envOn, "doctor", "-p")
+	stdout, _, code := runMdmInDir(t, project, env, "doctor", "-p")
 	if code != 0 {
 		t.Fatalf("doctor exited %d", code)
 	}
 	if !strings.Contains(stdout, "Knowledge bundles:") || !strings.Contains(stdout, "not found") {
 		t.Errorf("expected knowledge section with missing-bundle error, got:\n%s", stdout)
-	}
-
-	// Gate off: same project, no knowledge section — stable doctor output is
-	// unaffected by experimental state on disk.
-	envOff := freshEnv(t)
-	stdout, _, code = runMdmInDir(t, project, envOff, "doctor", "-p")
-	if code != 0 {
-		t.Fatalf("doctor exited %d", code)
-	}
-	if strings.Contains(stdout, "Knowledge bundles:") {
-		t.Errorf("doctor must not mention knowledge while the gate is off, got:\n%s", stdout)
 	}
 }
 
@@ -411,7 +351,7 @@ func TestExperimentalList(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("experimental list exited %d", code)
 	}
-	if !strings.Contains(stdout, "knowledge") {
-		t.Errorf("expected knowledge in experimental list, got: %q", stdout)
+	if !strings.Contains(stdout, "No experimental features in this release") {
+		t.Errorf("expected empty experimental list after graduation, got: %q", stdout)
 	}
 }
