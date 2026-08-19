@@ -375,6 +375,7 @@ mdm
 ├── upgrade                                 # Self-update the mdm binary from GitHub releases (aliases: update-cli, self-update)
 ├── uninstall                               # Remove the mdm binary from your system (aliases: remove-cli)
 ├── doctor                                  # Check installed skills and project markdown for health issues
+├── migrate                                 # Fold v1 lock files into mdm-lock.json / mdm-state.json (--dry-run, --no-tombstone, --force)
 ├── completion [bash|zsh|fish|powershell]   # Generate shell completion script
 │   └── install                             # Write completion into shell rc file
 ├── skills                                  # Manage skills for AI agents
@@ -388,7 +389,7 @@ mdm
 │   ├── init [name]                         # Scaffold a new SKILL.md in the current directory
 │   ├── install                             # Restore all skills from mdm-lock.json (CI/onboarding)
 │   └── sync                                # Sync skills from node_modules into agent skill directories
-├── knowledge                               # [EXPERIMENTAL] Manage OKF knowledge bundles (hidden until enabled; see docs/experimental.md)
+├── knowledge                               # Manage OKF knowledge bundles
 │   ├── add <source>                        # Install an OKF bundle into ./knowledge/ and record it in mdm-lock.json (alias: a)
 │   ├── remove [bundles...]                 # Remove bundles and their lock entries (aliases: rm, r)
 │   ├── list                                # List installed bundles (alias: ls)
@@ -396,7 +397,7 @@ mdm
 │   ├── validate [path]                     # Check OKF conformance and link integrity (--json)
 │   ├── init [name]                         # Scaffold a minimal conformant bundle
 │   └── install                             # Restore all bundles from mdm-lock.json (CI/onboarding)
-├── plugins                                 # [EXPERIMENTAL] Manage Agent Plugins (agent-plugins.org; hidden until enabled; see docs/experimental.md)
+├── plugins                                 # Manage Agent Plugins (agent-plugins.org)
 │   ├── add <source>                        # Install a plugin into .agents/plugins/, link its skills, wire MCP config (alias: a)
 │   ├── remove [plugins...]                 # Unwire MCP, unlink skills, delete plugin + lock entry (aliases: rm, r; --purge-data)
 │   ├── list                                # List installed plugins (alias: ls)
@@ -442,16 +443,16 @@ mdm
 │   ├── uninstall.go     # `mdm uninstall`: removes the mdm binary from the system
 │   ├── hidden_scan.go   # Hidden-character pre-install scan shared by add/update
 │   ├── experimental.go  # `mdm experimental` group: list/enable/disable feature gates
-│   ├── knowledge*.go    # `mdm knowledge` group [EXPERIMENTAL]: OKF bundle add/list/remove/update/validate/init/install + doctor section
-│   ├── plugins*.go      # `mdm plugins` group [EXPERIMENTAL]: Agent Plugins add/list/remove/update/validate/init/install + MCP wiring + doctor section
+│   ├── knowledge*.go    # `mdm knowledge` group: OKF bundle add/list/remove/update/validate/init/install + doctor section
+│   ├── plugins*.go      # `mdm plugins` group: Agent Plugins add/list/remove/update/validate/init/install + MCP wiring + doctor section
 │   └── doctor.go        # `mdm doctor`: checks skill health, symlinks, hashes, README presence, and markdown sizes
 ├── internal/
     ├── agent/           # AllAgents registry (45+ agents); skill dir paths; detection
     ├── skill/           # Skill discovery (SKILL.md parsing); frontmatter; filtering
     ├── fork/            # Cherry-pick provenance: .mdm-origin.json, ATTRIBUTION.md, content hashing, license detection
-    ├── okf/             # [EXPERIMENTAL] OKF bundle parsing, discovery, validation, content hashing
-    ├── plugin/          # [EXPERIMENTAL] Agent Plugins spec conformance: plugin.json + mcp.json parsing, discovery, path containment, hashing
-    ├── mcpwire/         # [EXPERIMENTAL] Per-agent MCP config targets; renders plugin servers into .mcp.json / .cursor/mcp.json
+    ├── okf/             # OKF bundle parsing, discovery, validation, content hashing
+    ├── plugin/          # Agent Plugins spec conformance: plugin.json + mcp.json parsing, discovery, path containment, hashing
+    ├── mcpwire/         # Per-agent MCP config targets; renders plugin servers into .mcp.json / .cursor/mcp.json
     ├── experimental/    # Named feature gates (MDM_EXPERIMENTAL env var + persisted opt-ins)
     ├── source/          # URL/path parsing into ParsedSource (GitHub, GitLab, local, well-known)
     ├── registry/        # Well-known registry fetching (.well-known/agent-skills standard)

@@ -140,6 +140,7 @@ func runDoctor(opts DoctorOptions) {
 	var missingSkillLinkIssues []doctorIssue
 	var knowledgeIssues []doctorIssue
 	var pluginIssues []doctorIssue
+	var migrationIssues []doctorIssue
 	var mdIssues []doctorIssue
 	var mdTruncated bool
 
@@ -150,6 +151,7 @@ func runDoctor(opts DoctorOptions) {
 		missingSkillLinkIssues = checkMissingAgentSkillLinks(cwd)
 		knowledgeIssues = checkKnowledgeBundles(cwd)
 		pluginIssues = checkInstalledPlugins(cwd)
+		migrationIssues = checkLegacyLockFiles(cwd)
 		mdIssues, mdTruncated = checkProjectMarkdown(cwd, skipDirs, skipFiles)
 		if mdTruncated {
 			vlog(verboseFlag, "project markdown walk hit the %d-entry limit; results truncated", markdownWalkLimit)
@@ -164,7 +166,43 @@ func runDoctor(opts DoctorOptions) {
 		return results[i].Name < results[j].Name
 	})
 
-	printDoctorResults(results, instrIssues, unlinkedRulesIssues, missingSkillLinkIssues, knowledgeIssues, pluginIssues, mdIssues, mdTruncated, readmeIssue, checkProject, cwd)
+	migrationIssues = append(migrationIssues, checkLegacyGlobalLock()...)
+
+	printDoctorResults(results, instrIssues, unlinkedRulesIssues, missingSkillLinkIssues, knowledgeIssues, pluginIssues, migrationIssues, mdIssues, mdTruncated, readmeIssue, checkProject, cwd)
+}
+
+// checkLegacyLockFiles flags v1 project lock files that mdm migrate should
+// fold into mdm-lock.json.
+func checkLegacyLockFiles(cwd string) []doctorIssue {
+	plan, err := lock.PlanProjectMigration(cwd)
+	if err != nil {
+		return []doctorIssue{{
+			Level:   "error",
+			Message: fmt.Sprintf("legacy lock file could not be read: %v", err),
+		}}
+	}
+	var issues []doctorIssue
+	for _, fname := range lock.LegacyProjectLockNames {
+		if _, ok := plan.Legacy[fname]; ok {
+			issues = append(issues, doctorIssue{
+				Level:   "warn",
+				Message: fmt.Sprintf("%s is a v1 lock file — fold it into mdm-lock.json with `mdm migrate`", fname),
+			})
+		}
+	}
+	return issues
+}
+
+// checkLegacyGlobalLock flags the v1 global skills-lock.json.
+func checkLegacyGlobalLock() []doctorIssue {
+	path, ok := lock.LegacyGlobalLockExists()
+	if !ok {
+		return nil
+	}
+	return []doctorIssue{{
+		Level:   "warn",
+		Message: fmt.Sprintf("%s is the v1 global state file — move it to %s with `mdm migrate`", path, lock.GetGlobalStatePath()),
+	}}
 }
 
 func buildProjectSkipPaths(cwd, canonicalBase string, skipDirs, skipFiles map[string]bool) {
@@ -527,7 +565,7 @@ func checkProjectMarkdown(cwd string, skipDirs map[string]bool, skipFiles map[st
 
 // ── Output ─────────────────────────────────────────────────────────────────────
 
-func printDoctorResults(results []doctorResult, instrIssues, unlinkedRulesIssues, missingSkillLinkIssues, knowledgeIssues, pluginIssues, mdIssues []doctorIssue, mdTruncated bool, readmeIssue *doctorIssue, scannedProject bool, cwd string) {
+func printDoctorResults(results []doctorResult, instrIssues, unlinkedRulesIssues, missingSkillLinkIssues, knowledgeIssues, pluginIssues, migrationIssues, mdIssues []doctorIssue, mdTruncated bool, readmeIssue *doctorIssue, scannedProject bool, cwd string) {
 	fmt.Println()
 
 	byScope := map[string][]doctorResult{}
@@ -582,6 +620,14 @@ func printDoctorResults(results []doctorResult, instrIssues, unlinkedRulesIssues
 	if len(pluginIssues) > 0 {
 		fmt.Printf("%sPlugins:%s\n\n", ansiText, ansiReset)
 		e, w := printAndCountDoctorIssues(pluginIssues)
+		totalErrors += e
+		totalWarnings += w
+		fmt.Println()
+	}
+
+	if len(migrationIssues) > 0 {
+		fmt.Printf("%sMigration:%s\n\n", ansiText, ansiReset)
+		e, w := printAndCountDoctorIssues(migrationIssues)
 		totalErrors += e
 		totalWarnings += w
 		fmt.Println()

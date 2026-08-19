@@ -122,6 +122,7 @@ func BuildRootCmd(ver string) *cobra.Command {
 		buildAgentsCmd(),
 		buildRulesCmd(),
 		buildDoctorCmd(),
+		buildMigrateCmd(),
 		buildExperimentalCmd(),
 		buildUpgradeCmd(ver),
 		buildUninstallCmd(),
