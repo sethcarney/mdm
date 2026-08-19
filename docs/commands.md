@@ -39,6 +39,14 @@ mdm
 │   ├── validate [path]                     # Check OKF conformance & links
 │   ├── init [name]                         # Scaffold a minimal bundle
 │   └── install                             # Restore bundles from knowledge-lock.json
+├── plugins                                 # [experimental] Manage Agent Plugins
+│   ├── add <source>                        # Install a plugin, link skills, wire MCP (alias: a)
+│   ├── remove [plugins...]                 # Remove plugins (aliases: rm, r)
+│   ├── list                                # List installed plugins (alias: ls)
+│   ├── update [plugins...]                 # Re-fetch plugins
+│   ├── validate [path]                     # Check Agent Plugins conformance
+│   ├── init [name]                         # Scaffold a minimal plugin
+│   └── install                             # Restore plugins from plugins-lock.json
 ├── experimental                            # Manage experimental features
 │   ├── list                                # Show features and status (alias: ls)
 │   ├── enable <feature>                    # Persist an opt-in
@@ -283,6 +291,38 @@ Manage Open Knowledge Format (OKF) bundles. Hidden until enabled — see
 
 ---
 
+## `mdm plugins` <small>experimental</small>
+
+Manage Agent Plugins — portable packages of skills and MCP servers following
+the vendor-neutral [agent-plugins.org](https://agent-plugins.org) standard.
+Hidden until enabled — see [experimental features](experimental.md).
+
+| Command | Description |
+| --- | --- |
+| `plugins add <source>` <small>(`a`)</small> | Install a plugin into `.agents/plugins/`, link its skills, wire its MCP servers |
+| `plugins remove [plugins...]` <small>(`rm`, `r`)</small> | Unwire MCP, unlink skills, delete the plugin and its lock entry |
+| `plugins list` <small>(`ls`)</small> | List installed plugins |
+| `plugins update [plugins...]` | Re-fetch plugins from their recorded source+ref (preserves the data dir) |
+| `plugins validate [path]` | Check Agent Plugins spec conformance |
+| `plugins init [name]` | Scaffold a minimal conformant plugin |
+| `plugins install` | Restore all plugins from `plugins-lock.json` |
+
+| Flag | Applies to | Description |
+| --- | --- | --- |
+| `--plugin`, `-p` | `add` | Plugin names to install (repeatable; `*` for all) |
+| `--agent`, `-a` | `add` | Agents to install for (repeatable) |
+| `--skip-mcp` | `add` / `update` / `install` | Install skills only; do not write MCP config |
+| `--dry-run` | `add` | Show what would be installed without writing anything |
+| `--purge-data` | `remove` | Also delete the plugin's persistent data directory |
+| `--with-mcp` | `init` | Also scaffold an example `mcp.json` |
+| `--yes`, `-y` | `add` / `remove` | Skip confirmation prompts |
+| `--json` | `validate` | Print the validation report as JSON |
+| `--allow-hidden-chars` | `add` / `update` / `install` | Allow markdown files with hidden Unicode characters |
+
+[:octicons-arrow-right-24: Details](specs/plugins.md)
+
+---
+
 ## `mdm experimental`
 
 Toggle experimental feature gates. Features can also be enabled via the
@@ -299,6 +339,7 @@ Currently available features:
 | Feature | Description |
 | --- | --- |
 | `knowledge` | Manage OKF knowledge bundles (`mdm knowledge`) |
+| `plugins` | Manage Agent Plugins — skills + MCP servers (`mdm plugins`) |
 
 [:octicons-arrow-right-24: Details](experimental.md)
 

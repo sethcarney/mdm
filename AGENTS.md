@@ -375,6 +375,14 @@ mdm
 │   ├── validate [path]                     # Check OKF conformance and link integrity (--json)
 │   ├── init [name]                         # Scaffold a minimal conformant bundle
 │   └── install                             # Restore all bundles from knowledge-lock.json (CI/onboarding)
+├── plugins                                 # [EXPERIMENTAL] Manage Agent Plugins (agent-plugins.org; hidden until enabled; see docs/experimental.md)
+│   ├── add <source>                        # Install a plugin into .agents/plugins/, link its skills, wire MCP config (alias: a)
+│   ├── remove [plugins...]                 # Unwire MCP, unlink skills, delete plugin + lock entry (aliases: rm, r; --purge-data)
+│   ├── list                                # List installed plugins (alias: ls)
+│   ├── update [plugins...]                 # Re-fetch plugins from their recorded source+ref (preserves data dir)
+│   ├── validate [path]                     # Check Agent Plugins spec conformance (--json)
+│   ├── init [name]                         # Scaffold a minimal conformant plugin (--with-mcp)
+│   └── install                             # Restore all plugins from plugins-lock.json (CI/onboarding)
 ├── experimental                            # Manage experimental features (also: MDM_EXPERIMENTAL env var)
 │   ├── list                                # Show experimental features and their status (alias: ls)
 │   ├── enable <feature>                    # Persist an opt-in
@@ -413,15 +421,18 @@ mdm
 │   ├── hidden_scan.go   # Hidden-character pre-install scan shared by add/update
 │   ├── experimental.go  # `mdm experimental` group: list/enable/disable feature gates
 │   ├── knowledge*.go    # `mdm knowledge` group [EXPERIMENTAL]: OKF bundle add/list/remove/update/validate/init/install + doctor section
+│   ├── plugins*.go      # `mdm plugins` group [EXPERIMENTAL]: Agent Plugins add/list/remove/update/validate/init/install + MCP wiring + doctor section
 │   └── doctor.go        # `mdm doctor`: checks skill health, symlinks, hashes, README presence, and markdown sizes
 ├── internal/
     ├── agent/           # AllAgents registry (45+ agents); skill dir paths; detection
     ├── skill/           # Skill discovery (SKILL.md parsing); frontmatter; filtering
     ├── okf/             # [EXPERIMENTAL] OKF bundle parsing, discovery, validation, content hashing
+    ├── plugin/          # [EXPERIMENTAL] Agent Plugins spec conformance: plugin.json + mcp.json parsing, discovery, path containment, hashing
+    ├── mcpwire/         # [EXPERIMENTAL] Per-agent MCP config targets; renders plugin servers into .mcp.json / .cursor/mcp.json
     ├── experimental/    # Named feature gates (MDM_EXPERIMENTAL env var + persisted opt-ins)
     ├── source/          # URL/path parsing into ParsedSource (GitHub, GitLab, local, well-known)
     ├── registry/        # Well-known registry fetching (.well-known/agent-skills standard)
-    ├── lock/            # skills-lock.json + knowledge-lock.json read/write; tracks hashes, versions, timestamps, configuredAgents
+    ├── lock/            # skills-lock.json + knowledge-lock.json + plugins-lock.json read/write; tracks hashes, versions, timestamps, configuredAgents
     ├── git/             # Shallow git clone; branch/ref handling
     ├── blob/            # GitHub API tree/blob queries for skill discovery
     ├── security/        # markdownscan: hidden-character / prompt-smuggling detection

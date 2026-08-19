@@ -42,3 +42,4 @@ mdm experimental
 | Feature | What it does | Spec |
 |---|---|---|
 | `knowledge` | Manage Open Knowledge Format (OKF) bundles — install, validate, and audit markdown knowledge bases for AI agents. See [docs/specs/knowledge.md](specs/knowledge.md). | [OKF v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf) |
+| `plugins` | Manage Agent Plugins — portable packages of skills and MCP servers; install, validate, and wire MCP servers into agent configs. See [docs/specs/plugins.md](specs/plugins.md). | [Agent Plugins v1.0.0](https://agent-plugins.org) |
