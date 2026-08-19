@@ -39,6 +39,26 @@ chore/go1.26.3-toolchain
 docs/pre-pr-checklist
 ```
 
+This applies to AI agents too, and overrides whatever branch a coding-agent
+harness assigns. Claude Code on the web, for example, opens each session on a
+generated `claude/<description>-<id>` branch; move the work to a branch named by
+the convention above before pushing, rather than pushing the generated name.
+
+### Commit authorship
+
+Commits are authored by the person running the tool, not by the tool. An agent
+that finds a bot identity in `git config user.name` / `user.email` — some
+hosted environments preset one — should commit under the repository owner's
+identity instead, matching what `git log` already shows:
+
+```
+Seth <48496865+sethcarney@users.noreply.github.com>
+```
+
+Agent involvement is recorded in the message, not the author field: keep the
+`Co-Authored-By:` trailer on anything an agent wrote. Authorship says who owns
+the change; the trailer says who helped write it, and both should be true.
+
 ## Commands
 
 All commands run from the repo root:
@@ -84,7 +104,7 @@ download` and installs the three tools above. The tools are built with
 `go install` under a pinned `GOTOOLCHAIN` rather than downloaded as prebuilt
 binaries — golangci-lint has to be compiled with the project's Go to parse its
 go1.26 sources, the same reason `.github/workflows/ci.yml` sets
-`GOTOOLCHAIN=go1.26.5` before installing it. The script is idempotent, so
+`GOTOOLCHAIN=go1.26.6` before installing it. The script is idempotent, so
 re-running it on a rebuild skips tools already at the pinned version.
 
 ### Why the Go version isn't in `devcontainer.json`
@@ -359,6 +379,7 @@ mdm
 │   └── install                             # Write completion into shell rc file
 ├── skills                                  # Manage skills for AI agents
 │   ├── add <package>                       # Install a skill from GitHub, GitLab, URL, or local path (alias: a)
+│   ├── cherry-pick <source>                # Fork skills into ./skills as your own, with provenance (aliases: fork, cp)
 │   ├── remove [skills...]                  # Uninstall skills (aliases: rm, r)
 │   ├── list                                # List installed skills (alias: ls)
 │   ├── find [query]                        # Search the skills.sh registry and install interactively (aliases: search, f, s)
@@ -406,6 +427,7 @@ mdm
 │   ├── skills.go        # `mdm skills` group; registers all skills subcommands
 │   ├── add.go           # `mdm skills add`: install flow; multi-agent/skill prompts, scope selection
 │   ├── installer.go     # Shared install logic: clone → discover → copy → lock; sanitizeName, isPathSafe, skillNameMatches
+│   ├── cherrypick.go    # `mdm skills cherry-pick`: vendor third-party skills into ./skills; license resolution, --status
 │   ├── remove.go        # `mdm skills remove`
 │   ├── list.go          # `mdm skills list`
 │   ├── find.go          # `mdm skills find`: queries skills.sh search API
@@ -426,6 +448,7 @@ mdm
 ├── internal/
     ├── agent/           # AllAgents registry (45+ agents); skill dir paths; detection
     ├── skill/           # Skill discovery (SKILL.md parsing); frontmatter; filtering
+    ├── fork/            # Cherry-pick provenance: .mdm-origin.json, ATTRIBUTION.md, content hashing, license detection
     ├── okf/             # [EXPERIMENTAL] OKF bundle parsing, discovery, validation, content hashing
     ├── plugin/          # [EXPERIMENTAL] Agent Plugins spec conformance: plugin.json + mcp.json parsing, discovery, path containment, hashing
     ├── mcpwire/         # [EXPERIMENTAL] Per-agent MCP config targets; renders plugin servers into .mcp.json / .cursor/mcp.json
@@ -451,6 +474,20 @@ mdm
 5. Skill dirs are copied into each agent's skills directory
 6. `lock/` records the installation in `skills-lock.json`
 
+`mdm skills cherry-pick` → `cherrypick.go` reuses steps 1–3, then diverges:
+
+4. The skill directory is copied into `./skills/<name>` — the project's own tree,
+   not an agent's
+5. `fork/` writes `.mdm-origin.json` (source, ref, commit, license, content hash)
+   and `ATTRIBUTION.md`, and the upstream license text is copied in when the
+   skill directory did not carry its own
+6. Nothing is recorded upstream-wards: with `--install` the lock entry points at
+   `./skills`, a *local* source, and `planUpdates` skips local sources — which is
+   what keeps `mdm skills update` from overwriting a fork
+
+That last point is the whole design. A fork is a file in the user's repository;
+anything that re-fetches it would defeat the purpose of having forked it.
+
 ### Adding a new agent
 
 Add an entry to `AllAgents` in `internal/agent/` with the agent's skills dir path(s) and an optional `DetectInstalled()` function.
@@ -471,13 +508,13 @@ go test ./...
 # 2. Vulnerability scan
 # GOTOOLCHAIN pins the build of govulncheck to the project's Go (go.mod) so it
 # can parse go1.26 sources even when your base toolchain is older.
-GOTOOLCHAIN=go1.26.5 go install golang.org/x/vuln/cmd/govulncheck@v1.5.0
+GOTOOLCHAIN=go1.26.6 go install golang.org/x/vuln/cmd/govulncheck@v1.5.0
 govulncheck ./...
 
 # 3. Lint (formatting + cyclomatic complexity + vet)
 # golangci-lint replaces the retired Go Report Card service and the previous
 # standalone gofmt + gocyclo checks. Enabled linters live in .golangci.yml.
-GOTOOLCHAIN=go1.26.5 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+GOTOOLCHAIN=go1.26.6 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
 golangci-lint run ./...
 # Auto-fix formatting with: golangci-lint fmt
 ```

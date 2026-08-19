@@ -687,9 +687,12 @@ func listInstalledSkills(global *bool, agentFilter []string) ([]*InstalledSkill,
 		if s.Ref != "" {
 			continue
 		}
-		if entry, ok := globalLock.Skills[s.Name]; ok && entry.Ref != "" {
+		// Lock files key skills by their sanitized name, not the raw
+		// frontmatter name.
+		key := sanitizeName(s.Name)
+		if entry, ok := globalLock.Skills[key]; ok && entry.Ref != "" {
 			s.Ref = entry.Ref
-		} else if entry, ok := localLock.Skills[s.Name]; ok && entry.Ref != "" {
+		} else if entry, ok := localLock.Skills[key]; ok && entry.Ref != "" {
 			s.Ref = entry.Ref
 		}
 	}

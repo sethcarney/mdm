@@ -5,7 +5,7 @@ site_url: https://sethcarney.github.io/mdm/
 repo_name: sethcarney/mdm
 repo_url: https://github.com/sethcarney/mdm
 edit_uri: edit/main/docs/
-copyright: Copyright &copy; Seth Carney — MIT Licensed
+copyright: Copyright &copy; Seth Carney — <a href="https://github.com/sethcarney/mdm/blob/main/LICENSE">Apache-2.0 Licensed</a>
 
 # Build helper files live in docs/ but shouldn't be published.
 exclude_docs: |
@@ -102,10 +102,12 @@ nav:
       - Agents: agents.md
       - Doctor: doctor.md
       - Experimental features: experimental.md
+      - Troubleshooting: troubleshooting.md
       - Upgrade: upgrade.md
       - Uninstall: uninstall.md
   - Skills commands:
       - add: skills/add.md
+      - cherry-pick: skills/cherry-pick.md
       - find: skills/find.md
       - list: skills/list.md
       - remove: skills/remove.md

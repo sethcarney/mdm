@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -169,7 +170,16 @@ func restoreSkills(entries map[string]sourceRef, baseOpts AddOptions) {
 	}
 
 	vlog(verboseFlag, "grouped %d skill(s) into %d source group(s)", len(entries), len(sourceMap))
-	for _, group := range sourceMap {
+	// Iterate groups (and each group's skills) in sorted order so restores are
+	// deterministic rather than following map iteration order.
+	keys := make([]string, 0, len(sourceMap))
+	for key := range sourceMap {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		group := sourceMap[key]
+		sort.Strings(group.skills)
 		vlog(verboseFlag, "restoring from %q (ref=%q): %v", group.source, group.ref, group.skills)
 		fmt.Printf("%sInstalling from %s...%s\n", ansiDim, group.source, ansiReset)
 		opts := baseOpts

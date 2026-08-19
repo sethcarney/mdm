@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -567,6 +568,9 @@ func (m *searchModel) confirm() (tea.Model, tea.Cmd, bool) {
 			result = append(result, i)
 		}
 	}
+	// m.selected is a map, so the collected indices come out in random order;
+	// sort so callers install (and summarize) selections in display order.
+	sort.Ints(result)
 	if m.required && len(result) == 0 {
 		return m, nil, true
 	}

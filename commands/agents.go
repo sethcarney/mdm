@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/sethcarney/mdm/internal/agent"
+	"github.com/sethcarney/mdm/internal/fork"
 	"github.com/sethcarney/mdm/internal/lock"
 	"github.com/sethcarney/mdm/internal/ui"
 )
@@ -428,6 +429,58 @@ func pickAgentsToRemove(configured []string) ([]string, bool) {
 	return toRemove, true
 }
 
+// removeAgentSkillsDir deletes an agent's own skills directory, preserving any
+// cherry-picked forks inside it. An agent's directory can be the project's forks
+// directory (OpenClaw reads ./skills, mdm's default fork destination), and a
+// fork is the project's source code — edits that exist nowhere else — not
+// something mdm installed and may delete. Returns the number of forks kept, and
+// whether anything was removed at all.
+func removeAgentSkillsDir(skillsPath string) (kept int, removed bool) {
+	info, err := os.Lstat(skillsPath)
+	if err != nil {
+		return 0, false
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		_ = os.Remove(skillsPath)
+		return 0, true
+	}
+
+	entries, err := os.ReadDir(skillsPath)
+	if err != nil {
+		_ = os.RemoveAll(skillsPath)
+		return 0, true
+	}
+	for _, e := range entries {
+		if e.IsDir() && fork.IsFork(filepath.Join(skillsPath, e.Name())) {
+			kept++
+		}
+	}
+	if kept == 0 {
+		_ = os.RemoveAll(skillsPath)
+		return 0, true
+	}
+	for _, e := range entries {
+		path := filepath.Join(skillsPath, e.Name())
+		if e.IsDir() && fork.IsFork(path) {
+			continue
+		}
+		_ = os.RemoveAll(path)
+	}
+	return kept, true
+}
+
+func reportAgentSkillsDirCleanup(skillsPath, displayName string) {
+	kept, removed := removeAgentSkillsDir(skillsPath)
+	if !removed {
+		return
+	}
+	if kept > 0 {
+		ui.LogInfo(fmt.Sprintf("Cleaned %s skills directory — kept %d cherry-picked skill(s)", displayName, kept))
+		return
+	}
+	ui.LogInfo("Removed " + displayName + " skills directory")
+}
+
 // cleanUpRemovedAgentFiles removes the skills directory and instructions file
 // that belong exclusively to each agent being removed. Shared resources
 // (.agents/skills, AGENTS.md) are never touched.
@@ -449,14 +502,7 @@ func cleanUpRemovedAgentFiles(toRemove []string, global bool, cwd string) {
 				skillsPath = filepath.Join(cwd, cfg.SkillsDir)
 			}
 			if skillsPath != "" {
-				if info, err := os.Lstat(skillsPath); err == nil {
-					if info.Mode()&os.ModeSymlink != 0 {
-						_ = os.Remove(skillsPath)
-					} else {
-						_ = os.RemoveAll(skillsPath)
-					}
-					ui.LogInfo("Removed " + cfg.DisplayName + " skills directory")
-				}
+				reportAgentSkillsDirCleanup(skillsPath, cfg.DisplayName)
 			}
 		}
 

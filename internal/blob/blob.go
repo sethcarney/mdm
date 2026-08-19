@@ -288,6 +288,7 @@ func FetchRemoteSkillList(ownerRepo, ref, subpath, token string) ([]*RemoteSkill
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	var results []*RemoteSkillMeta
+	seen := map[string]bool{}
 	for _, p := range skillPaths {
 		body, ok := fetchSkillMDContent(ctx, ownerRepo, tree.Branch, p, token)
 		if !ok {
@@ -296,9 +297,10 @@ func FetchRemoteSkillList(ownerRepo, ref, subpath, token string) ([]*RemoteSkill
 		data, _ := skill.ParseFrontmatter(string(body))
 		name, _ := data["name"].(string)
 		desc, _ := data["description"].(string)
-		if name == "" {
+		if name == "" || seen[name] {
 			continue
 		}
+		seen[name] = true
 		results = append(results, &RemoteSkillMeta{Name: name, Description: desc})
 	}
 	return results, nil
@@ -363,8 +365,9 @@ func TryBlobInstall(ownerRepo string, opts InstallOptions) (*BlobInstallResult, 
 	defer cancel()
 
 	var blobSkills []*BlobSkill
+	seenNames := map[string]bool{}
 	for _, skillMdPath := range skillPaths {
-		if bs := buildSkillFromPath(ctx, ownerRepo, tree, skillMdPath, opts); bs != nil {
+		if bs := buildSkillFromPath(ctx, ownerRepo, tree, skillMdPath, opts, seenNames); bs != nil {
 			blobSkills = append(blobSkills, bs)
 		}
 	}
@@ -376,8 +379,11 @@ func TryBlobInstall(ownerRepo string, opts InstallOptions) (*BlobInstallResult, 
 }
 
 // buildSkillFromPath parses one SKILL.md and, if it qualifies, downloads the
-// full set of files under its directory directly from GitHub.
-func buildSkillFromPath(ctx context.Context, ownerRepo string, tree *RepoTree, skillMdPath string, opts InstallOptions) *BlobSkill {
+// full set of files under its directory directly from GitHub. seen tracks skill
+// names already resolved this run: a repo can hold several copies of the same
+// skill (e.g. installed copies committed under .claude/skills/, .cursor/skills/
+// and the source under skills/), and only the first copy should be offered.
+func buildSkillFromPath(ctx context.Context, ownerRepo string, tree *RepoTree, skillMdPath string, opts InstallOptions, seen map[string]bool) *BlobSkill {
 	branch := tree.Branch
 	body, ok := fetchSkillMDContent(ctx, ownerRepo, branch, skillMdPath, opts.Token)
 	if !ok {
@@ -394,6 +400,11 @@ func buildSkillFromPath(ctx context.Context, ownerRepo string, tree *RepoTree, s
 	if !checkBlobSkillFilter(data, name, opts.SkillFilter, opts.IncludeInternal) {
 		return nil
 	}
+	if seen[name] {
+		opts.log("skipping duplicate copy of %q at %s", name, skillMdPath)
+		return nil
+	}
+	seen[name] = true
 	files := collectSkillFiles(ctx, ownerRepo, branch, skillMdPath, opts.Token, tree)
 	if len(files) == 0 {
 		files = []SkillSnapshotFile{{Path: "SKILL.md", Contents: string(body)}}

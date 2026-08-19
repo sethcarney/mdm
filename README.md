@@ -71,6 +71,7 @@ mdm rules status           Show the state of all agent instruction files
 mdm rules unlink           Remove symlinks created by mdm rules link
 
 mdm skills add <package>   Add a skill from GitHub or URL
+mdm skills cherry-pick     Fork third-party skills into ./skills as your own
 mdm skills remove          Remove installed skills
 mdm skills list            List installed skills
 mdm skills find [query]    Search the registry
@@ -89,6 +90,17 @@ mdm upgrade                Upgrade the mdm CLI binary
 ```
 
 Run `mdm --help` for the full command reference. See [docs/rules.md](docs/rules.md) for a detailed walkthrough of the `mdm rules` flow.
+
+> [!WARNING]
+> **`mdm agents remove openclaw` deletes `./skills/`.** Removing an agent cleans
+> up the skills directory that belongs to it, and OpenClaw's project skills
+> directory is `skills/` — the same place many projects keep hand-written
+> skills. mdm cannot tell your own work from an OpenClaw install, so anything in
+> there that is not a [cherry-picked fork](https://sethcarney.github.io/mdm/skills/cherry-pick/)
+> (those carry an `.mdm-origin.json` marker and are preserved) is deleted along
+> with it. Commit `./skills/` before removing agents, or keep hand-written skills
+> in a directory no agent claims. Every other agent uses a dot-prefixed or shared
+> directory. See [Troubleshooting](https://sethcarney.github.io/mdm/troubleshooting/).
 
 Skill installs run a deterministic local hidden-character scan over markdown files before copying or symlinking content. See [docs/security/hidden-character-scan.md](docs/security/hidden-character-scan.md) for the exact checks and bypass policy.
 
