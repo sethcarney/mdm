@@ -291,7 +291,7 @@ func pickAndSaveAgents(global bool, scope, cwd string) ([]string, error) {
 
 func promptAgentScope() (isGlobal bool, ok bool) {
 	opts := []ui.UIOption{
-		{Label: "Project", Value: "project", Hint: "skills-lock.json in this directory"},
+		{Label: "Project", Value: "project", Hint: "mdm-lock.json in this directory"},
 		{Label: "Global", Value: "global", Hint: "~/.agents/skills-lock.json"},
 	}
 	idx, ok := ui.UiSelect("Configure agents for which scope?", opts)

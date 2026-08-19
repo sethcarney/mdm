@@ -21,7 +21,7 @@ func buildKnowledgeUpdateCmd() *cobra.Command {
 		Use:   "update [bundles...]",
 		Short: "Re-fetch installed bundles from their recorded source and ref",
 		Long: fmt.Sprintf(`Re-fetch knowledge bundles from the source and ref recorded in
-knowledge-lock.json, re-running the hidden-character scan and
+mdm-lock.json, re-running the hidden-character scan and
 conformance validation.
 
 %sExamples:%s
@@ -82,7 +82,7 @@ func runKnowledgeUpdate(filters []string, allowHiddenChars bool) {
 
 	names := selectKnowledgeLockEntries(lk, filters)
 	if len(names) == 0 {
-		fmt.Printf("\n%sNo matching bundles found in knowledge-lock.json.%s\n\n", ansiDim, ansiReset)
+		fmt.Printf("\n%sNo matching bundles found in mdm-lock.json.%s\n\n", ansiDim, ansiReset)
 		return
 	}
 

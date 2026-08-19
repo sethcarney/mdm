@@ -4,19 +4,16 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"sort"
 	"time"
 )
 
 // ──────────────────────────────────────────────────────────
-// Agent Plugins lock (plugins-lock.json, project scope)
+// Agent Plugins lock — the plugins section of mdm-lock.json
 //
-// Plugin entries deliberately live in their own file rather than in
-// skills-lock.json, for the same reason knowledge entries do: the skill
-// locks are read into fixed structs and rewritten wholesale, so an older
-// mdm binary touching skills would silently drop unknown keys. A separate
-// file keeps the experimental plugins feature invisible to — and
-// incorruptible by — stable binaries.
+// v1 kept plugin entries in their own plugins-lock.json so a stable binary
+// rewriting the skills lock could not drop them. In v2 the unified
+// mdm-lock.json preserves unknown top-level keys on every write (see
+// project.go), so the sections share one file safely.
 // ──────────────────────────────────────────────────────────
 
 const pluginsLockVersion = 1
@@ -43,20 +40,19 @@ type PluginLockEntry struct {
 	UpdatedAt   string              `json:"updatedAt"`
 }
 
+// PluginLockFile is a view of the plugins section of the project lock.
 type PluginLockFile struct {
 	Version int                        `json:"version"`
 	Plugins map[string]PluginLockEntry `json:"plugins"`
 }
 
-func GetPluginsLockPath(cwd string) string {
+// readLegacyPluginsLock reads the v1 plugins-lock.json directly. It is only
+// consulted when mdm-lock.json does not exist.
+func readLegacyPluginsLock(cwd string) PluginLockFile {
 	if cwd == "" {
 		cwd, _ = os.Getwd()
 	}
-	return filepath.Join(cwd, "plugins-lock.json")
-}
-
-func ReadPluginsLock(cwd string) PluginLockFile {
-	data, err := os.ReadFile(GetPluginsLockPath(cwd))
+	data, err := os.ReadFile(filepath.Join(cwd, "plugins-lock.json"))
 	if err != nil {
 		return EmptyPluginsLock()
 	}
@@ -70,22 +66,14 @@ func ReadPluginsLock(cwd string) PluginLockFile {
 	return lk
 }
 
+func ReadPluginsLock(cwd string) PluginLockFile {
+	return PluginLockFile{Version: pluginsLockVersion, Plugins: ReadProjectLock(cwd).Plugins}
+}
+
 func WritePluginsLock(lk PluginLockFile, cwd string) error {
-	// Sort keys for deterministic output
-	sorted := PluginLockFile{Version: lk.Version, Plugins: map[string]PluginLockEntry{}}
-	keys := make([]string, 0, len(lk.Plugins))
-	for k := range lk.Plugins {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, k := range keys {
-		sorted.Plugins[k] = lk.Plugins[k]
-	}
-	data, err := json.MarshalIndent(sorted, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(GetPluginsLockPath(cwd), append(data, '\n'), 0600)
+	pl := ReadProjectLock(cwd)
+	pl.Plugins = lk.Plugins
+	return WriteProjectLock(pl, cwd)
 }
 
 func EmptyPluginsLock() PluginLockFile {
@@ -111,8 +99,5 @@ func RemovePluginFromLock(name, cwd string) error {
 		return nil
 	}
 	delete(lk.Plugins, name)
-	if len(lk.Plugins) == 0 {
-		return os.Remove(GetPluginsLockPath(cwd))
-	}
 	return WritePluginsLock(lk, cwd)
 }

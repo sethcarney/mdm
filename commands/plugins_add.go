@@ -50,7 +50,7 @@ func buildPluginsAddCmd() *cobra.Command {
 		Use:     "add <source>",
 		Short:   "Install an Agent Plugin from GitHub, GitLab, URL, or local path",
 		Aliases: []string{"a"},
-		Long: fmt.Sprintf(`Install a plugin into ./%s/%s/ and record it in plugins-lock.json.
+		Long: fmt.Sprintf(`Install a plugin into ./%s/%s/ and record it in mdm-lock.json.
 
 The plugin's skills are linked into the agent skill directories, and its
 MCP servers are wired into the agents' MCP config files.
@@ -337,7 +337,7 @@ func installPluginCandidate(c pluginCandidate, baseEntry lock.PluginLockEntry, o
 	}
 	entry.MCP = wirePluginMCP(c, destDir, dataDir, agents, opts, cwd)
 	if err := lock.AddPluginToLock(c.Name, entry, cwd); err != nil {
-		ui.LogWarn(fmt.Sprintf("could not update plugins-lock.json: %v", err))
+		ui.LogWarn(fmt.Sprintf("could not update mdm-lock.json: %v", err))
 	}
 
 	msg := fmt.Sprintf("%s (%d skill(s)", c.Name, len(installedSkills))

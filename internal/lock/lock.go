@@ -125,7 +125,7 @@ func GetGitHubToken() string {
 }
 
 // ──────────────────────────────────────────────────────────
-// Local (project) skill lock (skills-lock.json)
+// Local (project) skill lock — the skills section of mdm-lock.json
 // ──────────────────────────────────────────────────────────
 
 const localLockVersion = 1
@@ -137,21 +137,22 @@ type LocalSkillLockEntry struct {
 	SkillPath  string `json:"skillPath,omitempty"`
 }
 
+// LocalSkillLockFile is a view of the skills section of the project lock.
+// Reading and writing it goes through mdm-lock.json (with legacy
+// skills-lock.json fallback on read); the other sections are preserved.
 type LocalSkillLockFile struct {
 	Version          int                            `json:"version"`
 	Skills           map[string]LocalSkillLockEntry `json:"skills"`
 	ConfiguredAgents []string                       `json:"configuredAgents,omitempty"`
 }
 
-func GetLocalLockPath(cwd string) string {
+// readLegacySkillsLock reads the v1 skills-lock.json directly. It is only
+// consulted when mdm-lock.json does not exist.
+func readLegacySkillsLock(cwd string) LocalSkillLockFile {
 	if cwd == "" {
 		cwd, _ = os.Getwd()
 	}
-	return filepath.Join(cwd, "skills-lock.json")
-}
-
-func ReadLocalLock(cwd string) LocalSkillLockFile {
-	data, err := os.ReadFile(GetLocalLockPath(cwd))
+	data, err := os.ReadFile(filepath.Join(cwd, "skills-lock.json"))
 	if err != nil {
 		return EmptyLocalLock()
 	}
@@ -165,22 +166,20 @@ func ReadLocalLock(cwd string) LocalSkillLockFile {
 	return lock
 }
 
+func ReadLocalLock(cwd string) LocalSkillLockFile {
+	pl := ReadProjectLock(cwd)
+	return LocalSkillLockFile{
+		Version:          localLockVersion,
+		Skills:           pl.Skills,
+		ConfiguredAgents: pl.ConfiguredAgents,
+	}
+}
+
 func WriteLocalLock(lock LocalSkillLockFile, cwd string) error {
-	// Sort keys for deterministic output
-	sorted := LocalSkillLockFile{Version: lock.Version, Skills: map[string]LocalSkillLockEntry{}, ConfiguredAgents: lock.ConfiguredAgents}
-	keys := make([]string, 0, len(lock.Skills))
-	for k := range lock.Skills {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, k := range keys {
-		sorted.Skills[k] = lock.Skills[k]
-	}
-	data, err := json.MarshalIndent(sorted, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(GetLocalLockPath(cwd), append(data, '\n'), 0600)
+	pl := ReadProjectLock(cwd)
+	pl.Skills = lock.Skills
+	pl.ConfiguredAgents = lock.ConfiguredAgents
+	return WriteProjectLock(pl, cwd)
 }
 
 func EmptyLocalLock() LocalSkillLockFile {
@@ -205,6 +204,9 @@ func RemoveSkillFromLocalLock(skillName string, cwd string) error {
 func HasProjectSkills(cwd string) bool {
 	if cwd == "" {
 		cwd, _ = os.Getwd()
+	}
+	if _, err := os.Stat(filepath.Join(cwd, ProjectLockName)); err == nil {
+		return true
 	}
 	if _, err := os.Stat(filepath.Join(cwd, "skills-lock.json")); err == nil {
 		return true

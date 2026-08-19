@@ -19,7 +19,7 @@ func buildPluginsUpdateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update [plugins...]",
 		Short: "Re-fetch installed plugins from their recorded source and ref",
-		Long: fmt.Sprintf(`Re-fetch plugins from the source and ref recorded in plugins-lock.json,
+		Long: fmt.Sprintf(`Re-fetch plugins from the source and ref recorded in mdm-lock.json,
 re-running the hidden-character scan, re-linking skills, and re-wiring
 MCP config. The plugin's persistent data directory is preserved.
 
@@ -83,7 +83,7 @@ func runPluginsUpdate(filters []string, allowHiddenChars, skipMCP bool) {
 
 	names := selectPluginLockEntries(lk, filters)
 	if len(names) == 0 {
-		fmt.Printf("\n%sNo matching plugins found in plugins-lock.json.%s\n\n", ansiDim, ansiReset)
+		fmt.Printf("\n%sNo matching plugins found in mdm-lock.json.%s\n\n", ansiDim, ansiReset)
 		return
 	}
 

@@ -206,7 +206,7 @@ func assertToolkitLockEntry(t *testing.T, dir string) {
 			SpecVersion string   `json:"specVersion"`
 		} `json:"plugins"`
 	}
-	raw, err := os.ReadFile(filepath.Join(dir, "plugins-lock.json"))
+	raw, err := os.ReadFile(filepath.Join(dir, "mdm-lock.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,14 +233,14 @@ func TestPluginsAddListRemoveRoundTrip(t *testing.T) {
 		filepath.Join(".agents", "plugins-data", "toolkit"),
 		filepath.Join(".agents", "skills", "alpha", "SKILL.md"),
 		filepath.Join(".claude", "skills", "alpha", "SKILL.md"),
-		"plugins-lock.json",
+		"mdm-lock.json",
 	)
 	// The canonical skill entry is a symlink into the plugin directory.
 	if info, err := os.Lstat(filepath.Join(dir, ".agents", "skills", "alpha")); err != nil || info.Mode()&os.ModeSymlink == 0 {
 		t.Errorf("canonical skill should be a symlink into the plugin dir (err=%v)", err)
 	}
-	// Plugin installs never touch skills-lock.json.
-	assertPathsGone(t, dir, "skills-lock.json")
+	// Plugin installs never write the legacy v1 lock file.
+	assertPathsGone(t, dir, "plugins-lock.json", "skills-lock.json")
 	assertToolkitLockEntry(t, dir)
 
 	out := mustRunPlugins(t, dir, env, "plugins", "list")
@@ -259,7 +259,7 @@ func TestPluginsAddListRemoveRoundTrip(t *testing.T) {
 		filepath.Join(".agents", "plugins", "toolkit"),
 		filepath.Join(".agents", "skills", "alpha"),
 		filepath.Join(".claude", "skills", "alpha"),
-		"plugins-lock.json",
+		"mdm-lock.json",
 	)
 	// The data dir survives unless --purge-data is given.
 	assertPathsExist(t, dir, filepath.Join(".agents", "plugins-data", "toolkit"))
@@ -293,7 +293,7 @@ func TestPluginsAddDryRunWritesNothing(t *testing.T) {
 	if !strings.Contains(stdout, "Dry run") {
 		t.Errorf("expected dry-run notice, got: %q", stdout)
 	}
-	for _, p := range []string{".agents", "plugins-lock.json"} {
+	for _, p := range []string{".agents", "mdm-lock.json"} {
 		if _, err := os.Stat(filepath.Join(dir, p)); !os.IsNotExist(err) {
 			t.Errorf("dry run must not create %s", p)
 		}
@@ -317,7 +317,7 @@ func TestPluginsAddBlocksHiddenChars(t *testing.T) {
 	if !strings.Contains(combined, "Hidden character") {
 		t.Errorf("expected hidden character finding, got:\n%s", combined)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "plugins-lock.json")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(dir, "mdm-lock.json")); !os.IsNotExist(err) {
 		t.Error("blocked install must not write the lock")
 	}
 
@@ -455,7 +455,7 @@ func assertWiredLockMCP(t *testing.T, dir string) {
 			MCP map[string][]string `json:"mcp"`
 		} `json:"plugins"`
 	}
-	raw, err := os.ReadFile(filepath.Join(dir, "plugins-lock.json"))
+	raw, err := os.ReadFile(filepath.Join(dir, "mdm-lock.json"))
 	if err != nil {
 		t.Fatal(err)
 	}

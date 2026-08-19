@@ -34,7 +34,7 @@ func buildKnowledgeAddCmd() *cobra.Command {
 		Short:   "Install an OKF bundle from GitHub, GitLab, URL, or local path",
 		Aliases: []string{"a"},
 		Long: fmt.Sprintf(`Install a knowledge bundle into the project's knowledge directory
-(default ./%s) and record it in knowledge-lock.json.
+(default ./%s) and record it in mdm-lock.json.
 
 Sources use the same forms as skills: owner/repo shorthand, full URLs,
 and local paths, with an optional #ref for version pinning.
@@ -277,7 +277,7 @@ func installKnowledgeCandidate(c knowledgeCandidate, baseEntry lock.KnowledgeLoc
 		entry.ContentHash = hash
 	}
 	if err := lock.AddBundleToKnowledgeLock(c.Name, entry, cwd); err != nil {
-		ui.LogWarn(fmt.Sprintf("could not update knowledge-lock.json: %v", err))
+		ui.LogWarn(fmt.Sprintf("could not update mdm-lock.json: %v", err))
 	}
 
 	msg := fmt.Sprintf("%s (%d document(s))", c.Name, c.Docs)

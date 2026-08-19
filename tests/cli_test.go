@@ -192,7 +192,7 @@ func runMdmInDir(t *testing.T, dir string, env []string, args ...string) (stdout
 }
 
 func TestInstallNoLockFile(t *testing.T) {
-	// Run in an isolated temp dir with no skills-lock.json and a fresh XDG_STATE_HOME
+	// Run in an isolated temp dir with no lock file and a fresh XDG_STATE_HOME
 	// so there is no global lock file either.
 	tmpDir := t.TempDir()
 	stateDir := t.TempDir()
@@ -207,8 +207,8 @@ func TestInstallNoLockFile(t *testing.T) {
 	stdout, stderr, _ := runMdmInDir(t, tmpDir, env, "skills", "install", "-y")
 	combined := stdout + stderr
 
-	if !strings.Contains(combined, "No skills-lock.json found") {
-		t.Errorf("expected 'No skills-lock.json found' in output, got stdout=%q stderr=%q", stdout, stderr)
+	if !strings.Contains(combined, "No mdm-lock.json found") {
+		t.Errorf("expected 'No mdm-lock.json found' in output, got stdout=%q stderr=%q", stdout, stderr)
 	}
 	if strings.Contains(combined, "Please provide a package source") {
 		t.Errorf("unexpected 'Please provide a package source' error in output: stdout=%q stderr=%q", stdout, stderr)
@@ -220,7 +220,7 @@ func TestInstallHelp(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("mdm skills install --help exited %d", code)
 	}
-	if !strings.Contains(stdout, "Restore skills from skills-lock.json") {
+	if !strings.Contains(stdout, "Restore skills from mdm-lock.json") {
 		t.Errorf("expected install help to contain description, got: %q", stdout)
 	}
 }
@@ -291,20 +291,20 @@ func TestLocalSkillLockUsesRelativePath(t *testing.T) {
 	}
 
 	// Read the produced lock file.
-	lockPath := filepath.Join(projectDir, "skills-lock.json")
+	lockPath := filepath.Join(projectDir, "mdm-lock.json")
 	data, err := os.ReadFile(lockPath)
 	if err != nil {
-		t.Fatalf("reading skills-lock.json: %v", err)
+		t.Fatalf("reading mdm-lock.json: %v", err)
 	}
 	content := string(data)
 
 	// The stored source must NOT be an absolute path — it should be relative.
 	if strings.Contains(content, skillDir) {
-		t.Errorf("skills-lock.json contains the absolute skill path %q; expected a relative path.\nlock file:\n%s", skillDir, content)
+		t.Errorf("mdm-lock.json contains the absolute skill path %q; expected a relative path.\nlock file:\n%s", skillDir, content)
 	}
 	// It should start with "./" or "../" in the JSON.
 	if !strings.Contains(content, `"./`) && !strings.Contains(content, `"../`) {
-		t.Errorf("skills-lock.json does not contain a relative path (./ or ../).\nlock file:\n%s", content)
+		t.Errorf("mdm-lock.json does not contain a relative path (./ or ../).\nlock file:\n%s", content)
 	}
 }
 

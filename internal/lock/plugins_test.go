@@ -49,7 +49,7 @@ func TestPluginsLockRoundTrip(t *testing.T) {
 	if err := RemovePluginFromLock("toolkit", cwd); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(GetPluginsLockPath(cwd)); !os.IsNotExist(err) {
+	if _, err := os.Stat(GetProjectLockPath(cwd)); !os.IsNotExist(err) {
 		t.Error("lock file should be deleted when the last plugin is removed")
 	}
 	if err := RemovePluginFromLock("absent", cwd); err != nil {

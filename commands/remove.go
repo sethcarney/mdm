@@ -232,7 +232,7 @@ func handleNoInstalled(global bool, cwd string) {
 		cleaned, lockErr = cleanOrphanedLocalLockEntries(cwd)
 	}
 	if lockErr != nil {
-		ui.LogWarn(fmt.Sprintf("skills-lock.json could not be updated: %v", lockErr))
+		ui.LogWarn(fmt.Sprintf("the lock file could not be updated: %v", lockErr))
 		fmt.Println()
 	}
 	if cleaned > 0 {
@@ -301,7 +301,7 @@ func runRemove(positional []string, opts RemoveOptions) {
 	lockErr := executeRemovals(toRemove, opts.Agents, global, cwd)
 	fmt.Println()
 	if lockErr != nil {
-		ui.LogWarn(fmt.Sprintf("skills-lock.json could not be updated: %v", lockErr))
+		ui.LogWarn(fmt.Sprintf("the lock file could not be updated: %v", lockErr))
 		fmt.Println()
 	}
 }

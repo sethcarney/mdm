@@ -386,16 +386,16 @@ mdm
 │   ├── update [skills...]                  # Re-fetch skills from their recorded source+ref (alias: check)
 │   ├── audit [skills...]                   # Check installed skills for updates and security advisories
 │   ├── init [name]                         # Scaffold a new SKILL.md in the current directory
-│   ├── install                             # Restore all skills from skills-lock.json (CI/onboarding)
+│   ├── install                             # Restore all skills from mdm-lock.json (CI/onboarding)
 │   └── sync                                # Sync skills from node_modules into agent skill directories
 ├── knowledge                               # [EXPERIMENTAL] Manage OKF knowledge bundles (hidden until enabled; see docs/experimental.md)
-│   ├── add <source>                        # Install an OKF bundle into ./knowledge/ and record it in knowledge-lock.json (alias: a)
+│   ├── add <source>                        # Install an OKF bundle into ./knowledge/ and record it in mdm-lock.json (alias: a)
 │   ├── remove [bundles...]                 # Remove bundles and their lock entries (aliases: rm, r)
 │   ├── list                                # List installed bundles (alias: ls)
 │   ├── update [bundles...]                 # Re-fetch bundles from their recorded source+ref
 │   ├── validate [path]                     # Check OKF conformance and link integrity (--json)
 │   ├── init [name]                         # Scaffold a minimal conformant bundle
-│   └── install                             # Restore all bundles from knowledge-lock.json (CI/onboarding)
+│   └── install                             # Restore all bundles from mdm-lock.json (CI/onboarding)
 ├── plugins                                 # [EXPERIMENTAL] Manage Agent Plugins (agent-plugins.org; hidden until enabled; see docs/experimental.md)
 │   ├── add <source>                        # Install a plugin into .agents/plugins/, link its skills, wire MCP config (alias: a)
 │   ├── remove [plugins...]                 # Unwire MCP, unlink skills, delete plugin + lock entry (aliases: rm, r; --purge-data)
@@ -403,7 +403,7 @@ mdm
 │   ├── update [plugins...]                 # Re-fetch plugins from their recorded source+ref (preserves data dir)
 │   ├── validate [path]                     # Check Agent Plugins spec conformance (--json)
 │   ├── init [name]                         # Scaffold a minimal conformant plugin (--with-mcp)
-│   └── install                             # Restore all plugins from plugins-lock.json (CI/onboarding)
+│   └── install                             # Restore all plugins from mdm-lock.json (CI/onboarding)
 ├── experimental                            # Manage experimental features (also: MDM_EXPERIMENTAL env var)
 │   ├── list                                # Show experimental features and their status (alias: ls)
 │   ├── enable <feature>                    # Persist an opt-in
@@ -434,7 +434,7 @@ mdm
 │   ├── update.go        # `mdm skills update`: re-installs from recorded source+ref in lock file
 │   ├── audit.go         # `mdm skills audit`: checks skills.sh API for updates and OSV security advisories
 │   ├── init.go          # `mdm skills init`: scaffolds a new SKILL.md
-│   ├── install.go       # `mdm skills install`: restores skills from skills-lock.json
+│   ├── install.go       # `mdm skills install`: restores skills from mdm-lock.json
 │   ├── sync.go          # `mdm skills sync`: syncs from node_modules
 │   ├── agents.go        # `mdm agents` group: list/add/remove configured agents (project + global scope)
 │   ├── rules.go         # `mdm rules` group: link/status/unlink agent instruction files
@@ -455,7 +455,7 @@ mdm
     ├── experimental/    # Named feature gates (MDM_EXPERIMENTAL env var + persisted opt-ins)
     ├── source/          # URL/path parsing into ParsedSource (GitHub, GitLab, local, well-known)
     ├── registry/        # Well-known registry fetching (.well-known/agent-skills standard)
-    ├── lock/            # skills-lock.json + knowledge-lock.json + plugins-lock.json read/write; tracks hashes, versions, timestamps, configuredAgents
+    ├── lock/            # mdm-lock.json read/write (skills, knowledge, plugins sections; reads legacy v1 lock files as a fallback); tracks hashes, versions, timestamps, configuredAgents
     ├── git/             # Shallow git clone; branch/ref handling
     ├── blob/            # GitHub API tree/blob queries for skill discovery
     ├── security/        # markdownscan: hidden-character / prompt-smuggling detection
@@ -472,7 +472,7 @@ mdm
 3. `skill/` discovers `SKILL.md` files and applies `--skill` filters
 4. User is prompted for which agents to install to (or `--agent` flag)
 5. Skill dirs are copied into each agent's skills directory
-6. `lock/` records the installation in `skills-lock.json`
+6. `lock/` records the installation in the skills section of `mdm-lock.json`
 
 `mdm skills cherry-pick` → `cherrypick.go` reuses steps 1–3, then diverges:
 

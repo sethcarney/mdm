@@ -19,7 +19,7 @@ func buildInstallFromLockCmd(ver string) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "install",
-		Short: "Restore skills from skills-lock.json",
+		Short: "Restore skills from mdm-lock.json",
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			showLogo(ver)
@@ -33,7 +33,7 @@ func buildInstallFromLockCmd(ver string) *cobra.Command {
 }
 
 // hintPluginsInstall points at `mdm plugins install` when the project has a
-// plugins-lock.json — plugin restore is a separate command with its own lock.
+// plugin section in its lock — plugin restore is a separate command.
 func hintPluginsInstall(cwd string) {
 	if len(lock.ReadPluginsLock(cwd).Plugins) == 0 {
 		return
@@ -42,7 +42,7 @@ func hintPluginsInstall(cwd string) {
 		fmt.Printf("%sThis project also has plugins — restore them with 'mdm plugins install'.%s\n", ansiDim, ansiReset)
 		return
 	}
-	fmt.Printf("%sThis project has a plugins-lock.json — enable plugin support with 'mdm experimental enable plugins', then run 'mdm plugins install'.%s\n", ansiDim, ansiReset)
+	fmt.Printf("%sThis project has plugins in its lock file — enable plugin support with 'mdm experimental enable plugins', then run 'mdm plugins install'.%s\n", ansiDim, ansiReset)
 }
 
 func runInstallFromLock(yes bool, allowHiddenChars bool) {
@@ -58,7 +58,7 @@ func runInstallFromLock(yes bool, allowHiddenChars bool) {
 
 	switch {
 	case !hasLocal && !hasGlobal:
-		fmt.Printf("\n%sNo skills-lock.json found.%s\n\n", ansiDim, ansiReset)
+		fmt.Printf("\n%sNo mdm-lock.json found.%s\n\n", ansiDim, ansiReset)
 		fmt.Printf("Add skills with %smdm skills add <package>%s\n\n", ansiText, ansiReset)
 
 	case hasLocal && !hasGlobal:
@@ -67,11 +67,11 @@ func runInstallFromLock(yes bool, allowHiddenChars bool) {
 
 	case !hasLocal && hasGlobal:
 		// Only global lock has skills — explain and ask
-		fmt.Printf("\n%sNo skills found in local skills-lock.json.%s\n", ansiDim, ansiReset)
+		fmt.Printf("\n%sNo skills found in the local mdm-lock.json.%s\n", ansiDim, ansiReset)
 		fmt.Printf("%sFound %d skill(s) in global skills-lock.json (%s).%s\n\n",
 			ansiDim, len(globalL.Skills), lock.GetSkillLockPath(), ansiReset)
 		if !yes {
-			confirmed, ok := ui.UiConfirm("Install from global skills-lock.json?")
+			confirmed, ok := ui.UiConfirm("Install from the global skills-lock.json?")
 			if !ok || !confirmed {
 				fmt.Println("Cancelled.")
 				return
@@ -84,8 +84,8 @@ func runInstallFromLock(yes bool, allowHiddenChars bool) {
 			// Default to local when -y flag is used
 			restoreFromLocalLock(localL, yes, allowHiddenChars)
 		} else {
-			idx, ok := ui.UiSelect("Install from which skills-lock.json?", []ui.UIOption{
-				{Label: fmt.Sprintf("Local  — %d skill(s)", len(localL.Skills)), Hint: lock.GetLocalLockPath(cwd)},
+			idx, ok := ui.UiSelect("Install from which lock file?", []ui.UIOption{
+				{Label: fmt.Sprintf("Local  — %d skill(s)", len(localL.Skills)), Hint: lock.GetProjectLockPath(cwd)},
 				{Label: fmt.Sprintf("Global — %d skill(s)", len(globalL.Skills)), Hint: lock.GetSkillLockPath()},
 			})
 			if !ok {
@@ -103,7 +103,7 @@ func runInstallFromLock(yes bool, allowHiddenChars bool) {
 
 // restoreFromLocalLock installs all skills recorded in the project-level lock file.
 func restoreFromLocalLock(l lock.LocalSkillLockFile, yes bool, allowHiddenChars bool) {
-	fmt.Printf("\n%sRestoring %d skill(s) from local skills-lock.json...%s\n\n", ansiText, len(l.Skills), ansiReset)
+	fmt.Printf("\n%sRestoring %d skill(s) from the local mdm-lock.json...%s\n\n", ansiText, len(l.Skills), ansiReset)
 
 	// Convert local entries to a common source/ref map.
 	entries := make(map[string]sourceRef, len(l.Skills))

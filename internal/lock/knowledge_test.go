@@ -2,7 +2,6 @@ package lock
 
 import (
 	"os"
-	"path/filepath"
 	"testing"
 )
 
@@ -51,7 +50,7 @@ func TestKnowledgeLockRoundTrip(t *testing.T) {
 	}
 }
 
-func TestKnowledgeLockRemoveDeletesFileWhenEmpty(t *testing.T) {
+func TestKnowledgeLockRemoveDeletesLockWhenEmpty(t *testing.T) {
 	cwd := t.TempDir()
 	if err := AddBundleToKnowledgeLock("a", KnowledgeLockEntry{Source: "x", SourceType: "local", InstallDir: "knowledge/a", SpecVersion: "0.1"}, cwd); err != nil {
 		t.Fatal(err)
@@ -59,8 +58,8 @@ func TestKnowledgeLockRemoveDeletesFileWhenEmpty(t *testing.T) {
 	if err := RemoveBundleFromKnowledgeLock("a", cwd); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(cwd, "knowledge-lock.json")); !os.IsNotExist(err) {
-		t.Error("expected knowledge-lock.json to be deleted when the last bundle is removed")
+	if _, err := os.Stat(GetProjectLockPath(cwd)); !os.IsNotExist(err) {
+		t.Error("expected mdm-lock.json to be deleted when the last entry is removed")
 	}
 	// Removing a missing entry is a no-op.
 	if err := RemoveBundleFromKnowledgeLock("missing", cwd); err != nil {
@@ -68,25 +67,19 @@ func TestKnowledgeLockRemoveDeletesFileWhenEmpty(t *testing.T) {
 	}
 }
 
-func TestKnowledgeLockDoesNotTouchSkillLocks(t *testing.T) {
+func TestKnowledgeLockDoesNotTouchSkillsSection(t *testing.T) {
 	cwd := t.TempDir()
 	if err := AddSkillToLocalLock("my-skill", LocalSkillLockEntry{Source: "o/r", SourceType: "github"}, cwd); err != nil {
 		t.Fatal(err)
 	}
-	before, err := os.ReadFile(GetLocalLockPath(cwd))
-	if err != nil {
-		t.Fatal(err)
-	}
+	before := ReadLocalLock(cwd)
 
 	if err := AddBundleToKnowledgeLock("sales", KnowledgeLockEntry{Source: "x", SourceType: "local", InstallDir: "knowledge/sales", SpecVersion: "0.1"}, cwd); err != nil {
 		t.Fatal(err)
 	}
 
-	after, err := os.ReadFile(GetLocalLockPath(cwd))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(before) != string(after) {
-		t.Error("knowledge lock operations must not modify skills-lock.json")
+	after := ReadLocalLock(cwd)
+	if len(after.Skills) != len(before.Skills) || after.Skills["my-skill"] != before.Skills["my-skill"] {
+		t.Error("knowledge lock operations must not modify the skills section")
 	}
 }

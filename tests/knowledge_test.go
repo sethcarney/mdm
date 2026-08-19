@@ -190,14 +190,14 @@ func TestKnowledgeAddListRemoveLocal(t *testing.T) {
 	if _, err := os.Stat(installed); err != nil {
 		t.Fatalf("expected installed bundle at %s: %v", installed, err)
 	}
-	lockPath := filepath.Join(project, "knowledge-lock.json")
+	lockPath := filepath.Join(project, "mdm-lock.json")
 	lockData, err := os.ReadFile(lockPath)
 	if err != nil {
-		t.Fatalf("expected knowledge-lock.json: %v", err)
+		t.Fatalf("expected mdm-lock.json: %v", err)
 	}
 	for _, want := range []string{"src-bundle", "specVersion", "contentHash", "knowledge/src-bundle"} {
 		if !strings.Contains(string(lockData), want) {
-			t.Errorf("expected %q in knowledge-lock.json, got:\n%s", want, lockData)
+			t.Errorf("expected %q in mdm-lock.json, got:\n%s", want, lockData)
 		}
 	}
 
@@ -219,7 +219,7 @@ func TestKnowledgeAddListRemoveLocal(t *testing.T) {
 		t.Error("expected installed bundle directory to be removed")
 	}
 	if _, err := os.Stat(lockPath); !os.IsNotExist(err) {
-		t.Error("expected knowledge-lock.json to be removed with the last bundle")
+		t.Error("expected mdm-lock.json to be removed with the last bundle")
 	}
 }
 
@@ -236,8 +236,8 @@ func TestKnowledgeAddDryRunWritesNothing(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(project, "knowledge")); !os.IsNotExist(err) {
 		t.Error("dry run must not create the knowledge directory")
 	}
-	if _, err := os.Stat(filepath.Join(project, "knowledge-lock.json")); !os.IsNotExist(err) {
-		t.Error("dry run must not write knowledge-lock.json")
+	if _, err := os.Stat(filepath.Join(project, "mdm-lock.json")); !os.IsNotExist(err) {
+		t.Error("dry run must not write mdm-lock.json")
 	}
 }
 
@@ -258,8 +258,8 @@ func TestKnowledgeAddBlocksHiddenChars(t *testing.T) {
 	if !strings.Contains(combined, "Hidden character") {
 		t.Errorf("expected hidden character finding, got:\n%s", combined)
 	}
-	if _, err := os.Stat(filepath.Join(project, "knowledge-lock.json")); !os.IsNotExist(err) {
-		t.Error("blocked install must not write knowledge-lock.json")
+	if _, err := os.Stat(filepath.Join(project, "mdm-lock.json")); !os.IsNotExist(err) {
+		t.Error("blocked install must not write mdm-lock.json")
 	}
 }
 
@@ -272,14 +272,14 @@ func TestKnowledgeLockSurvivesSkillsOperations(t *testing.T) {
 	if _, stderr, code := runMdmInDir(t, project, env, "knowledge", "add", "./src-bundle", "-y"); code != 0 {
 		t.Fatalf("knowledge add exited %d: %s", code, stderr)
 	}
-	lockPath := filepath.Join(project, "knowledge-lock.json")
-	before, err := os.ReadFile(lockPath)
-	if err != nil {
-		t.Fatal(err)
+	lockPath := filepath.Join(project, "mdm-lock.json")
+	before := readLockSection(t, lockPath, "knowledge")
+	if before == "" {
+		t.Fatal("expected a knowledge section after knowledge add")
 	}
 
-	// A skills operation that rewrites skills-lock.json must leave the
-	// knowledge lock byte-identical.
+	// A skills operation that rewrites the shared lock file must leave the
+	// knowledge section byte-identical.
 	skillDir := filepath.Join(project, "my-skill")
 	if err := os.MkdirAll(skillDir, 0755); err != nil {
 		t.Fatal(err)
@@ -291,17 +291,32 @@ func TestKnowledgeLockSurvivesSkillsOperations(t *testing.T) {
 	if stdout, stderr, code := runMdmInDir(t, project, env, "skills", "add", "./my-skill", "-p", "-y", "-a", "claude-code"); code != 0 {
 		t.Fatalf("skills add exited %d:\n%s%s", code, stdout, stderr)
 	}
-	if _, err := os.Stat(filepath.Join(project, "skills-lock.json")); err != nil {
-		t.Fatalf("expected skills add to write skills-lock.json: %v", err)
+	after := readLockSection(t, lockPath, "skills")
+	if after == "" {
+		t.Fatal("expected skills add to write a skills section into mdm-lock.json")
+	}
+	if _, err := os.Stat(filepath.Join(project, "skills-lock.json")); !os.IsNotExist(err) {
+		t.Error("skills add must not write the legacy skills-lock.json")
 	}
 
-	after, err := os.ReadFile(lockPath)
+	if got := readLockSection(t, lockPath, "knowledge"); got != before {
+		t.Errorf("knowledge section changed after a skills operation:\nbefore: %s\nafter: %s", before, got)
+	}
+}
+
+// readLockSection returns the raw JSON of one top-level key of a lock file,
+// or "" when the key is absent.
+func readLockSection(t *testing.T, path, key string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(before) != string(after) {
-		t.Errorf("knowledge-lock.json changed after a skills operation:\nbefore: %s\nafter: %s", before, after)
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatal(err)
 	}
+	return string(raw[key])
 }
 
 func TestKnowledgeInstallRestoresFromLock(t *testing.T) {

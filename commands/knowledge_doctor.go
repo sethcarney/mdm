@@ -11,7 +11,7 @@ import (
 )
 
 // checkKnowledgeBundles diagnoses installed knowledge bundles against
-// knowledge-lock.json: missing directories, content drift since install, and
+// the knowledge lock section: missing directories, content drift since install, and
 // OKF conformance errors. Only called when the knowledge experimental gate is
 // enabled, so doctor output is unchanged for everyone else.
 func checkKnowledgeBundles(cwd string) []doctorIssue {

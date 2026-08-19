@@ -14,7 +14,7 @@ import (
 )
 
 // checkInstalledPlugins diagnoses installed plugins against
-// plugins-lock.json: missing or invalid plugin directories, content drift,
+// the plugins lock section: missing or invalid plugin directories, content drift,
 // broken skill links, and MCP config that fell out of sync. Only called
 // when the plugins experimental gate is enabled, so doctor output is
 // unchanged for everyone else.
