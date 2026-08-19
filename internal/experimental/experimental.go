@@ -19,6 +19,8 @@ type Feature string
 
 const Knowledge Feature = "knowledge"
 
+const Plugins Feature = "plugins"
+
 // EnvVar enables features for a single invocation without persisting
 // anything, e.g. MDM_EXPERIMENTAL=knowledge or MDM_EXPERIMENTAL=all.
 const EnvVar = "MDM_EXPERIMENTAL"
@@ -35,6 +37,11 @@ var All = []Info{
 		Feature:     Knowledge,
 		Description: "Manage OKF knowledge bundles (mdm knowledge)",
 		SpecURL:     "https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf",
+	},
+	{
+		Feature:     Plugins,
+		Description: "Manage Agent Plugins — skills + MCP servers (mdm plugins)",
+		SpecURL:     "https://agent-plugins.org",
 	},
 }
 

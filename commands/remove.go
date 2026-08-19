@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/sethcarney/mdm/internal/experimental"
 	"github.com/sethcarney/mdm/internal/lock"
 	"github.com/sethcarney/mdm/internal/source"
 	"github.com/sethcarney/mdm/internal/ui"
@@ -270,6 +271,10 @@ func runRemove(positional []string, opts RemoveOptions) {
 	if !ok || len(toRemove) == 0 {
 		return
 	}
+	toRemove = excludePluginOwnedSkills(toRemove, global, cwd)
+	if len(toRemove) == 0 {
+		return
+	}
 
 	if !opts.Yes && !confirmRemove(toRemove) {
 		return
@@ -282,6 +287,25 @@ func runRemove(positional []string, opts RemoveOptions) {
 		ui.LogWarn(fmt.Sprintf("skills-lock.json could not be updated: %v", lockErr))
 		fmt.Println()
 	}
+}
+
+// excludePluginOwnedSkills drops skills that an installed plugin owns —
+// those are managed by plugins-lock.json, so `mdm plugins remove` is the
+// right tool. Only project scope can be plugin-owned, and only when the
+// experimental plugins gate is on.
+func excludePluginOwnedSkills(toRemove []*InstalledSkill, global bool, cwd string) []*InstalledSkill {
+	if global || !experimental.Enabled(experimental.Plugins) {
+		return toRemove
+	}
+	var keep []*InstalledSkill
+	for _, sk := range toRemove {
+		if owner := pluginOwningSkill(sk.Name, cwd); owner != "" {
+			ui.LogWarn(fmt.Sprintf("%s is managed by plugin %s — remove it with 'mdm plugins remove %s'", sk.Name, owner, owner))
+			continue
+		}
+		keep = append(keep, sk)
+	}
+	return keep
 }
 
 func confirmRemove(toRemove []*InstalledSkill) bool {

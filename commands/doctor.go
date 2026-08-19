@@ -140,6 +140,7 @@ func runDoctor(opts DoctorOptions) {
 	var unlinkedRulesIssues []doctorIssue
 	var missingSkillLinkIssues []doctorIssue
 	var knowledgeIssues []doctorIssue
+	var pluginIssues []doctorIssue
 	var mdIssues []doctorIssue
 	var mdTruncated bool
 
@@ -150,6 +151,9 @@ func runDoctor(opts DoctorOptions) {
 		missingSkillLinkIssues = checkMissingAgentSkillLinks(cwd)
 		if experimental.Enabled(experimental.Knowledge) {
 			knowledgeIssues = checkKnowledgeBundles(cwd)
+		}
+		if experimental.Enabled(experimental.Plugins) {
+			pluginIssues = checkInstalledPlugins(cwd)
 		}
 		mdIssues, mdTruncated = checkProjectMarkdown(cwd, skipDirs, skipFiles)
 		if mdTruncated {
@@ -165,7 +169,7 @@ func runDoctor(opts DoctorOptions) {
 		return results[i].Name < results[j].Name
 	})
 
-	printDoctorResults(results, instrIssues, unlinkedRulesIssues, missingSkillLinkIssues, knowledgeIssues, mdIssues, mdTruncated, readmeIssue, checkProject, cwd)
+	printDoctorResults(results, instrIssues, unlinkedRulesIssues, missingSkillLinkIssues, knowledgeIssues, pluginIssues, mdIssues, mdTruncated, readmeIssue, checkProject, cwd)
 }
 
 func buildProjectSkipPaths(cwd, canonicalBase string, skipDirs, skipFiles map[string]bool) {
@@ -528,7 +532,7 @@ func checkProjectMarkdown(cwd string, skipDirs map[string]bool, skipFiles map[st
 
 // ── Output ─────────────────────────────────────────────────────────────────────
 
-func printDoctorResults(results []doctorResult, instrIssues, unlinkedRulesIssues, missingSkillLinkIssues, knowledgeIssues, mdIssues []doctorIssue, mdTruncated bool, readmeIssue *doctorIssue, scannedProject bool, cwd string) {
+func printDoctorResults(results []doctorResult, instrIssues, unlinkedRulesIssues, missingSkillLinkIssues, knowledgeIssues, pluginIssues, mdIssues []doctorIssue, mdTruncated bool, readmeIssue *doctorIssue, scannedProject bool, cwd string) {
 	fmt.Println()
 
 	byScope := map[string][]doctorResult{}
@@ -575,6 +579,14 @@ func printDoctorResults(results []doctorResult, instrIssues, unlinkedRulesIssues
 	if len(knowledgeIssues) > 0 {
 		fmt.Printf("%sKnowledge bundles:%s\n\n", ansiText, ansiReset)
 		e, w := printAndCountDoctorIssues(knowledgeIssues)
+		totalErrors += e
+		totalWarnings += w
+		fmt.Println()
+	}
+
+	if len(pluginIssues) > 0 {
+		fmt.Printf("%sPlugins:%s\n\n", ansiText, ansiReset)
+		e, w := printAndCountDoctorIssues(pluginIssues)
 		totalErrors += e
 		totalWarnings += w
 		fmt.Println()
