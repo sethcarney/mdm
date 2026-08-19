@@ -21,10 +21,10 @@ Managing markdown across multiple agentic coding tools is more painful than it s
 - **45 agents supported** out of the box, including Claude Code, Cursor, Cline, GitHub Copilot, Gemini CLI, Codex, and 39 more.
 - **One source of truth for instruction files.** `mdm rules link` makes `AGENTS.md` the canonical file and symlinks each agent's expected filename to it.
 - **Skills from anywhere.** Install from GitHub, GitLab, arbitrary URLs, local paths, or the [skills.sh](https://skills.sh) registry.
-- **Reproducible installs.** Repos can commit a `skills-lock.json` with their recommended skills so new teammates run `mdm skills install` once and onboard with whatever agent they prefer.
+- **Reproducible installs.** Repos can commit an `mdm-lock.json` with their recommended skills, knowledge bundles, and plugins so new teammates run `mdm skills install` once and onboard with whatever agent they prefer.
 - **Security-focused by default.** Every install runs a deterministic local scan for hidden characters and prompt-smuggling patterns, and `mdm skills audit` checks for updates and OSV security advisories.
-- **Knowledge bundles _(experimental)_.** `mdm knowledge` installs, validates, and updates [Open Knowledge Format (OKF)](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf) bundles for AI agents. It's gated behind an experimental flag — see [docs/experimental.md](docs/experimental.md) to enable it.
-- **Agent Plugins _(experimental)_.** `mdm plugins` installs, validates, and updates [Agent Plugins](https://agent-plugins.org) — portable packages of skills and MCP servers — and wires their MCP servers into each agent's config. It's gated behind an experimental flag — see [docs/experimental.md](docs/experimental.md) to enable it.
+- **Knowledge bundles.** `mdm knowledge` installs, validates, and updates [Open Knowledge Format (OKF)](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf) bundles for AI agents.
+- **Agent Plugins.** `mdm plugins` installs, validates, and updates [Agent Plugins](https://agent-plugins.org) — portable packages of skills and MCP servers — and wires their MCP servers into each agent's config.
 - **No telemetry, fully open source.**
 
 Prefer a UI? There's also a [VS Code extension](https://marketplace.visualstudio.com/items?itemName=SethsSoftware.mdm-sidebar).
@@ -61,7 +61,7 @@ mdm is published as a [Dev Container Feature](https://containers.dev/implementor
 }
 ```
 
-The feature installs the release binary for the container's architecture to `/usr/local/bin/mdm`, verified against the release checksums — no Go toolchain needed in the image. Pin a release with `{"version": "1.9.1"}`, and pair it with `"postCreateCommand": "mdm skills install"` to restore the skills in `skills-lock.json` on create. See [src/mdm/README.md](src/mdm/README.md) for the full options.
+The feature installs the release binary for the container's architecture to `/usr/local/bin/mdm`, verified against the release checksums — no Go toolchain needed in the image. Pin a release with `{"version": "1.9.1"}`, and pair it with `"postCreateCommand": "mdm skills install"` to restore the skills in `mdm-lock.json` on create. See [src/mdm/README.md](src/mdm/README.md) for the full options.
 
 ## Usage
 
@@ -78,7 +78,7 @@ mdm skills find [query]    Search the registry
 mdm skills update          Update installed skills
 mdm skills audit           Check installed skills for updates and security advisories
 mdm skills init [name]     Scaffold a new skill
-mdm skills install         Restore skills from skills-lock.json
+mdm skills install         Restore skills from mdm-lock.json
 mdm skills sync            Sync skills from node_modules
 
 mdm agents list            Show the configured agents for the current scope
@@ -104,7 +104,7 @@ Run `mdm --help` for the full command reference. See [docs/rules.md](docs/rules.
 
 Skill installs run a deterministic local hidden-character scan over markdown files before copying or symlinking content. See [docs/security/hidden-character-scan.md](docs/security/hidden-character-scan.md) for the exact checks and bypass policy.
 
-When installing from a git source, mdm restricts git to the **https** and **ssh** transports. This blocks git's `ext::`/`fd::` local-command transports, which would otherwise let a repository source string — including one replayed from a checked-in `skills-lock.json` — execute arbitrary commands. See [docs/security/git-transport-restrictions.md](docs/security/git-transport-restrictions.md) for the rationale and the full allow/deny list.
+When installing from a git source, mdm restricts git to the **https** and **ssh** transports. This blocks git's `ext::`/`fd::` local-command transports, which would otherwise let a repository source string — including one replayed from a checked-in `mdm-lock.json` — execute arbitrary commands. See [docs/security/git-transport-restrictions.md](docs/security/git-transport-restrictions.md) for the rationale and the full allow/deny list.
 
 ## Development
 

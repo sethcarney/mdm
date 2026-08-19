@@ -17,7 +17,7 @@ mdm skills cherry-pick <source>
 | Where the skill lands | each agent's skills directory | `./skills/<name>` — your source tree |
 | Who owns it afterwards | upstream | you |
 | `mdm skills update` | re-fetches and replaces it | leaves it alone |
-| Provenance | `skills-lock.json` entry | `.mdm-origin.json` + `ATTRIBUTION.md` inside the fork |
+| Provenance | `mdm-lock.json` entry | `.mdm-origin.json` + `ATTRIBUTION.md` inside the fork |
 
 `add` keeps a skill in sync with its author. `cherry-pick` deliberately breaks that link: the copy becomes a file in your repository like any other, and divergence from upstream is the point.
 
@@ -29,7 +29,7 @@ mdm skills cherry-pick <source>
 4. Licensing is resolved — see [Licensing](#licensing) below — and you are asked to confirm if a source declares no terms at all.
 5. Each skill directory is copied to `./skills/<name>`, renamed if `--as` was given.
 6. Provenance is written into the fork: `.mdm-origin.json`, `ATTRIBUTION.md`, and the upstream license file when the skill directory did not already carry one.
-7. With `--install`, the forks are installed into your agents from your copy — recorded in `skills-lock.json` as a local source, which `mdm skills update` skips.
+7. With `--install`, the forks are installed into your agents from your copy — recorded in `mdm-lock.json` as a local source, which `mdm skills update` skips.
 
 ## Flags
 

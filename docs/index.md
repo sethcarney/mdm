@@ -108,28 +108,28 @@ solves exactly that.
 
     ---
 
-    Commit a `skills-lock.json` so teammates run `mdm skills install` once and
+    Commit an `mdm-lock.json` so teammates run `mdm skills install` once and
     onboard with whatever agent they prefer.
 
     [:octicons-arrow-right-24: skills install](skills/install.md)
 
--   :material-flask-outline:{ .lg .middle } __Knowledge bundles__ _(experimental)_
+-   :material-book-open-outline:{ .lg .middle } __Knowledge bundles__
 
     ---
 
     `mdm knowledge` installs, validates, and updates Open Knowledge Format (OKF)
-    bundles behind an experimental flag.
+    bundles.
 
-    [:octicons-arrow-right-24: Experimental features](experimental.md)
+    [:octicons-arrow-right-24: Knowledge](specs/knowledge.md)
 
--   :material-flask-outline:{ .lg .middle } __Agent Plugins__ _(experimental)_
+-   :material-puzzle-outline:{ .lg .middle } __Agent Plugins__
 
     ---
 
     `mdm plugins` installs and validates Agent Plugins — portable packages of
-    skills and MCP servers — behind an experimental flag.
+    skills and MCP servers.
 
-    [:octicons-arrow-right-24: Experimental features](experimental.md)
+    [:octicons-arrow-right-24: Plugins](specs/plugins.md)
 
 </div>
 
@@ -142,9 +142,10 @@ mdm
 ├── skills        Manage skills for AI agents (add · cherry-pick · remove · list · find · update · audit · init · install · sync)
 ├── rules         Link/unlink agent instruction files to a single AGENTS.md
 ├── agents        Manage the configured agent list used as default install targets
-├── knowledge     [experimental] Manage OKF knowledge bundles
-├── plugins       [experimental] Manage Agent Plugins (skills + MCP servers)
+├── knowledge     Manage OKF knowledge bundles
+├── plugins       Manage Agent Plugins (skills + MCP servers)
 ├── doctor        Check installed skills and project markdown for health issues
+├── migrate       Fold v1 lock files into mdm-lock.json
 ├── experimental  Manage experimental feature gates
 ├── upgrade       Self-update the mdm binary from GitHub releases
 ├── uninstall     Remove the mdm binary from your system

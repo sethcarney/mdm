@@ -56,4 +56,4 @@ mdm skills sync -y --allow-hidden-chars
 
 ## Lock file
 
-Synced skills are recorded in `skills-lock.json` with `sourceType: "local"` and a relative path to the `node_modules` directory. Running `mdm skills sync` again after an `npm install` update will re-sync with the new version.
+Synced skills are recorded in `mdm-lock.json` with `sourceType: "local"` and a relative path to the `node_modules` directory. Running `mdm skills sync` again after an `npm install` update will re-sync with the new version.

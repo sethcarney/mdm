@@ -116,8 +116,8 @@ nav:
       - init: skills/init.md
       - install: skills/install.md
       - sync: skills/sync.md
-  - Knowledge (experimental): specs/knowledge.md
-  - Plugins (experimental): specs/plugins.md
+  - Knowledge: specs/knowledge.md
+  - Plugins: specs/plugins.md
   - Security:
       - Hidden-character scan: security/hidden-character-scan.md
       - Git transport restrictions: security/git-transport-restrictions.md

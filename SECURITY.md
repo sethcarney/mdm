@@ -21,7 +21,7 @@ arbitrary commands rather than fetching from a server — along with `git://`,
 
 This matters because a repository source string is untrusted input, and
 `mdm skills install`/`update` replay the `source` field from a (commonly
-committed) `skills-lock.json`. Without the restriction, a poisoned source such as
+committed) `mdm-lock.json`. Without the restriction, a poisoned source such as
 `ext::sh -c "…"` could turn a routine install into remote code execution.
 
 Enforcement uses `GIT_ALLOW_PROTOCOL=https:ssh` on every git subprocess (inherited

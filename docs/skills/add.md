@@ -27,7 +27,7 @@ mdm skills add <package>
 4. You are prompted for scope (project or global) and which agents to install to — unless flags are provided.
 5. Markdown files are scanned for hidden Unicode characters.
 6. Skill directories are copied into each agent's skills directory.
-7. The installation is recorded in `skills-lock.json`.
+7. The installation is recorded in `mdm-lock.json`.
 
 ## Flags
 

@@ -28,8 +28,8 @@ Agent lists are stored per scope alongside the skill lock file:
 
 | Scope   | Storage                                |
 | ------- | -------------------------------------- |
-| Project | `skills-lock.json` in the project root |
-| Global  | `~/.agents/skills-lock.json`           |
+| Project | `mdm-lock.json` in the project root |
+| Global  | `~/.agents/mdm-state.json`             |
 
 Use `--global` / `-g` to read and write the global list. The default is project scope.
 

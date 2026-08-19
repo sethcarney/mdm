@@ -30,24 +30,25 @@ mdm
 │   ├── update [skills...]                  # Re-fetch from recorded source+ref (alias: check)
 │   ├── audit [skills...]                   # Check for updates & security advisories
 │   ├── init [name]                         # Scaffold a new SKILL.md
-│   ├── install                             # Restore all skills from skills-lock.json
+│   ├── install                             # Restore all skills from mdm-lock.json
 │   └── sync                                # Sync skills from node_modules
-├── knowledge                               # [experimental] Manage OKF knowledge bundles
+├── knowledge                               # Manage OKF knowledge bundles
 │   ├── add <source>                        # Install a bundle (alias: a)
 │   ├── remove [bundles...]                 # Remove bundles (aliases: rm, r)
 │   ├── list                                # List installed bundles (alias: ls)
 │   ├── update [bundles...]                 # Re-fetch bundles
 │   ├── validate [path]                     # Check OKF conformance & links
 │   ├── init [name]                         # Scaffold a minimal bundle
-│   └── install                             # Restore bundles from knowledge-lock.json
-├── plugins                                 # [experimental] Manage Agent Plugins
+│   └── install                             # Restore bundles from mdm-lock.json
+├── plugins                                 # Manage Agent Plugins
 │   ├── add <source>                        # Install a plugin, link skills, wire MCP (alias: a)
 │   ├── remove [plugins...]                 # Remove plugins (aliases: rm, r)
 │   ├── list                                # List installed plugins (alias: ls)
 │   ├── update [plugins...]                 # Re-fetch plugins
 │   ├── validate [path]                     # Check Agent Plugins conformance
 │   ├── init [name]                         # Scaffold a minimal plugin
-│   └── install                             # Restore plugins from plugins-lock.json
+│   └── install                             # Restore plugins from mdm-lock.json
+├── migrate                                 # Fold v1 lock files into mdm-lock.json / mdm-state.json
 ├── experimental                            # Manage experimental features
 │   ├── list                                # Show features and status (alias: ls)
 │   ├── enable <feature>                    # Persist an opt-in
@@ -218,7 +219,7 @@ mdm skills init [name]
 
 ### `skills install`
 
-Restore all skills from `skills-lock.json` — ideal for CI and onboarding.
+Restore all skills from `mdm-lock.json` — ideal for CI and onboarding.
 
 ```bash
 mdm skills install
@@ -290,10 +291,9 @@ project and global scope.
 
 ---
 
-## `mdm knowledge` <small>experimental</small>
+## `mdm knowledge`
 
-Manage Open Knowledge Format (OKF) bundles. Hidden until enabled — see
-[experimental features](experimental.md).
+Manage Open Knowledge Format (OKF) bundles.
 
 | Command | Description |
 | --- | --- |
@@ -303,7 +303,7 @@ Manage Open Knowledge Format (OKF) bundles. Hidden until enabled — see
 | `knowledge update [bundles...]` | Re-fetch bundles from their recorded source+ref |
 | `knowledge validate [path]` | Check OKF conformance and link integrity |
 | `knowledge init [name]` | Scaffold a minimal conformant bundle |
-| `knowledge install` | Restore all bundles from `knowledge-lock.json` |
+| `knowledge install` | Restore all bundles from `mdm-lock.json` |
 
 | Flag | Applies to | Description |
 | --- | --- | --- |
@@ -317,11 +317,10 @@ Manage Open Knowledge Format (OKF) bundles. Hidden until enabled — see
 
 ---
 
-## `mdm plugins` <small>experimental</small>
+## `mdm plugins`
 
 Manage Agent Plugins — portable packages of skills and MCP servers following
 the vendor-neutral [agent-plugins.org](https://agent-plugins.org) standard.
-Hidden until enabled — see [experimental features](experimental.md).
 
 | Command | Description |
 | --- | --- |
@@ -331,7 +330,7 @@ Hidden until enabled — see [experimental features](experimental.md).
 | `plugins update [plugins...]` | Re-fetch plugins from their recorded source+ref (preserves the data dir) |
 | `plugins validate [path]` | Check Agent Plugins spec conformance |
 | `plugins init [name]` | Scaffold a minimal conformant plugin |
-| `plugins install` | Restore all plugins from `plugins-lock.json` |
+| `plugins install` | Restore all plugins from `mdm-lock.json` |
 
 | Flag | Applies to | Description |
 | --- | --- | --- |
@@ -360,14 +359,36 @@ Toggle experimental feature gates. Features can also be enabled via the
 | `experimental enable <feature>` | Persist an opt-in |
 | `experimental disable <feature>` | Remove a persisted opt-in |
 
-Currently available features:
-
-| Feature | Description |
-| --- | --- |
-| `knowledge` | Manage OKF knowledge bundles (`mdm knowledge`) |
-| `plugins` | Manage Agent Plugins — skills + MCP servers (`mdm plugins`) |
+This release ships no experimental features — `knowledge` and `plugins`
+graduated to full support in v2.
 
 [:octicons-arrow-right-24: Details](experimental.md)
+
+---
+
+## `mdm migrate`
+
+Fold the v1 lock files into the v2 layout: `skills-lock.json`,
+`knowledge-lock.json`, and `plugins-lock.json` become one `mdm-lock.json`
+at the project root, and the global `~/.agents/skills-lock.json` becomes
+`~/.agents/mdm-state.json`.
+
+```bash
+mdm migrate --dry-run   # show the plan
+mdm migrate -y          # migrate without prompting
+```
+
+`skills-lock.json` is replaced with a tombstone that points v1 users at
+`mdm-lock.json`; commit the new lock and the removals together. v2 reads
+the v1 files transparently until you migrate, but only ever writes the new
+ones, and `mdm doctor` flags projects that still carry v1 files.
+
+| Flag | Description |
+| --- | --- |
+| `--dry-run` | Show what would be migrated without changing anything |
+| `--yes`, `-y` | Skip the confirmation prompt |
+| `--no-tombstone` | Delete `skills-lock.json` instead of leaving a tombstone |
+| `--force` | Discard legacy entries missing from an existing `mdm-lock.json` (they are listed first) |
 
 ---
 

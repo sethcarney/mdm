@@ -78,7 +78,7 @@ exists:
 "features": {
     "ghcr.io/sethcarney/mdm/mdm:1": {}
 },
-// Restore the skills committed in skills-lock.json for whichever agents this
+// Restore the skills committed in mdm-lock.json for whichever agents this
 // repo configures — the onboarding path mdm skills install exists for.
 "postCreateCommand": "mdm skills install"
 ```

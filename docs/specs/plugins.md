@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| **Status** | Draft |
-| **Stability** | Experimental — gated behind `MDM_EXPERIMENTAL=plugins` / `mdm experimental enable plugins` |
+| **Status** | Implemented — graduated to full support in v2 |
+| **Stability** | Stable. This document is the original design spec, kept as a historical record: the experimental gate it describes was removed in v2, and the separate `plugins-lock.json` became the `plugins` section of `mdm-lock.json` (see `mdm migrate`). |
 | **Author** | Dakota Kim |
 | **Created** | 2026-08-06 |
 | **Tracking issue** | TBD |

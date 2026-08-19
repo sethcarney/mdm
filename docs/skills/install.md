@@ -1,6 +1,6 @@
 # mdm skills install
 
-Restore skills from `skills-lock.json`.
+Restore skills from `mdm-lock.json`.
 
 ## Usage
 
@@ -12,7 +12,7 @@ Reads the lock file and re-installs every recorded skill from its original sourc
 
 ## How it works
 
-mdm looks for skills in both the project lock (`skills-lock.json`) and the global lock (`~/.agents/skills-lock.json`):
+mdm looks for skills in both the project lock (`mdm-lock.json`) and the global state file (`~/.agents/mdm-state.json`):
 
 | Situation | Behaviour |
 |---|---|
@@ -48,7 +48,7 @@ mdm skills install -y --allow-hidden-chars
 
 ## CI usage
 
-Add `skills-lock.json` to version control, then restore in your CI setup:
+Add `mdm-lock.json` to version control, then restore in your CI setup:
 
 ```yaml
 # GitHub Actions example

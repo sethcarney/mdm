@@ -45,7 +45,7 @@ For each skill, mdm removes:
 
 - The canonical skill directory (`.agents/skills/<skill>` for project, `~/.agents/skills/<skill>` for global).
 - Any agent-specific symlinks or copies (e.g. `.claude/skills/<skill>`, `~/.cursor/skills/<skill>`).
-- The entry in `skills-lock.json`.
+- The entry in `mdm-lock.json`.
 
 If `--agent` is provided, only that agent's symlink or copy is removed — the canonical directory and other agent links remain.
 
