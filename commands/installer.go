@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -8,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/sethcarney/mdm/internal/agent"
+	"github.com/sethcarney/mdm/internal/experimental"
 	"github.com/sethcarney/mdm/internal/lock"
 	"github.com/sethcarney/mdm/internal/registry"
 	"github.com/sethcarney/mdm/internal/skill"
@@ -268,6 +270,9 @@ func writeSkillFiles(targetDir string, files []struct{ Path, Contents string }) 
 }
 
 func performSymlinkInstall(canonicalDir, agentDir, agentName string, global bool, mode InstallMode, cp copyFunc) InstallResult {
+	if err := refuseIfPluginOwned(canonicalDir, global); err != nil {
+		return InstallResult{Success: false, Path: agentDir, Mode: mode, Error: err.Error()}
+	}
 	if err := cleanAndCreateDir(canonicalDir); err != nil {
 		return InstallResult{Success: false, Path: agentDir, Mode: mode, Error: err.Error()}
 	}
@@ -287,6 +292,21 @@ func performSymlinkInstall(canonicalDir, agentDir, agentName string, global bool
 		return InstallResult{Success: false, Path: agentDir, Mode: mode, Error: err.Error()}
 	}
 	return InstallResult{Success: true, Path: agentDir, CanonicalPath: canonicalDir, Mode: InstallModeSymlink, SymlinkFailed: true}
+}
+
+// refuseIfPluginOwned blocks a standalone skill install from clobbering a
+// skill that an installed plugin owns; plugins-lock is the sole manager of
+// those. Only project scope can be plugin-owned, and only when the
+// experimental plugins gate is on.
+func refuseIfPluginOwned(canonicalDir string, global bool) error {
+	if global || !experimental.Enabled(experimental.Plugins) {
+		return nil
+	}
+	cwd, _ := os.Getwd()
+	if owner, _ := skillDirOwner(canonicalDir, cwd); owner != "" {
+		return fmt.Errorf("skill is managed by plugin %q — use 'mdm plugins remove %s' first", owner, owner)
+	}
+	return nil
 }
 
 func validateAgentInstall(agentName string, global bool, mode InstallMode) (*agent.AgentConfig, *InstallResult) {
@@ -405,6 +425,7 @@ type InstalledSkill struct {
 	License       string `json:"license,omitempty"`
 	Compatibility string `json:"compatibility,omitempty"`
 	Ref           string `json:"ref,omitempty"`
+	Plugin        string `json:"plugin,omitempty"` // owning plugin, when installed via mdm plugins
 	Path          string
 	CanonicalPath string
 	Scope         string // "project" or "global"
@@ -591,6 +612,21 @@ func mergeCanonicalSkillIntoMap(skillsMap map[string]*InstalledSkill, mapKey str
 	}
 }
 
+// isSkillDirEntry reports whether a scope-dir entry can hold a skill. Plain
+// directories always qualify; symlinked directories only when the plugins
+// gate is on — plugin skills link the canonical dir into the plugin's own
+// directory rather than copying.
+func isSkillDirEntry(base string, e os.DirEntry) bool {
+	if e.IsDir() {
+		return true
+	}
+	if e.Type()&os.ModeSymlink == 0 || !experimental.Enabled(experimental.Plugins) {
+		return false
+	}
+	info, err := os.Stat(filepath.Join(base, e.Name()))
+	return err == nil && info.IsDir()
+}
+
 func populateScopeSkills(scope scopeEntry, agentsToCheck []string, cwd string, skillsMap map[string]*InstalledSkill) {
 	entries, err := os.ReadDir(scope.path)
 	if err != nil {
@@ -601,7 +637,7 @@ func populateScopeSkills(scope scopeEntry, agentsToCheck []string, cwd string, s
 		scopeKey = "global"
 	}
 	for _, e := range entries {
-		if !e.IsDir() {
+		if !isSkillDirEntry(scope.path, e) {
 			continue
 		}
 		skillDir := filepath.Join(scope.path, e.Name())
@@ -658,6 +694,14 @@ func listInstalledSkills(global *bool, agentFilter []string) ([]*InstalledSkill,
 			s.Ref = entry.Ref
 		} else if entry, ok := localLock.Skills[key]; ok && entry.Ref != "" {
 			s.Ref = entry.Ref
+		}
+	}
+
+	if experimental.Enabled(experimental.Plugins) {
+		for _, s := range skillsMap {
+			if s.Scope == "project" {
+				s.Plugin = pluginOwningSkill(s.Name, cwd)
+			}
 		}
 	}
 

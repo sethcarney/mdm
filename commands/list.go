@@ -118,6 +118,9 @@ func printSkillsForScope(scopeSkills []*InstalledSkill, scope, cwd string) {
 	fmt.Printf("%s%s skills:%s\n\n", ansiText, scopeTitle, ansiReset)
 	for _, s := range scopeSkills {
 		fmt.Printf("  %s%s%s", ansiText, s.Name, ansiReset)
+		if s.Plugin != "" {
+			fmt.Printf(" %s(from plugin %s)%s", ansiDim, s.Plugin, ansiReset)
+		}
 		if s.Description != "" {
 			fmt.Printf("  %s%s%s", ansiDim, s.Description, ansiReset)
 		}

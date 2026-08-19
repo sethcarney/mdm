@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/sethcarney/mdm/internal/experimental"
 	"github.com/sethcarney/mdm/internal/lock"
 	"github.com/sethcarney/mdm/internal/ui"
 )
@@ -31,8 +32,22 @@ func buildInstallFromLockCmd(ver string) *cobra.Command {
 	return cmd
 }
 
+// hintPluginsInstall points at `mdm plugins install` when the project has a
+// plugins-lock.json — plugin restore is a separate command with its own lock.
+func hintPluginsInstall(cwd string) {
+	if len(lock.ReadPluginsLock(cwd).Plugins) == 0 {
+		return
+	}
+	if experimental.Enabled(experimental.Plugins) {
+		fmt.Printf("%sThis project also has plugins — restore them with 'mdm plugins install'.%s\n", ansiDim, ansiReset)
+		return
+	}
+	fmt.Printf("%sThis project has a plugins-lock.json — enable plugin support with 'mdm experimental enable plugins', then run 'mdm plugins install'.%s\n", ansiDim, ansiReset)
+}
+
 func runInstallFromLock(yes bool, allowHiddenChars bool) {
 	cwd, _ := os.Getwd()
+	hintPluginsInstall(cwd)
 
 	localL := lock.ReadLocalLock(cwd)
 	globalL := lock.ReadSkillLock()

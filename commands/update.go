@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/sethcarney/mdm/internal/experimental"
 	"github.com/sethcarney/mdm/internal/git"
 	"github.com/sethcarney/mdm/internal/lock"
 	"github.com/sethcarney/mdm/internal/source"
@@ -339,6 +340,20 @@ func runUpdateGroups(groups []updateGroup, global bool, opts UpdateOptions, stat
 	}
 }
 
+// hintPluginOwnedUpdateFilters points an explicit filter that names a
+// plugin-owned skill at mdm plugins update — plugin skills never appear in
+// skills-lock.json, so the name would otherwise silently match nothing.
+func hintPluginOwnedUpdateFilters(skillFilter []string, cwd string) {
+	if !experimental.Enabled(experimental.Plugins) {
+		return
+	}
+	for _, name := range skillFilter {
+		if owner := pluginOwningSkill(name, cwd); owner != "" {
+			ui.LogWarn(fmt.Sprintf("%s is managed by plugin %s — update it with 'mdm plugins update %s'", name, owner, owner))
+		}
+	}
+}
+
 func runUpdateWithOpts(skillFilter []string, opts UpdateOptions) {
 	global, project, ok := resolveUpdateScope(opts)
 	if !ok {
@@ -359,6 +374,7 @@ func runUpdateWithOpts(skillFilter []string, opts UpdateOptions) {
 	}
 	if project {
 		cwd, _ := os.Getwd()
+		hintPluginOwnedUpdateFilters(skillFilter, cwd)
 		groups := planUpdates(collectProjectCandidates(skillFilter, cwd), check, &stats)
 		vlog(verboseFlag, "project: %d source group(s) to fetch", len(groups))
 		runUpdateGroups(groups, false, opts, &stats)

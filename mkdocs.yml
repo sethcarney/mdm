@@ -117,6 +117,7 @@ nav:
       - install: skills/install.md
       - sync: skills/sync.md
   - Knowledge (experimental): specs/knowledge.md
+  - Plugins (experimental): specs/plugins.md
   - Security:
       - Hidden-character scan: security/hidden-character-scan.md
       - Git transport restrictions: security/git-transport-restrictions.md
