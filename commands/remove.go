@@ -119,7 +119,7 @@ func selectSkillsToRemove(installed []*InstalledSkill, skillFilter []string, opt
 // directory when it was installed from a local path, or "" otherwise.
 func resolveLocalSourceAbs(sName string, global bool, cwd string) string {
 	if global {
-		if e, ok := lock.ReadSkillLock().Skills[sName]; ok && e.SourceType == string(source.SourceTypeLocal) {
+		if e, ok := lock.ReadGlobalState().Skills[sName]; ok && e.SourceType == string(source.SourceTypeLocal) {
 			abs, _ := filepath.Abs(e.Source)
 			return abs
 		}
@@ -200,7 +200,7 @@ func removeSkillFromDisk(sk *InstalledSkill, agentsToRemove []string, global boo
 	ui.LogSuccess("Removed " + sk.Name)
 
 	if global {
-		return lock.RemoveSkillFromLock(sName)
+		return lock.RemoveSkillFromGlobalState(sName)
 	}
 	return lock.RemoveSkillFromLocalLock(sName, cwd)
 }
@@ -339,7 +339,7 @@ func confirmRemove(toRemove []*InstalledSkill) bool {
 // cleanOrphanedLockEntries removes global lock entries whose skill files no
 // longer exist on disk. Returns the number of entries removed and any lock write error.
 func cleanOrphanedLockEntries(cwd string) (int, error) {
-	globalLock := lock.ReadSkillLock()
+	globalLock := lock.ReadGlobalState()
 	if len(globalLock.Skills) == 0 {
 		return 0, nil
 	}
@@ -354,7 +354,7 @@ func cleanOrphanedLockEntries(cwd string) (int, error) {
 	}
 	var firstErr error
 	for _, name := range removed {
-		if err := lock.RemoveSkillFromLock(sanitizeName(name)); err != nil && firstErr == nil {
+		if err := lock.RemoveSkillFromGlobalState(sanitizeName(name)); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}

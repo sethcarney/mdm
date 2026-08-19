@@ -441,7 +441,7 @@ func installedSkillOrigin(skillName, cwd string) (lock.LocalSkillLockEntry, bool
 	if e, ok := lock.ReadLocalLock(cwd).Skills[key]; ok && isRemoteSourceType(e.SourceType) {
 		return e, true
 	}
-	if e, ok := lock.ReadSkillLock().Skills[key]; ok && isRemoteSourceType(e.SourceType) {
+	if e, ok := lock.ReadGlobalState().Skills[key]; ok && isRemoteSourceType(e.SourceType) {
 		return lock.LocalSkillLockEntry{
 			Source:     e.Source,
 			Ref:        e.Ref,

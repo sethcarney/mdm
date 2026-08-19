@@ -678,7 +678,7 @@ func listInstalledSkills(global *bool, agentFilter []string) ([]*InstalledSkill,
 		populateScopeSkills(scope, agentsToCheck, cwd, skillsMap)
 	}
 
-	globalLock := lock.ReadSkillLock()
+	globalLock := lock.ReadGlobalState()
 	localLock := lock.ReadLocalLock(cwd)
 	for _, s := range skillsMap {
 		if s.Ref != "" {

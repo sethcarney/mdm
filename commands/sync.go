@@ -88,7 +88,7 @@ func syncAndLockSkill(s *skill.Skill, agents []string, global bool, mode Install
 	relPath = filepath.ToSlash(relPath)
 
 	if global {
-		if err := lock.AddSkillToLock(sName, lock.SkillLockEntry{
+		if err := lock.AddSkillToGlobalState(sName, lock.SkillLockEntry{
 			Source:     relPath,
 			SourceType: string(source.SourceTypeLocal),
 			SourceURL:  relPath,

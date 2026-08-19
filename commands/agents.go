@@ -292,7 +292,7 @@ func pickAndSaveAgents(global bool, scope, cwd string) ([]string, error) {
 func promptAgentScope() (isGlobal bool, ok bool) {
 	opts := []ui.UIOption{
 		{Label: "Project", Value: "project", Hint: "mdm-lock.json in this directory"},
-		{Label: "Global", Value: "global", Hint: "~/.agents/skills-lock.json"},
+		{Label: "Global", Value: "global", Hint: "~/.agents/mdm-state.json"},
 	}
 	idx, ok := ui.UiSelect("Configure agents for which scope?", opts)
 	if !ok {
@@ -605,7 +605,7 @@ func collectSkillLinkSpecs(targets []string, cwd string) []skillLinkSpec {
 			}
 		}
 	}
-	globalLk := lock.ReadSkillLock()
+	globalLk := lock.ReadGlobalState()
 	for skillName := range globalLk.Skills {
 		for _, agentName := range targets {
 			a := agent.AllAgents[agentName]

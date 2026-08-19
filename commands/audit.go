@@ -122,7 +122,7 @@ func runAudit(skillFilter []string, opts AuditOptions) {
 	var results []auditSkillResult
 
 	if global {
-		l := lock.ReadSkillLock()
+		l := lock.ReadGlobalState()
 		for sName, entry := range l.Skills {
 			if !matchesFilter(sName, entry.PluginName, skillFilter) {
 				continue
@@ -171,7 +171,7 @@ func enrichAllResults(results []auditSkillResult, showProgress bool) {
 	}
 	// Read the lock and build the tag cache once for the whole run: skills that
 	// share a repository then cost a single `git ls-remote` between them.
-	globalLock := lock.ReadSkillLock()
+	globalLock := lock.ReadGlobalState()
 	tags := newRemoteTagCache()
 	for i := range results {
 		r := &results[i]
@@ -239,7 +239,7 @@ func auditEntryFromLocal(name string, entry lock.LocalSkillLockEntry) auditSkill
 
 // ── Enrichment ─────────────────────────────────────────────
 
-func enrichResult(r *auditSkillResult, globalLock lock.SkillLockFile, tags *remoteTagCache) {
+func enrichResult(r *auditSkillResult, globalLock lock.GlobalState, tags *remoteTagCache) {
 	if !isGitSourceType(r.SourceType) {
 		vlog(verboseFlag, "%s: source type %q has no remote to check, marking local", r.Name, r.SourceType)
 		r.SyncStatus = "local"

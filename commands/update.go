@@ -183,7 +183,7 @@ func (g *updateGroup) add(c updateCandidate) {
 }
 
 func collectGlobalCandidates(skillFilter []string) []updateCandidate {
-	l := lock.ReadSkillLock()
+	l := lock.ReadGlobalState()
 	names := make([]string, 0, len(l.Skills))
 	for name := range l.Skills {
 		names = append(names, name)

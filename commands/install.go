@@ -45,7 +45,7 @@ func runInstallFromLock(yes bool, allowHiddenChars bool) {
 	hintPluginsInstall(cwd)
 
 	localL := lock.ReadLocalLock(cwd)
-	globalL := lock.ReadSkillLock()
+	globalL := lock.ReadGlobalState()
 
 	hasLocal := len(localL.Skills) > 0
 	hasGlobal := len(globalL.Skills) > 0
@@ -63,10 +63,10 @@ func runInstallFromLock(yes bool, allowHiddenChars bool) {
 	case !hasLocal && hasGlobal:
 		// Only global lock has skills — explain and ask
 		fmt.Printf("\n%sNo skills found in the local mdm-lock.json.%s\n", ansiDim, ansiReset)
-		fmt.Printf("%sFound %d skill(s) in global skills-lock.json (%s).%s\n\n",
-			ansiDim, len(globalL.Skills), lock.GetSkillLockPath(), ansiReset)
+		fmt.Printf("%sFound %d skill(s) in the global state file (%s).%s\n\n",
+			ansiDim, len(globalL.Skills), lock.GetGlobalStatePath(), ansiReset)
 		if !yes {
-			confirmed, ok := ui.UiConfirm("Install from the global skills-lock.json?")
+			confirmed, ok := ui.UiConfirm("Install from the globally recorded skills?")
 			if !ok || !confirmed {
 				fmt.Println("Cancelled.")
 				return
@@ -81,7 +81,7 @@ func runInstallFromLock(yes bool, allowHiddenChars bool) {
 		} else {
 			idx, ok := ui.UiSelect("Install from which lock file?", []ui.UIOption{
 				{Label: fmt.Sprintf("Local  — %d skill(s)", len(localL.Skills)), Hint: lock.GetProjectLockPath(cwd)},
-				{Label: fmt.Sprintf("Global — %d skill(s)", len(globalL.Skills)), Hint: lock.GetSkillLockPath()},
+				{Label: fmt.Sprintf("Global — %d skill(s)", len(globalL.Skills)), Hint: lock.GetGlobalStatePath()},
 			})
 			if !ok {
 				fmt.Println("Cancelled.")
@@ -109,8 +109,8 @@ func restoreFromLocalLock(l lock.LocalSkillLockFile, yes bool, allowHiddenChars 
 }
 
 // restoreFromGlobalLock installs all skills recorded in the global lock file.
-func restoreFromGlobalLock(l lock.SkillLockFile, yes bool, allowHiddenChars bool) {
-	fmt.Printf("\n%sRestoring %d skill(s) from global skills-lock.json...%s\n\n", ansiText, len(l.Skills), ansiReset)
+func restoreFromGlobalLock(l lock.GlobalState, yes bool, allowHiddenChars bool) {
+	fmt.Printf("\n%sRestoring %d skill(s) from the global state file...%s\n\n", ansiText, len(l.Skills), ansiReset)
 
 	entries := make(map[string]sourceRef, len(l.Skills))
 	for name, e := range l.Skills {

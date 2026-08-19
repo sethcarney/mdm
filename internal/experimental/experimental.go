@@ -59,7 +59,7 @@ func EnabledByEnv(f Feature) bool {
 
 // Persisted reports whether f was enabled with `mdm experimental enable`.
 func Persisted(f Feature) bool {
-	for _, name := range lock.ReadSkillLock().Experimental {
+	for _, name := range lock.ReadGlobalState().Experimental {
 		if name == string(f) {
 			return true
 		}
@@ -69,7 +69,7 @@ func Persisted(f Feature) bool {
 
 // Enable persists the opt-in for f in the global lock file.
 func Enable(f Feature) error {
-	lk := lock.ReadSkillLock()
+	lk := lock.ReadGlobalState()
 	for _, name := range lk.Experimental {
 		if name == string(f) {
 			return nil
@@ -77,13 +77,13 @@ func Enable(f Feature) error {
 	}
 	lk.Experimental = append(lk.Experimental, string(f))
 	sort.Strings(lk.Experimental)
-	return lock.WriteSkillLock(lk)
+	return lock.WriteGlobalState(lk)
 }
 
 // Disable removes the persisted opt-in for f. It does not affect
 // MDM_EXPERIMENTAL, which always wins.
 func Disable(f Feature) error {
-	lk := lock.ReadSkillLock()
+	lk := lock.ReadGlobalState()
 	kept := make([]string, 0, len(lk.Experimental))
 	for _, name := range lk.Experimental {
 		if name != string(f) {
@@ -94,5 +94,5 @@ func Disable(f Feature) error {
 		return nil
 	}
 	lk.Experimental = kept
-	return lock.WriteSkillLock(lk)
+	return lock.WriteGlobalState(lk)
 }

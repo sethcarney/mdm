@@ -101,7 +101,7 @@ func runDoctor(opts DoctorOptions) {
 	var results []doctorResult
 
 	if checkGlobal {
-		globalLock := lock.ReadSkillLock()
+		globalLock := lock.ReadGlobalState()
 		canonicalBase := getCanonicalSkillsDir(true, cwd)
 		for skillName := range globalLock.Skills {
 			r := doctorResult{

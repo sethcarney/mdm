@@ -229,7 +229,7 @@ func installWellKnownForAgents(selectedSkills []*registry.WellKnownSkill, agents
 			ui.LogWarn(fmt.Sprintf("%s (failed for: %s)", s.Name, strings.Join(failedAgents, ", ")))
 		}
 		if global {
-			if err := lock.AddSkillToLock(sName, lock.SkillLockEntry{
+			if err := lock.AddSkillToGlobalState(sName, lock.SkillLockEntry{
 				Source:     sourceID,
 				SourceType: string(source.SourceTypeWellKnown),
 				SourceURL:  parsed.URL,
@@ -586,7 +586,7 @@ func installBlobSkillsForAgents(selectedBlob []*blob.BlobSkill, agents []string,
 			ui.LogWarn(fmt.Sprintf("%s (failed for: %s)", bSkill.Name, strings.Join(failedAgents, ", ")))
 		}
 		if global {
-			if err := lock.AddSkillToLock(sName, lock.SkillLockEntry{
+			if err := lock.AddSkillToGlobalState(sName, lock.SkillLockEntry{
 				Source:     stripSourceRef(sourceInput),
 				SourceType: string(source.SourceTypeGitHub),
 				SourceURL:  parsed.URL,
@@ -695,7 +695,7 @@ func installSkillsForAgents(skills []*skill.Skill, agents []string, global bool,
 		lockEntry.SkillPath = skillPath
 
 		if global {
-			if err := lock.AddSkillToLock(sName, lockEntry); err != nil {
+			if err := lock.AddSkillToGlobalState(sName, lockEntry); err != nil {
 				ui.LogWarn(fmt.Sprintf("could not update lock file: %v", err))
 			}
 		} else {
@@ -1351,7 +1351,7 @@ func alreadyInstalledFromSource(parsedURL, cwd string) []string {
 	var result []string
 
 	// Global lock stores a canonical SourceURL field.
-	globalL := lock.ReadSkillLock()
+	globalL := lock.ReadGlobalState()
 	for name, e := range globalL.Skills {
 		if strings.EqualFold(e.SourceURL, parsedURL) && !seen[name] {
 			seen[name] = true

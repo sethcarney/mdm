@@ -5,124 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"time"
-
-	"github.com/sethcarney/mdm/internal/agent"
 )
-
-// ──────────────────────────────────────────────────────────
-// Global skill lock (~/.agents/skills-lock.json)
-// ──────────────────────────────────────────────────────────
-
-const globalLockVersion = 3
-
-type SkillLockEntry struct {
-	Source      string `json:"source"`
-	SourceType  string `json:"sourceType"`
-	SourceURL   string `json:"sourceUrl"`
-	Ref         string `json:"ref,omitempty"`
-	SkillPath   string `json:"skillPath,omitempty"`
-	InstalledAt string `json:"installedAt"`
-	UpdatedAt   string `json:"updatedAt"`
-	PluginName  string `json:"pluginName,omitempty"`
-}
-
-type DismissedPrompts struct {
-	FindSkillsPrompt bool `json:"findSkillsPrompt,omitempty"`
-}
-
-type SkillLockFile struct {
-	Version          int                       `json:"version"`
-	Skills           map[string]SkillLockEntry `json:"skills"`
-	Dismissed        DismissedPrompts          `json:"dismissed,omitempty"`
-	ConfiguredAgents []string                  `json:"configuredAgents,omitempty"`
-	Experimental     []string                  `json:"experimental,omitempty"`
-}
-
-func GetSkillLockPath() string {
-	if xdgState := os.Getenv("XDG_STATE_HOME"); xdgState != "" {
-		return filepath.Join(xdgState, "skills", "skills-lock.json")
-	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, agent.AgentsDir, "skills-lock.json")
-}
-
-func ReadSkillLock() SkillLockFile {
-	lockPath := GetSkillLockPath()
-	data, err := os.ReadFile(lockPath)
-	if err != nil {
-		return EmptySkillLock()
-	}
-	var lock SkillLockFile
-	if err := json.Unmarshal(data, &lock); err != nil {
-		return EmptySkillLock()
-	}
-	if lock.Skills == nil || lock.Version < globalLockVersion {
-		return EmptySkillLock()
-	}
-	return lock
-}
-
-func WriteSkillLock(lock SkillLockFile) error {
-	lockPath := GetSkillLockPath()
-	if err := os.MkdirAll(filepath.Dir(lockPath), 0755); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(lock, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(lockPath, data, 0600)
-}
-
-func EmptySkillLock() SkillLockFile {
-	return SkillLockFile{
-		Version: globalLockVersion,
-		Skills:  map[string]SkillLockEntry{},
-	}
-}
-
-func AddSkillToLock(skillName string, entry SkillLockEntry) error {
-	lock := ReadSkillLock()
-	now := time.Now().UTC().Format(time.RFC3339)
-	if existing, ok := lock.Skills[skillName]; ok {
-		entry.InstalledAt = existing.InstalledAt
-	} else {
-		entry.InstalledAt = now
-	}
-	entry.UpdatedAt = now
-	lock.Skills[skillName] = entry
-	return WriteSkillLock(lock)
-}
-
-func RemoveSkillFromLock(skillName string) error {
-	lock := ReadSkillLock()
-	if _, ok := lock.Skills[skillName]; !ok {
-		return nil
-	}
-	delete(lock.Skills, skillName)
-	return WriteSkillLock(lock)
-}
-
-func IsPromptDismissed(key string) bool {
-	lock := ReadSkillLock()
-	if key == "findSkillsPrompt" {
-		return lock.Dismissed.FindSkillsPrompt
-	}
-	return false
-}
-
-func DismissPrompt(key string) error {
-	lock := ReadSkillLock()
-	if key == "findSkillsPrompt" {
-		lock.Dismissed.FindSkillsPrompt = true
-	}
-	return WriteSkillLock(lock)
-}
-
-func GetGitHubToken() string {
-	return os.Getenv("GITHUB_TOKEN")
-}
 
 // ──────────────────────────────────────────────────────────
 // Local (project) skill lock — the skills section of mdm-lock.json
@@ -229,7 +112,7 @@ func HasProjectSkills(cwd string) bool {
 // GetConfiguredAgents returns the configured agent list for the given scope.
 func GetConfiguredAgents(global bool, cwd string) []string {
 	if global {
-		return ReadSkillLock().ConfiguredAgents
+		return ReadGlobalState().ConfiguredAgents
 	}
 	return ReadLocalLock(cwd).ConfiguredAgents
 }
@@ -237,9 +120,9 @@ func GetConfiguredAgents(global bool, cwd string) []string {
 // SetConfiguredAgents replaces the configured agent list for the given scope.
 func SetConfiguredAgents(agents []string, global bool, cwd string) error {
 	if global {
-		lk := ReadSkillLock()
+		lk := ReadGlobalState()
 		lk.ConfiguredAgents = agents
-		return WriteSkillLock(lk)
+		return WriteGlobalState(lk)
 	}
 	lk := ReadLocalLock(cwd)
 	lk.ConfiguredAgents = agents
