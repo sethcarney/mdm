@@ -26,8 +26,9 @@ files to the v2 layout:
 
 skills-lock.json is replaced with a tombstone by default, so anyone
 still running a v1 mdm against the project finds a pointer to
-mdm-lock.json instead of silence; pass --no-tombstone to delete it
-outright. Commit mdm-lock.json and the removals together.
+mdm-lock.json instead of silence. Interactive runs offer to delete it
+outright instead; --no-tombstone does the same without asking. Commit
+mdm-lock.json and the removals together.
 
 v2 reads the v1 files transparently, so migrating is not urgent — but
 writes only ever go to the new files, and mdm doctor will keep pointing
@@ -86,8 +87,26 @@ func runMigrate(dryRun, yes, noTombstone, force bool) error {
 			fmt.Println("Cancelled.")
 			return nil
 		}
+		noTombstone = promptTombstoneCleanup(plan, noTombstone)
 	}
 	return executeMigration(cwd, plan.Needed(), globalNeeded, noTombstone)
+}
+
+// promptTombstoneCleanup offers to delete skills-lock.json outright instead
+// of leaving the default tombstone. Only reached interactively; --yes keeps
+// the tombstone and --no-tombstone skips the question.
+func promptTombstoneCleanup(plan lock.ProjectMigration, noTombstone bool) bool {
+	if noTombstone {
+		return true
+	}
+	if _, ok := plan.Legacy["skills-lock.json"]; !ok {
+		return false
+	}
+	idx, ok := ui.UiSelect("What should happen to the old skills-lock.json?", []ui.UIOption{
+		{Label: "Leave a tombstone (recommended)", Hint: "points anyone still on v1 mdm at mdm-lock.json"},
+		{Label: "Delete it", Hint: "clean tree; a v1 mdm in this project would quietly find no skills"},
+	})
+	return ok && idx == 1
 }
 
 // printProjectMigrationPlan renders the project half of the plan and

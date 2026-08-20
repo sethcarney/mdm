@@ -379,9 +379,11 @@ mdm migrate -y          # migrate without prompting
 ```
 
 `skills-lock.json` is replaced with a tombstone that points v1 users at
-`mdm-lock.json`; commit the new lock and the removals together. v2 reads
-the v1 files transparently until you migrate, but only ever writes the new
-ones, and `mdm doctor` flags projects that still carry v1 files.
+`mdm-lock.json` — interactive runs offer to delete it outright instead.
+Commit the new lock and the removals together. v2 reads the v1 files
+transparently until you migrate, but only ever writes the new ones, and
+`mdm doctor` flags projects that still carry v1 files. `mdm upgrade` offers
+to run this for you when an upgrade crosses a major version.
 
 | Flag | Description |
 | --- | --- |
