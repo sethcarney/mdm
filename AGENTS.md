@@ -55,9 +55,11 @@ identity instead, matching what `git log` already shows:
 Seth <48496865+sethcarney@users.noreply.github.com>
 ```
 
-Agent involvement is recorded in the message, not the author field: keep the
-`Co-Authored-By:` trailer on anything an agent wrote. Authorship says who owns
-the change; the trailer says who helped write it, and both should be true.
+Agent attribution is disabled for this repository: do not add
+`Co-Authored-By:` trailers, `Generated with` footers, or session links to
+commits or pull requests. `.claude/settings.json` turns off Claude Code's
+automatic attribution to match. Authorship carries the accountability, and
+the repository owner reviews everything an agent produces before it lands.
 
 ## Commands
 
