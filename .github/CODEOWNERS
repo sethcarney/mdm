@@ -2,8 +2,23 @@
 * @sethcarney
 
 # Hidden character scanning — scanner library, CLI integration, docs, and test fixtures
-internal/security/           @sethcarney @GhostScientist
-commands/hidden_scan.go      @sethcarney @GhostScientist
-commands/hidden_scan_test.go @sethcarney @GhostScientist
-docs/security/               @sethcarney @GhostScientist
-tests/testdata/hidden-skill/ @sethcarney @GhostScientist
+internal/security/               @sethcarney @GhostScientist
+commands/hidden_scan.go          @sethcarney @GhostScientist
+commands/hidden_scan_test.go     @sethcarney @GhostScientist
+docs/security/                   @sethcarney @GhostScientist
+tests/testdata/hidden-skill/     @sethcarney @GhostScientist
+tests/testdata/hidden-knowledge/ @sethcarney @GhostScientist
+tests/testdata/hidden-plugin/    @sethcarney @GhostScientist
+
+# OKF knowledge bundles — spec conformance library, CLI group, spec doc, and tests
+internal/okf/                    @sethcarney @GhostScientist
+commands/knowledge*.go           @sethcarney @GhostScientist
+docs/specs/knowledge.md          @sethcarney @GhostScientist
+tests/knowledge_test.go          @sethcarney @GhostScientist
+
+# Agent Plugins — spec conformance library, MCP wiring, CLI group, spec doc, and tests
+internal/plugin/                 @sethcarney @GhostScientist
+internal/mcpwire/                @sethcarney @GhostScientist
+commands/plugins*.go             @sethcarney @GhostScientist
+docs/specs/plugins.md            @sethcarney @GhostScientist
+tests/plugins_test.go            @sethcarney @GhostScientist
