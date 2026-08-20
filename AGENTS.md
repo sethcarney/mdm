@@ -376,6 +376,7 @@ mdm
 ├── uninstall                               # Remove the mdm binary from your system (aliases: remove-cli)
 ├── doctor                                  # Check installed skills and project markdown for health issues
 ├── migrate                                 # Fold v1 lock files into mdm-lock.json / mdm-state.json (--dry-run, --no-tombstone, --force)
+├── bug                                     # Open a prefilled GitHub issue form (--print, --command); no network I/O
 ├── completion [bash|zsh|fish|powershell]   # Generate shell completion script
 │   └── install                             # Write completion into shell rc file
 ├── skills                                  # Manage skills for AI agents
@@ -445,6 +446,7 @@ mdm
 │   ├── experimental.go  # `mdm experimental` group: list/enable/disable feature gates
 │   ├── knowledge*.go    # `mdm knowledge` group: OKF bundle add/list/remove/update/validate/init/install + doctor section
 │   ├── plugins*.go      # `mdm plugins` group: Agent Plugins add/list/remove/update/validate/init/install + MCP wiring + doctor section
+│   ├── bug.go           # `mdm bug`: prefilled issue-form URL + panic hook (HandlePanic, deferred from main)
 │   └── doctor.go        # `mdm doctor`: checks skill health, symlinks, hashes, README presence, and markdown sizes
 ├── internal/
     ├── agent/           # AllAgents registry (45+ agents); skill dir paths; detection
