@@ -12,6 +12,8 @@ import (
 )
 
 func main() {
+	defer commands.HandlePanic(version.Version)
+
 	// Only start the background update check when the notice would actually be
 	// shown: interactive terminal, NO_COLOR not set, and not an upgrade command
 	// (the in-memory version.Version is stale after the binary is replaced,
