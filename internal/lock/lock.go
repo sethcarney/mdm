@@ -2,6 +2,7 @@ package lock
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -9,6 +10,34 @@ import (
 
 	"github.com/sethcarney/mdm/internal/agent"
 )
+
+// ──────────────────────────────────────────────────────────
+// Forward compatibility
+//
+// A project lock file this binary cannot understand must abort the
+// command, not read as empty: the old fallback made `mdm skills install`
+// in a project migrated by a newer mdm a silent no-op — exit 0, nothing
+// installed — which is the worst possible failure in CI. These helpers
+// end the process because every caller of the lock readers would have to
+// abort anyway, and a hard exit also stops read-modify-write commands
+// (`mdm skills add`) from clobbering a file written by a newer version.
+//
+// The global lock keeps its read-as-empty behavior: version resets there
+// are how old global locks are deliberately discarded on upgrade, and
+// newer mdm versions use a different global file name entirely.
+// ──────────────────────────────────────────────────────────
+
+func fatalNewerLock(path string, fileVersion, knownVersion int) {
+	fmt.Fprintf(os.Stderr, "%s was written by a newer version of mdm (lock version %d; this binary understands up to %d).\nUpgrade with 'mdm upgrade' to use this project.\n",
+		filepath.Base(path), fileVersion, knownVersion)
+	os.Exit(2)
+}
+
+func fatalUnreadableLock(path string, err error) {
+	fmt.Fprintf(os.Stderr, "%s could not be parsed: %v\nFix the file or restore it from version control, then re-run.\n",
+		filepath.Base(path), err)
+	os.Exit(2)
+}
 
 // ──────────────────────────────────────────────────────────
 // Global skill lock (~/.agents/skills-lock.json)
@@ -151,13 +180,17 @@ func GetLocalLockPath(cwd string) string {
 }
 
 func ReadLocalLock(cwd string) LocalSkillLockFile {
-	data, err := os.ReadFile(GetLocalLockPath(cwd))
+	path := GetLocalLockPath(cwd)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return EmptyLocalLock()
 	}
 	var lock LocalSkillLockFile
 	if err := json.Unmarshal(data, &lock); err != nil {
-		return EmptyLocalLock()
+		fatalUnreadableLock(path, err)
+	}
+	if lock.Version > localLockVersion {
+		fatalNewerLock(path, lock.Version, localLockVersion)
 	}
 	if lock.Skills == nil || lock.Version < localLockVersion {
 		return EmptyLocalLock()
