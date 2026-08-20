@@ -18,6 +18,7 @@ any command, follow the "Details" links to the dedicated guide pages.
 mdm
 ├── upgrade                                 # Self-update the binary (aliases: update-cli, self-update)
 ├── uninstall                               # Remove the binary (alias: remove-cli)
+├── bug                                     # Open a prefilled bug-report form (no network I/O)
 ├── doctor                                  # Health-check installed skills & project markdown
 ├── completion [bash|zsh|fish|powershell]   # Generate shell completion
 │   └── install                             # Write completion into your shell rc
@@ -368,6 +369,36 @@ Currently available features:
 | `plugins` | Manage Agent Plugins — skills + MCP servers (`mdm plugins`) |
 
 [:octicons-arrow-right-24: Details](experimental.md)
+
+---
+
+## `mdm bug`
+
+Report a bug with environment details prefilled. Collects the mdm version,
+OS/architecture, shell, Go runtime, and the agent tools detected on this
+machine, builds a GitHub issue-form URL with those fields filled in, prints
+it, and opens it when a browser is available.
+
+Nothing is sent anywhere: mdm does no network I/O and no telemetry, and this
+command doesn't change that — it only constructs a URL; you review and submit
+the form yourself. `$HOME` is scrubbed to `~` in every value, and no
+repository names or usernames are included. On a crash, mdm prints the same
+prefilled URL automatically with the panic captured (the full output goes to
+a temp file for manual attachment, keeping the URL short).
+
+```bash
+mdm bug                                        # open the prefilled form
+mdm bug --command "mdm skills add owner/repo"  # include the failing command
+mdm bug --print                                # review everything before any browser opens
+```
+
+| Flag | Description |
+| --- | --- |
+| `--print` | Print the issue body and URL to stdout without opening a browser |
+| `--command` | The mdm command that failed, included in the report |
+
+Headless environments (SSH, containers, WSL2 without a browser bridge)
+always get the URL printed even when nothing can open it.
 
 ---
 

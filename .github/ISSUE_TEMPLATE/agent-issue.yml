@@ -1,0 +1,53 @@
+# Field ids here are load-bearing: `mdm bug` builds prefill URLs keyed by
+# them, and tests/bug_template_test.go fails the build if the two drift.
+name: Bug report
+description: Report a problem with the mdm CLI
+labels: ["bug"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: mdm version
+      description: Output of `mdm --version`
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS / architecture
+      placeholder: linux/amd64
+    validations:
+      required: true
+  - type: input
+    id: shell
+    attributes:
+      label: Shell
+      placeholder: /bin/zsh
+  - type: input
+    id: go
+    attributes:
+      label: Go runtime
+      description: Filled automatically by `mdm bug`; relevant for `go install` builds
+  - type: input
+    id: agents
+    attributes:
+      label: Agent tools detected
+      description: Agents mdm found on this machine
+  - type: input
+    id: command
+    attributes:
+      label: Command that failed
+      placeholder: mdm skills add owner/repo
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error output
+      description: Panic or error text. Attach anything bulky as a file instead of pasting.
+      render: text
+  - type: textarea
+    id: repro
+    attributes:
+      label: What happened?
+      description: What you expected, what happened instead, and steps to reproduce.
+    validations:
+      required: true
