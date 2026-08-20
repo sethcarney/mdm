@@ -86,6 +86,7 @@ mdm agents add             Add agents to the configured default install list
 mdm agents remove          Remove agents (and their unique skill / instruction files)
 
 mdm doctor                 Check installed skills and project markdown for health issues
+mdm bug                    Open a prefilled bug-report form (nothing is sent automatically)
 mdm upgrade                Upgrade the mdm CLI binary
 ```
 
