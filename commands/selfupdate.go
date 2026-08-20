@@ -17,6 +17,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/sethcarney/mdm/internal/ui"
+	"github.com/sethcarney/mdm/internal/update"
 	"github.com/sethcarney/mdm/internal/version"
 )
 
@@ -365,5 +366,52 @@ func runSelfUpdate(currentVersion string, useBeta bool) {
 		os.Exit(1)
 	}
 
+	crossing := crossesMajor(currentVersion, latestVersion)
+	if crossing && runtime.GOOS == "windows" {
+		// The Windows swap happens after this process exits, so the new
+		// binary cannot be run from here — leave the instruction instead.
+		fmt.Printf("%s%s is a new major version — once the update applies, run %smdm migrate%s%s to update your lock files.%s\n",
+			ansiYellow, latestVersion, ansiText, ansiReset, ansiYellow, ansiReset)
+	}
 	replaceBinary(tmpPath, execPath, latestVersion)
+	if crossing {
+		offerMajorMigration(latestVersion, execPath)
+	}
+}
+
+// crossesMajor reports whether upgrading from current to latest crosses a
+// major version boundary. Unparsable versions (e.g. a "dev" build) never
+// count as a crossing.
+func crossesMajor(current, latest string) bool {
+	curMajor, okCur := version.Major(current)
+	newMajor, okNew := version.Major(latest)
+	return okCur && okNew && newMajor > curMajor
+}
+
+// offerMajorMigration runs after the binary swap when the upgrade crossed a
+// major version. Lock file formats may have changed across the boundary, so
+// it offers to run the NEW binary's `migrate` — only the new binary knows
+// its own migrations; this process is still executing the old code.
+func offerMajorMigration(latestVersion, execPath string) {
+	fmt.Println()
+	fmt.Printf("%s%s is a new major version — lock file formats may have changed.%s\n",
+		ansiYellow, latestVersion, ansiReset)
+	if !update.IsTerminal() {
+		fmt.Printf("%sRun %smdm migrate%s%s in your projects to update their lock files.%s\n",
+			ansiDim, ansiText, ansiReset, ansiDim, ansiReset)
+		return
+	}
+	confirmed, ok := ui.UiConfirm("Run 'mdm migrate' here now?")
+	if !ok || !confirmed {
+		fmt.Printf("%sYou can run %smdm migrate%s%s in any project later.%s\n",
+			ansiDim, ansiText, ansiReset, ansiDim, ansiReset)
+		return
+	}
+	cmd := exec.Command(execPath, "migrate")
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		ui.LogWarn(fmt.Sprintf("mdm migrate did not finish cleanly: %v — run it again manually", err))
+	}
 }

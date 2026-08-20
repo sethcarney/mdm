@@ -84,3 +84,17 @@ func splitPreLabel(s string) (label string, num int) {
 	num, _ = strconv.Atoi(s[i:])
 	return s[:i], num
 }
+
+// Major returns the major version number of v (with or without a leading
+// "v"). ok is false when v has no leading numeric component — e.g. the
+// "dev" fallback build — in which case callers should not draw conclusions
+// about version distance.
+func Major(v string) (major int, ok bool) {
+	ver, _ := splitSemver(v)
+	first := strings.SplitN(ver, ".", 2)[0]
+	n, err := strconv.Atoi(first)
+	if err != nil || n < 0 {
+		return 0, false
+	}
+	return n, true
+}
