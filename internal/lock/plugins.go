@@ -56,13 +56,17 @@ func GetPluginsLockPath(cwd string) string {
 }
 
 func ReadPluginsLock(cwd string) PluginLockFile {
-	data, err := os.ReadFile(GetPluginsLockPath(cwd))
+	path := GetPluginsLockPath(cwd)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return EmptyPluginsLock()
 	}
 	var lk PluginLockFile
 	if err := json.Unmarshal(data, &lk); err != nil {
-		return EmptyPluginsLock()
+		fatalUnreadableLock(path, err)
+	}
+	if lk.Version > pluginsLockVersion {
+		fatalNewerLock(path, lk.Version, pluginsLockVersion)
 	}
 	if lk.Plugins == nil || lk.Version < pluginsLockVersion {
 		return EmptyPluginsLock()

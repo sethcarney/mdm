@@ -46,13 +46,17 @@ func GetKnowledgeLockPath(cwd string) string {
 }
 
 func ReadKnowledgeLock(cwd string) KnowledgeLockFile {
-	data, err := os.ReadFile(GetKnowledgeLockPath(cwd))
+	path := GetKnowledgeLockPath(cwd)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return EmptyKnowledgeLock()
 	}
 	var lk KnowledgeLockFile
 	if err := json.Unmarshal(data, &lk); err != nil {
-		return EmptyKnowledgeLock()
+		fatalUnreadableLock(path, err)
+	}
+	if lk.Version > knowledgeLockVersion {
+		fatalNewerLock(path, lk.Version, knowledgeLockVersion)
 	}
 	if lk.Bundles == nil || lk.Version < knowledgeLockVersion {
 		return EmptyKnowledgeLock()
