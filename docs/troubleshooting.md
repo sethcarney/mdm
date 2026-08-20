@@ -2,6 +2,35 @@
 
 Known sharp edges, what causes them, and how to get out of them.
 
+## "skills-lock.json was written by a newer version of mdm"
+
+**Symptom.** Any skills command exits with
+`skills-lock.json was written by a newer version of mdm (lock version N ...)`.
+
+**Cause.** Someone on the project — or the project's CI image — upgraded mdm
+across a major version and migrated the lock files to a newer format. This
+binary cannot read that format, and it refuses to guess: older releases used
+to treat an unreadable lock as *empty*, which made `mdm skills install` in a
+migrated project a silent no-op — exit 0, nothing installed. Failing loudly
+is the fix for that, so this error is working as intended.
+
+**Recovery.** Run `mdm upgrade` (or update the pinned version in your CI
+image / dev container) and re-run the command. Nothing on disk is touched
+before the error: read *and* write paths both abort, so an old binary can
+never overwrite a newer lock file.
+
+## "skills-lock.json could not be parsed"
+
+**Symptom.** Any skills command exits with `... could not be parsed` and a
+JSON error.
+
+**Cause.** The lock file is not valid JSON — usually a bad merge-conflict
+resolution. mdm refuses to proceed rather than treat a damaged committed
+file as "no skills installed".
+
+**Recovery.** Fix the JSON by hand, or restore the file from version
+control (`git restore skills-lock.json`), then re-run.
+
 ## `mdm agents remove` deleted skills I wrote by hand
 
 **Symptom.** You keep your own skills in `./skills/`, run `mdm agents remove openclaw`,

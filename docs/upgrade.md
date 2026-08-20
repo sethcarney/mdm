@@ -28,6 +28,7 @@ Aliases: `update-cli`, `self-update`
 3. Downloads the platform-specific binary and the `sha256sums.txt` checksum file.
 4. Verifies the SHA256 digest before writing anything to disk.
 5. Replaces the current executable atomically (via rename on Unix, a background batch script on Windows).
+6. If the upgrade crossed a **major version** (e.g. v1 → v2), offers to run the new version's `mdm migrate` right away, since lock file formats may change across a major boundary. Non-interactive runs print the reminder instead, and on Windows the swap completes after the process exits, so the reminder is printed there too.
 
 ## Platform support
 
