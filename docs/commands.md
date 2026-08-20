@@ -380,6 +380,8 @@ mdm migrate -y          # migrate without prompting
 
 `skills-lock.json` is replaced with a tombstone that points v1 users at
 `mdm-lock.json` — interactive runs offer to delete it outright instead.
+Patched v1 releases refuse the tombstone with an "upgrade mdm" error;
+older v1 releases read it as an empty lock.
 Commit the new lock and the removals together. v2 reads the v1 files
 transparently until you migrate, but only ever writes the new ones, and
 `mdm doctor` flags projects that still carry v1 files. `mdm upgrade` offers

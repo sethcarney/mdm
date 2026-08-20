@@ -169,24 +169,37 @@ func legacyGlobalLockPath() string {
 }
 
 // ReadGlobalState reads mdm-state.json, falling back to the legacy v1
-// skills-lock.json when it does not exist. Missing or unreadable state
-// reads as empty.
+// skills-lock.json when it does not exist. Missing state reads as empty;
+// state this binary cannot understand aborts the process (see Forward
+// compatibility in project.go).
 func ReadGlobalState() GlobalState {
-	data, err := os.ReadFile(GetGlobalStatePath())
+	s, err := readGlobalStateE()
 	if err != nil {
-		return readLegacyGlobalLock()
+		fatalLock(err)
+	}
+	return s
+}
+
+func readGlobalStateE() (GlobalState, error) {
+	path := GetGlobalStatePath()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return readLegacyGlobalLock(), nil
 	}
 	var s GlobalState
 	if err := json.Unmarshal(data, &s); err != nil {
-		return EmptyGlobalState()
+		return EmptyGlobalState(), errUnreadableLock(path, err)
+	}
+	if s.Version > globalStateVersion {
+		return EmptyGlobalState(), errNewerLock(path, s.Version, globalStateVersion)
 	}
 	if s.Version < globalStateVersion {
-		return EmptyGlobalState()
+		return EmptyGlobalState(), nil
 	}
 	if s.Skills == nil {
 		s.Skills = map[string]SkillLockEntry{}
 	}
-	return s
+	return s, nil
 }
 
 func readLegacyGlobalLock() GlobalState {

@@ -43,7 +43,9 @@ func readLegacySkillsLock(cwd string) LocalSkillLockFile {
 	if err := json.Unmarshal(data, &lock); err != nil {
 		return EmptyLocalLock()
 	}
-	if lock.Skills == nil || lock.Version < localLockVersion {
+	// A version above localLockVersion is v2's own tombstone (or another
+	// future format) — nothing a legacy read should surface.
+	if lock.Skills == nil || lock.Version != localLockVersion {
 		return EmptyLocalLock()
 	}
 	return lock

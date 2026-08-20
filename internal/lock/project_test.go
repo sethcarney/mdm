@@ -184,18 +184,39 @@ func TestProjectLockEmptyWriteRemovesFile(t *testing.T) {
 	}
 }
 
-func TestProjectLockCorruptOrOldVersionReadsEmpty(t *testing.T) {
+func TestProjectLockUnreadableErrors(t *testing.T) {
 	cwd := t.TempDir()
 	if err := os.WriteFile(GetProjectLockPath(cwd), []byte("{not json"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if lk := ReadProjectLock(cwd); !lk.isEmpty() {
-		t.Errorf("corrupt lock should read as empty, got %+v", lk)
+	if _, err := readProjectLockE(cwd); err == nil || !strings.Contains(err.Error(), "could not be parsed") {
+		t.Errorf("corrupt lock should error, got %v", err)
 	}
+	if err := os.WriteFile(GetProjectLockPath(cwd), []byte(`{"version":99,"skills":{}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readProjectLockE(cwd); err == nil || !strings.Contains(err.Error(), "newer version of mdm") {
+		t.Errorf("newer lock should error with an upgrade pointer, got %v", err)
+	}
+	// Version 0 (malformed-but-old) still reads as empty, matching v1.
 	if err := os.WriteFile(GetProjectLockPath(cwd), []byte(`{"version":0,"skills":{}}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if lk := ReadProjectLock(cwd); !lk.isEmpty() {
-		t.Errorf("version 0 lock should read as empty, got %+v", lk)
+	if lk, err := readProjectLockE(cwd); err != nil || !lk.isEmpty() {
+		t.Errorf("version 0 lock should read as empty, got %+v err=%v", lk, err)
+	}
+}
+
+func TestProjectLockToleratesLegacyTombstone(t *testing.T) {
+	cwd := t.TempDir()
+	// Only the tombstone exists: a fresh clone after a --no-commit mishap,
+	// or a v2 binary revisiting a migrated project whose mdm-lock.json was
+	// deleted. It must read as empty, never abort.
+	if err := os.WriteFile(filepath.Join(cwd, "skills-lock.json"), []byte(SkillsTombstone), 0600); err != nil {
+		t.Fatal(err)
+	}
+	lk, err := readProjectLockE(cwd)
+	if err != nil || !lk.isEmpty() {
+		t.Errorf("tombstone-only project should read as empty, got %+v err=%v", lk, err)
 	}
 }

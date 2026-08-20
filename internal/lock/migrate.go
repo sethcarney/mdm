@@ -19,14 +19,17 @@ import (
 // LegacyProjectLockNames are the v1 project lock files, in display order.
 var LegacyProjectLockNames = []string{"skills-lock.json", "knowledge-lock.json", "plugins-lock.json"}
 
-// SkillsTombstone is written over skills-lock.json after a migration. v1
-// binaries read it as a valid, empty lock — they cannot be made to error —
-// so the fields exist for the human who finds the file.
+// SkillsTombstone is written over skills-lock.json after a migration. The
+// version is deliberately newer than any v1 lock: the final v1 patch
+// releases refuse locks with a version they don't understand and print an
+// upgrade pointer, so a patched v1 binary fails loudly here. Older v1
+// binaries read the file as a valid, empty lock — they cannot be made to
+// error — so the _comment exists for the human who finds it.
 const SkillsTombstone = `{
-  "version": 1,
+  "version": 2,
   "skills": {},
   "_moved": "mdm-lock.json",
-  "_comment": "This project migrated to mdm v2 and its lock now lives in mdm-lock.json. A v1 mdm reads this file as empty and will install nothing from it - upgrade mdm instead. Delete this file once nothing runs a v1 mdm against this project."
+  "_comment": "This project migrated to mdm v2 and its lock now lives in mdm-lock.json. Patched v1 releases refuse this file with an upgrade pointer; older v1 releases read it as empty and will install nothing from it - upgrade mdm instead. Delete this file once nothing runs a v1 mdm against this project."
 }
 `
 

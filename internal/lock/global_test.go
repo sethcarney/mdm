@@ -119,3 +119,23 @@ func TestGlobalStateLegacyFallback(t *testing.T) {
 		t.Error("state not readable from the new location")
 	}
 }
+
+func TestGlobalStateUnreadableErrors(t *testing.T) {
+	isolateGlobal(t)
+	path := GetGlobalStatePath()
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(`{"version":99,"skills":{}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readGlobalStateE(); err == nil {
+		t.Error("newer state file should error with an upgrade pointer")
+	}
+	if err := os.WriteFile(path, []byte("{broken"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readGlobalStateE(); err == nil {
+		t.Error("corrupt state file should error")
+	}
+}

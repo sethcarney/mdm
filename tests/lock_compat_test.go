@@ -8,17 +8,17 @@ import (
 )
 
 // A lock file written by a newer mdm must abort the command with a clear
-// error, never read as empty — the old fallback made `mdm skills install`
-// in a newer-format project a silent no-op that exits 0 in CI.
+// error, never read as empty — the v1 line's empty fallback made
+// `mdm skills install` in a newer-format project a silent no-op that
+// exits 0 in CI.
 func TestNewerLockVersionAborts(t *testing.T) {
 	dir := t.TempDir()
-	stateDir := t.TempDir()
-	lockContent := `{"version": 2, "skills": {}, "_moved": "mdm-lock.json"}`
-	if err := os.WriteFile(filepath.Join(dir, "skills-lock.json"), []byte(lockContent), 0600); err != nil {
+	lockContent := `{"version": 99, "skills": {}}`
+	if err := os.WriteFile(filepath.Join(dir, "mdm-lock.json"), []byte(lockContent), 0600); err != nil {
 		t.Fatal(err)
 	}
 
-	env := isolatedEnv(dir, stateDir)
+	env := freshEnv(t)
 	stdout, stderr, code := runMdmInDir(t, dir, env, "skills", "install", "-y")
 	if code == 0 {
 		t.Fatalf("expected non-zero exit for a newer lock version, got 0:\n%s%s", stdout, stderr)
@@ -28,7 +28,7 @@ func TestNewerLockVersionAborts(t *testing.T) {
 		t.Errorf("expected an upgrade pointer, got stdout=%q stderr=%q", stdout, stderr)
 	}
 
-	// Write paths must abort too, so an old binary cannot clobber the file.
+	// Write paths must abort too, so this binary cannot clobber the file.
 	skillDir := filepath.Join(dir, "my-skill")
 	if err := os.MkdirAll(skillDir, 0755); err != nil {
 		t.Fatal(err)
@@ -40,7 +40,7 @@ func TestNewerLockVersionAborts(t *testing.T) {
 	if code == 0 {
 		t.Fatal("expected skills add to abort instead of overwriting a newer lock")
 	}
-	after, err := os.ReadFile(filepath.Join(dir, "skills-lock.json"))
+	after, err := os.ReadFile(filepath.Join(dir, "mdm-lock.json"))
 	if err != nil || string(after) != lockContent {
 		t.Errorf("newer lock file must be left untouched, got: %s (err=%v)", after, err)
 	}
@@ -48,16 +48,34 @@ func TestNewerLockVersionAborts(t *testing.T) {
 
 func TestCorruptLockAborts(t *testing.T) {
 	dir := t.TempDir()
-	stateDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "skills-lock.json"), []byte("{not json"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "mdm-lock.json"), []byte("{not json"), 0600); err != nil {
 		t.Fatal(err)
 	}
 
-	stdout, stderr, code := runMdmInDir(t, dir, isolatedEnv(dir, stateDir), "skills", "install", "-y")
+	stdout, stderr, code := runMdmInDir(t, dir, freshEnv(t), "skills", "install", "-y")
 	if code == 0 {
 		t.Fatalf("expected non-zero exit for a corrupt lock, got 0:\n%s%s", stdout, stderr)
 	}
 	if !strings.Contains(stdout+stderr, "could not be parsed") {
 		t.Errorf("expected a parse error pointer, got stdout=%q stderr=%q", stdout, stderr)
+	}
+}
+
+// The migration tombstone carries a deliberately newer version so patched
+// v1 binaries refuse it — but v2 itself must keep treating it as an empty
+// legacy file, not abort on it.
+func TestTombstoneDoesNotAbortV2(t *testing.T) {
+	dir := t.TempDir()
+	tomb := `{"version": 2, "skills": {}, "_moved": "mdm-lock.json"}`
+	if err := os.WriteFile(filepath.Join(dir, "skills-lock.json"), []byte(tomb), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, stderr, code := runMdmInDir(t, dir, freshEnv(t), "skills", "install", "-y")
+	if code != 0 {
+		t.Fatalf("v2 must tolerate its own tombstone, exited %d:\n%s%s", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "No mdm-lock.json found") {
+		t.Errorf("tombstone-only project should read as empty, got: %q", stdout)
 	}
 }

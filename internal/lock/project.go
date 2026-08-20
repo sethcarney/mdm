@@ -3,10 +3,42 @@ package lock
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 )
+
+// ──────────────────────────────────────────────────────────
+// Forward compatibility
+//
+// mdm-lock.json and mdm-state.json abort the command when this binary
+// cannot understand them — a version from a newer mdm, or invalid JSON —
+// rather than reading as empty. The v1 line learned this the hard way:
+// its empty-on-unreadable fallback made `mdm skills install` in a
+// newer-format project a silent no-op that exits 0 in CI (fixed in the
+// final v1 patch releases). Aborting in the read path also stops
+// read-modify-write commands from clobbering a file written by a newer
+// version. The *legacy* v1 files keep tolerant reads here: v2's own
+// tombstone carries a deliberately newer version for v1 binaries to trip
+// on, and `mdm migrate` re-parses legacy files strictly before touching
+// them.
+// ──────────────────────────────────────────────────────────
+
+func errNewerLock(path string, fileVersion, knownVersion int) error {
+	return fmt.Errorf("%s was written by a newer version of mdm (lock version %d; this binary understands up to %d) — upgrade with 'mdm upgrade'",
+		filepath.Base(path), fileVersion, knownVersion)
+}
+
+func errUnreadableLock(path string, err error) error {
+	return fmt.Errorf("%s could not be parsed: %w — fix the file or restore it from version control",
+		filepath.Base(path), err)
+}
+
+func fatalLock(err error) {
+	fmt.Fprintln(os.Stderr, err)
+	os.Exit(2)
+}
 
 // ──────────────────────────────────────────────────────────
 // Unified project lock (mdm-lock.json)
@@ -150,21 +182,35 @@ func GetProjectLockPath(cwd string) string {
 }
 
 // ReadProjectLock reads mdm-lock.json, falling back to the legacy v1 lock
-// files when it does not exist. A missing or unreadable lock reads as empty.
+// files when it does not exist. A missing lock reads as empty; one this
+// binary cannot understand aborts the process (see Forward compatibility
+// above).
 func ReadProjectLock(cwd string) ProjectLockFile {
-	data, err := os.ReadFile(GetProjectLockPath(cwd))
+	lk, err := readProjectLockE(cwd)
 	if err != nil {
-		return readLegacyLocks(cwd)
+		fatalLock(err)
+	}
+	return lk
+}
+
+func readProjectLockE(cwd string) (ProjectLockFile, error) {
+	path := GetProjectLockPath(cwd)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return readLegacyLocks(cwd), nil
 	}
 	var lk ProjectLockFile
 	if err := json.Unmarshal(data, &lk); err != nil {
-		return EmptyProjectLock()
+		return EmptyProjectLock(), errUnreadableLock(path, err)
+	}
+	if lk.Version > projectLockVersion {
+		return EmptyProjectLock(), errNewerLock(path, lk.Version, projectLockVersion)
 	}
 	if lk.Version < projectLockVersion {
-		return EmptyProjectLock()
+		return EmptyProjectLock(), nil
 	}
 	normalizeProjectLock(&lk)
-	return lk
+	return lk, nil
 }
 
 // WriteProjectLock writes mdm-lock.json. A lock with nothing left in it
