@@ -139,38 +139,51 @@ func PlanProjectMigration(cwd string) (ProjectMigration, error) {
 			continue
 		}
 		if plan.TargetExists {
-			for name := range d.skills {
-				if _, ok := target.Skills[name]; !ok {
-					plan.Orphaned = append(plan.Orphaned, fname+": "+name)
-				}
-			}
-			for name := range d.bundles {
-				if _, ok := target.Knowledge[name]; !ok {
-					plan.Orphaned = append(plan.Orphaned, fname+": "+name)
-				}
-			}
-			for name := range d.plugins {
-				if _, ok := target.Plugins[name]; !ok {
-					plan.Orphaned = append(plan.Orphaned, fname+": "+name)
-				}
-			}
+			plan.Orphaned = append(plan.Orphaned, orphanedIn(target, fname, d)...)
 		}
-		for name, e := range d.skills {
-			plan.merged.Skills[name] = e
-		}
-		for name, e := range d.bundles {
-			plan.merged.Knowledge[name] = e
-		}
-		for name, e := range d.plugins {
-			plan.merged.Plugins[name] = e
-		}
-		if len(d.configuredAgents) > 0 {
-			plan.merged.ConfiguredAgents = d.configuredAgents
-		}
+		plan.absorb(d)
 		plan.Legacy[fname] = d.count()
 	}
 	sort.Strings(plan.Orphaned)
 	return plan, nil
+}
+
+// orphanedIn lists d's entries that are absent from the existing target
+// lock, as "file: name".
+func orphanedIn(target ProjectLockFile, fname string, d legacyFileData) []string {
+	var orphans []string
+	for name := range d.skills {
+		if _, ok := target.Skills[name]; !ok {
+			orphans = append(orphans, fname+": "+name)
+		}
+	}
+	for name := range d.bundles {
+		if _, ok := target.Knowledge[name]; !ok {
+			orphans = append(orphans, fname+": "+name)
+		}
+	}
+	for name := range d.plugins {
+		if _, ok := target.Plugins[name]; !ok {
+			orphans = append(orphans, fname+": "+name)
+		}
+	}
+	return orphans
+}
+
+// absorb folds one legacy file's entries into the plan's merged lock.
+func (m *ProjectMigration) absorb(d legacyFileData) {
+	for name, e := range d.skills {
+		m.merged.Skills[name] = e
+	}
+	for name, e := range d.bundles {
+		m.merged.Knowledge[name] = e
+	}
+	for name, e := range d.plugins {
+		m.merged.Plugins[name] = e
+	}
+	if len(d.configuredAgents) > 0 {
+		m.merged.ConfiguredAgents = d.configuredAgents
+	}
 }
 
 // ExecuteProjectMigration performs the migration PlanProjectMigration

@@ -72,6 +72,9 @@ Checks performed:
   • Missing README in the project root
   • All other .md files in the project that may strain agent context windows
 
+Exits 1 when any error-level issue is found (warnings alone exit 0), so
+doctor can gate CI.
+
 %sExamples:%s
   mdm doctor
   mdm doctor -g
@@ -168,7 +171,10 @@ func runDoctor(opts DoctorOptions) {
 
 	migrationIssues = append(migrationIssues, checkLegacyGlobalLock()...)
 
-	printDoctorResults(results, instrIssues, unlinkedRulesIssues, missingSkillLinkIssues, knowledgeIssues, pluginIssues, migrationIssues, mdIssues, mdTruncated, readmeIssue, checkProject, cwd)
+	errs := printDoctorResults(results, instrIssues, unlinkedRulesIssues, missingSkillLinkIssues, knowledgeIssues, pluginIssues, migrationIssues, mdIssues, mdTruncated, readmeIssue, checkProject, cwd)
+	if errs > 0 {
+		os.Exit(1)
+	}
 }
 
 // checkLegacyLockFiles flags v1 project lock files that mdm migrate should
@@ -565,7 +571,7 @@ func checkProjectMarkdown(cwd string, skipDirs map[string]bool, skipFiles map[st
 
 // ── Output ─────────────────────────────────────────────────────────────────────
 
-func printDoctorResults(results []doctorResult, instrIssues, unlinkedRulesIssues, missingSkillLinkIssues, knowledgeIssues, pluginIssues, migrationIssues, mdIssues []doctorIssue, mdTruncated bool, readmeIssue *doctorIssue, scannedProject bool, cwd string) {
+func printDoctorResults(results []doctorResult, instrIssues, unlinkedRulesIssues, missingSkillLinkIssues, knowledgeIssues, pluginIssues, migrationIssues, mdIssues []doctorIssue, mdTruncated bool, readmeIssue *doctorIssue, scannedProject bool, cwd string) int {
 	fmt.Println()
 
 	byScope := map[string][]doctorResult{}
@@ -638,6 +644,7 @@ func printDoctorResults(results []doctorResult, instrIssues, unlinkedRulesIssues
 	totalWarnings += w
 
 	printDoctorSummary(len(results), scannedProject, totalErrors, totalWarnings)
+	return totalErrors
 }
 
 func printDoctorSkillSection(scopeResults []doctorResult, scope, cwd string) (errs, warns int) {

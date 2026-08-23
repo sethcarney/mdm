@@ -113,7 +113,8 @@ func HasProjectSkills(cwd string) bool {
 	if _, err := os.Stat(filepath.Join(cwd, ProjectLockName)); err == nil {
 		return true
 	}
-	if _, err := os.Stat(filepath.Join(cwd, "skills-lock.json")); err == nil {
+	// A migration tombstone is a pointer, not project skills.
+	if data, err := os.ReadFile(filepath.Join(cwd, "skills-lock.json")); err == nil && !legacyTombstone(data) {
 		return true
 	}
 	skillsDir := filepath.Join(cwd, ".agents", "skills")

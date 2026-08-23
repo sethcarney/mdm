@@ -51,13 +51,13 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name())
+	defer func() { _ = os.Remove(tmp.Name()) }()
 	if err := tmp.Chmod(perm); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return err
 	}
 	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return err
 	}
 	if err := tmp.Close(); err != nil {
@@ -176,6 +176,40 @@ func marshalSection[E any](entries map[string]E, raws map[string]json.RawMessage
 	return out, nil
 }
 
+// mergedSection is one entry section rendered for writing.
+type mergedSection struct {
+	key   string
+	value map[string]json.RawMessage
+}
+
+// mergedSections renders each non-empty entry section with unknown
+// per-entry keys folded back, in the fixed write order.
+func (l ProjectLockFile) mergedSections() ([]mergedSection, error) {
+	var out []mergedSection
+	if len(l.Skills) > 0 {
+		v, err := marshalSection(l.Skills, l.rawSkills, knownSkillEntryKeys)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, mergedSection{"skills", v})
+	}
+	if len(l.Knowledge) > 0 {
+		v, err := marshalSection(l.Knowledge, l.rawKnowledge, knownKnowledgeEntryKeys)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, mergedSection{"knowledge", v})
+	}
+	if len(l.Plugins) > 0 {
+		v, err := marshalSection(l.Plugins, l.rawPlugins, knownPluginEntryKeys)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, mergedSection{"plugins", v})
+	}
+	return out, nil
+}
+
 // captureRawEntries snapshots a section's entries as raw JSON for the
 // unknown-key merge on write.
 func captureRawEntries(section json.RawMessage) map[string]json.RawMessage {
@@ -223,30 +257,12 @@ func (l ProjectLockFile) MarshalJSON() ([]byte, error) {
 			return nil, err
 		}
 	}
-	if len(l.Skills) > 0 {
-		merged, err := marshalSection(l.Skills, l.rawSkills, knownSkillEntryKeys)
-		if err != nil {
-			return nil, err
-		}
-		if err := writeKey("skills", merged); err != nil {
-			return nil, err
-		}
+	sections, err := l.mergedSections()
+	if err != nil {
+		return nil, err
 	}
-	if len(l.Knowledge) > 0 {
-		merged, err := marshalSection(l.Knowledge, l.rawKnowledge, knownKnowledgeEntryKeys)
-		if err != nil {
-			return nil, err
-		}
-		if err := writeKey("knowledge", merged); err != nil {
-			return nil, err
-		}
-	}
-	if len(l.Plugins) > 0 {
-		merged, err := marshalSection(l.Plugins, l.rawPlugins, knownPluginEntryKeys)
-		if err != nil {
-			return nil, err
-		}
-		if err := writeKey("plugins", merged); err != nil {
+	for _, s := range sections {
+		if err := writeKey(s.key, s.value); err != nil {
 			return nil, err
 		}
 	}

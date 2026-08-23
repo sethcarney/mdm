@@ -15,9 +15,9 @@ import (
 
 // checkInstalledPlugins diagnoses installed plugins against
 // the plugins lock section: missing or invalid plugin directories, content drift,
-// broken skill links, and MCP config that fell out of sync. Only called
-// when the plugins experimental gate is enabled, so doctor output is
-// unchanged for everyone else.
+// broken skill links, and MCP config that fell out of sync. Reports nothing
+// when no plugins are installed, so doctor output is unchanged for everyone
+// else.
 func checkInstalledPlugins(cwd string) []doctorIssue {
 	lk := lock.ReadPluginsLock(cwd)
 	if len(lk.Plugins) == 0 {
