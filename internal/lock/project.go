@@ -19,10 +19,10 @@ import (
 // newer-format project a silent no-op that exits 0 in CI (fixed in the
 // final v1 patch releases). Aborting in the read path also stops
 // read-modify-write commands from clobbering a file written by a newer
-// version. The *legacy* v1 files keep tolerant reads here: v2's own
-// tombstone carries a deliberately newer version for v1 binaries to trip
-// on, and `mdm migrate` re-parses legacy files strictly before touching
-// them.
+// version. The *legacy* project files fail the same way the final v1 patch
+// releases did — corrupt or newer-versioned files abort rather than read
+// as empty — with one exception: v2's own tombstone carries a deliberately
+// newer version for v1 binaries to trip on, and reads as empty here.
 // ──────────────────────────────────────────────────────────
 
 func errNewerLock(path string, fileVersion, knownVersion int) error {
@@ -197,7 +197,13 @@ func readProjectLockE(cwd string) (ProjectLockFile, error) {
 	path := GetProjectLockPath(cwd)
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return readLegacyLocks(cwd), nil
+		if os.IsNotExist(err) {
+			return readLegacyLocksE(cwd)
+		}
+		// Only absence falls back to the legacy files — an unreadable
+		// mdm-lock.json (permissions, a directory) must abort, or `mdm
+		// skills install` becomes a silent exit-0 no-op in CI.
+		return EmptyProjectLock(), errUnreadableLock(path, err)
 	}
 	var lk ProjectLockFile
 	if err := json.Unmarshal(data, &lk); err != nil {
@@ -249,13 +255,24 @@ func normalizeProjectLock(lk *ProjectLockFile) {
 	}
 }
 
-// readLegacyLocks assembles a project lock from the v1 per-feature files.
-func readLegacyLocks(cwd string) ProjectLockFile {
+// readLegacyLocksE assembles a project lock from the v1 per-feature files.
+func readLegacyLocksE(cwd string) (ProjectLockFile, error) {
 	lk := EmptyProjectLock()
-	legacy := readLegacySkillsLock(cwd)
+	legacy, err := readLegacySkillsLockE(cwd)
+	if err != nil {
+		return lk, err
+	}
+	kb, err := readLegacyKnowledgeLockE(cwd)
+	if err != nil {
+		return lk, err
+	}
+	pl, err := readLegacyPluginsLockE(cwd)
+	if err != nil {
+		return lk, err
+	}
 	lk.Skills = legacy.Skills
 	lk.ConfiguredAgents = legacy.ConfiguredAgents
-	lk.Knowledge = readLegacyKnowledgeLock(cwd).Bundles
-	lk.Plugins = readLegacyPluginsLock(cwd).Plugins
-	return lk
+	lk.Knowledge = kb.Bundles
+	lk.Plugins = pl.Plugins
+	return lk, nil
 }

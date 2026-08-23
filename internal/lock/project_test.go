@@ -207,6 +207,35 @@ func TestProjectLockUnreadableErrors(t *testing.T) {
 	}
 }
 
+func TestLegacyFallbackFailsLoudly(t *testing.T) {
+	// With no mdm-lock.json, everyday reads fall back to the v1 files.
+	// Corrupt or newer-versioned legacy files must abort the same way the
+	// final v1 patch releases did — not read as empty (the CI silent-no-op
+	// trap).
+	cwd := t.TempDir()
+	if err := os.WriteFile(filepath.Join(cwd, "skills-lock.json"), []byte("{broken"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readProjectLockE(cwd); err == nil || !strings.Contains(err.Error(), "could not be parsed") {
+		t.Errorf("corrupt legacy skills lock should error, got %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(cwd, "skills-lock.json"), []byte(`{"version":7,"skills":{}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readProjectLockE(cwd); err == nil || !strings.Contains(err.Error(), "newer version of mdm") {
+		t.Errorf("newer non-tombstone legacy lock should error, got %v", err)
+	}
+	if err := os.Remove(filepath.Join(cwd, "skills-lock.json")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cwd, "knowledge-lock.json"), []byte(`{"bundles":{"k1":{"installDir":5}},"version":1}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readProjectLockE(cwd); err == nil || !strings.Contains(err.Error(), "could not be parsed") {
+		t.Errorf("undecodable legacy knowledge entry should error, got %v", err)
+	}
+}
+
 func TestProjectLockToleratesLegacyTombstone(t *testing.T) {
 	cwd := t.TempDir()
 	// Only the tombstone exists: a fresh clone after a --no-commit mishap,

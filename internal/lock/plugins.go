@@ -46,24 +46,32 @@ type PluginLockFile struct {
 	Plugins map[string]PluginLockEntry `json:"plugins"`
 }
 
-// readLegacyPluginsLock reads the v1 plugins-lock.json directly. It is only
-// consulted when mdm-lock.json does not exist.
-func readLegacyPluginsLock(cwd string) PluginLockFile {
+// readLegacyPluginsLockE reads the v1 plugins-lock.json directly. It is only
+// consulted when mdm-lock.json does not exist. Corrupt or newer-versioned
+// files are an error, matching the final v1 patch releases.
+func readLegacyPluginsLockE(cwd string) (PluginLockFile, error) {
 	if cwd == "" {
 		cwd, _ = os.Getwd()
 	}
-	data, err := os.ReadFile(filepath.Join(cwd, "plugins-lock.json"))
+	path := filepath.Join(cwd, "plugins-lock.json")
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return EmptyPluginsLock()
+		if os.IsNotExist(err) {
+			return EmptyPluginsLock(), nil
+		}
+		return EmptyPluginsLock(), errUnreadableLock(path, err)
 	}
 	var lk PluginLockFile
 	if err := json.Unmarshal(data, &lk); err != nil {
-		return EmptyPluginsLock()
+		return EmptyPluginsLock(), errUnreadableLock(path, err)
+	}
+	if lk.Version > pluginsLockVersion {
+		return EmptyPluginsLock(), errNewerLock(path, lk.Version, pluginsLockVersion)
 	}
 	if lk.Plugins == nil || lk.Version < pluginsLockVersion {
-		return EmptyPluginsLock()
+		return EmptyPluginsLock(), nil
 	}
-	return lk
+	return lk, nil
 }
 
 func ReadPluginsLock(cwd string) PluginLockFile {

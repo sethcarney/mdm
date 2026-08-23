@@ -150,7 +150,7 @@ func executeMigration(cwd string, projectNeeded, globalNeeded, noTombstone bool)
 		fmt.Printf("%s✓%s Project migrated to mdm-lock.json — commit it together with the removed files.\n", ansiGreen, ansiReset)
 	}
 	if globalNeeded {
-		if err := lock.MigrateGlobalState(); err != nil {
+		if err := lock.ExecuteGlobalMigration(); err != nil {
 			return err
 		}
 		fmt.Printf("%s✓%s Global state migrated to %s.\n", ansiGreen, ansiReset, lock.GetGlobalStatePath())

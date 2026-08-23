@@ -184,7 +184,12 @@ func readGlobalStateE() (GlobalState, error) {
 	path := GetGlobalStatePath()
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return readLegacyGlobalLock(), nil
+		if os.IsNotExist(err) {
+			return readLegacyGlobalLock(), nil
+		}
+		// Only absence falls back to the legacy file — an unreadable
+		// mdm-state.json must abort, not read as empty.
+		return EmptyGlobalState(), errUnreadableLock(path, err)
 	}
 	var s GlobalState
 	if err := json.Unmarshal(data, &s); err != nil {
@@ -202,6 +207,11 @@ func readGlobalStateE() (GlobalState, error) {
 	return s, nil
 }
 
+// readLegacyGlobalLock keeps v1's deliberate read-as-empty tolerance for
+// the global lock (version resets there were how old global locks were
+// discarded on upgrade). Everyday reads may fall back through it, but
+// `mdm migrate` strict-parses the file before retiring it — see
+// PlanGlobalMigration.
 func readLegacyGlobalLock() GlobalState {
 	data, err := os.ReadFile(legacyGlobalLockPath())
 	if err != nil {
