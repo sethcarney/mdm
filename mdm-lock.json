@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "configuredAgents": [
+    "claude-code",
+    "github-copilot",
+    "opencode"
+  ],
+  "skills": {
+    "go-report-card": {
+      "source": "sethcarney/custom-plugins",
+      "ref": "v1.0.0",
+      "sourceType": "github",
+      "skillPath": "plugins/go-report-card/skills/go-report-card/SKILL.md"
+    }
+  }
+}

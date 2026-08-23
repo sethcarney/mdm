@@ -1,16 +1,6 @@
 {
-  "version": 1,
-  "skills": {
-    "go-report-card": {
-      "source": "sethcarney/custom-plugins",
-      "ref": "v1.0.0",
-      "sourceType": "github",
-      "skillPath": "plugins/go-report-card/skills/go-report-card/SKILL.md"
-    }
-  },
-  "configuredAgents": [
-    "claude-code",
-    "github-copilot",
-    "opencode"
-  ]
+  "version": 2,
+  "skills": {},
+  "_moved": "mdm-lock.json",
+  "_comment": "This project migrated to mdm v2 and its lock now lives in mdm-lock.json. Patched v1 releases refuse this file with an upgrade pointer; older v1 releases read it as empty and will install nothing from it - upgrade mdm instead. Delete this file once nothing runs a v1 mdm against this project."
 }
