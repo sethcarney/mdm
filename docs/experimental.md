@@ -34,7 +34,7 @@ disabled with `mdm experimental disable`.
 ```
 mdm experimental
 ├── list                 # show features, status, and spec links
-├── enable <feature>     # persist an opt-in (stored in the global lock file)
+├── enable <feature>     # persist an opt-in (stored in mdm-state.json)
 └── disable <feature>    # remove the persisted opt-in
 ```
 
@@ -50,4 +50,3 @@ support in v2 — the command groups are always visible and need no opt-in.
 |---|---|---|
 | `knowledge` | v2 | [`mdm knowledge`](specs/knowledge.md), fully supported |
 | `plugins` | v2 | [`mdm plugins`](specs/plugins.md), fully supported |
-| `plugins` | Manage Agent Plugins — portable packages of skills and MCP servers; install, validate, and wire MCP servers into agent configs. See [docs/specs/plugins.md](specs/plugins.md). | [Agent Plugins v1.0.0](https://agent-plugins.org) |

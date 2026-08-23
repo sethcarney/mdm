@@ -81,11 +81,18 @@ mdm skills init [name]     Scaffold a new skill
 mdm skills install         Restore skills from mdm-lock.json
 mdm skills sync            Sync skills from node_modules
 
+mdm knowledge add <source>  Install an OKF knowledge bundle into ./knowledge/
+mdm knowledge list          List installed bundles (also: remove · update · validate · init · install)
+
+mdm plugins add <source>   Install an Agent Plugin: link skills, wire MCP servers
+mdm plugins list           List installed plugins (also: remove · update · validate · init · install)
+
 mdm agents list            Show the configured agents for the current scope
 mdm agents add             Add agents to the configured default install list
 mdm agents remove          Remove agents (and their unique skill / instruction files)
 
 mdm doctor                 Check installed skills and project markdown for health issues
+mdm migrate                Fold v1 lock files into mdm-lock.json / mdm-state.json
 mdm bug                    Open a prefilled bug-report form (nothing is sent automatically)
 mdm upgrade                Upgrade the mdm CLI binary
 ```
