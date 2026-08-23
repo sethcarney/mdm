@@ -146,6 +146,7 @@ mdm
 ├── plugins       Manage Agent Plugins (skills + MCP servers)
 ├── doctor        Check installed skills and project markdown for health issues
 ├── migrate       Fold v1 lock files into mdm-lock.json
+├── bug           Open a prefilled bug-report form (no network I/O)
 ├── experimental  Manage experimental feature gates
 ├── upgrade       Self-update the mdm binary from GitHub releases
 ├── uninstall     Remove the mdm binary from your system
