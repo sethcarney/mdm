@@ -201,7 +201,7 @@ func ExecuteProjectMigration(cwd string, tombstone bool) error {
 		}
 		path := filepath.Join(cwd, fname)
 		if fname == "skills-lock.json" && tombstone {
-			if err := os.WriteFile(path, []byte(SkillsTombstone), 0600); err != nil {
+			if err := writeFileAtomic(path, []byte(SkillsTombstone), 0600); err != nil {
 				return err
 			}
 			continue

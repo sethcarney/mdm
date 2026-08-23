@@ -40,6 +40,30 @@ func fatalLock(err error) {
 	os.Exit(2)
 }
 
+// writeFileAtomic writes via a temp file in the same directory plus rename,
+// so a write that dies partway (disk full, crash) can never leave a
+// half-written lock behind — a truncated mdm-lock.json would abort every
+// subsequent command, including the migration that could have repaired it.
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if err := tmp.Chmod(perm); err != nil {
+		tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
+}
+
 // ──────────────────────────────────────────────────────────
 // Unified project lock (mdm-lock.json)
 //
@@ -234,7 +258,7 @@ func WriteProjectLock(lk ProjectLockFile, cwd string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(data, '\n'), 0600)
+	return writeFileAtomic(path, append(data, '\n'), 0600)
 }
 
 func EmptyProjectLock() ProjectLockFile {

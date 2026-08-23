@@ -249,7 +249,7 @@ func WriteGlobalState(s GlobalState) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(data, '\n'), 0600)
+	return writeFileAtomic(path, append(data, '\n'), 0600)
 }
 
 func EmptyGlobalState() GlobalState {
