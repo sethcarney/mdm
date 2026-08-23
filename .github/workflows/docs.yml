@@ -7,18 +7,21 @@ on:
       - "docs/**"
       - "mkdocs.yml"
       - ".github/workflows/docs.yml"
+  # Pull requests build the site (--strict) without deploying, so docs
+  # breakage is caught before merge and a required `build` check always
+  # reports. No path filter: a required check that only sometimes runs
+  # leaves every other PR waiting on it forever.
+  pull_request:
   workflow_dispatch:
 
-# Allow the GITHUB_TOKEN to deploy to GitHub Pages.
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
-# Only one concurrent deployment; don't cancel an in-progress run.
+# Only one concurrent deployment; don't cancel an in-progress push run.
+# PR builds get their own group so they never queue behind a deploy.
 concurrency:
-  group: pages
-  cancel-in-progress: false
+  group: ${{ github.event_name == 'pull_request' && format('docs-pr-{0}', github.event.number) || 'pages' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
@@ -41,13 +44,19 @@ jobs:
         run: mkdocs build --strict --site-dir site
 
       - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: site
 
   deploy:
+    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
+    # Allow the GITHUB_TOKEN to deploy to GitHub Pages.
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

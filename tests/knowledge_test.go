@@ -337,8 +337,8 @@ func TestDoctorReportsKnowledgeIssues(t *testing.T) {
 	}
 
 	stdout, _, code := runMdmInDir(t, project, env, "doctor", "-p")
-	if code != 0 {
-		t.Fatalf("doctor exited %d", code)
+	if code != 1 {
+		t.Fatalf("doctor with an error-level issue should exit 1, exited %d", code)
 	}
 	if !strings.Contains(stdout, "Knowledge bundles:") || !strings.Contains(stdout, "not found") {
 		t.Errorf("expected knowledge section with missing-bundle error, got:\n%s", stdout)

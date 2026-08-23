@@ -106,9 +106,11 @@ func TestDoctorFlagsLegacyLockFiles(t *testing.T) {
 	dir := t.TempDir()
 	writeV1Project(t, dir)
 
+	// The fixture's skill directories don't exist, so doctor reports
+	// error-level issues and exits 1.
 	stdout, _, code := runMdmInDir(t, dir, freshEnv(t), "doctor", "-p")
-	if code != 0 {
-		t.Fatalf("doctor exited %d", code)
+	if code != 1 {
+		t.Fatalf("doctor with error-level issues should exit 1, exited %d", code)
 	}
 	if !strings.Contains(stdout, "mdm migrate") {
 		t.Errorf("doctor should point at mdm migrate when v1 lock files exist, got:\n%s", stdout)

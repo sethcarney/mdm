@@ -89,6 +89,9 @@ func buildExperimentalEnableCmd() *cobra.Command {
 		ValidArgsFunction: experimentalFeatureCompletion,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
+			if experimental.IsGraduated(name) {
+				return fmt.Errorf("%s graduated to full support in v2 — it is always on, no opt-in needed", name)
+			}
 			if err := validateExperimentalFeature(name); err != nil {
 				return err
 			}
@@ -109,6 +112,15 @@ func buildExperimentalDisableCmd() *cobra.Command {
 		ValidArgsFunction: experimentalFeatureCompletion,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
+			if experimental.IsGraduated(name) {
+				// Drop any opt-in still persisted from a v1 install; the
+				// feature itself can no longer be turned off.
+				if err := experimental.Disable(experimental.Feature(name)); err != nil {
+					return fmt.Errorf("could not update the global state file: %w", err)
+				}
+				ui.LogSuccess(fmt.Sprintf("%s graduated to full support in v2 — removed the stale opt-in", name))
+				return nil
+			}
 			if err := validateExperimentalFeature(name); err != nil {
 				return err
 			}

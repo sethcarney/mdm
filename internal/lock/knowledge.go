@@ -37,24 +37,32 @@ type KnowledgeLockFile struct {
 	Bundles map[string]KnowledgeLockEntry `json:"bundles"`
 }
 
-// readLegacyKnowledgeLock reads the v1 knowledge-lock.json directly. It is
-// only consulted when mdm-lock.json does not exist.
-func readLegacyKnowledgeLock(cwd string) KnowledgeLockFile {
+// readLegacyKnowledgeLockE reads the v1 knowledge-lock.json directly. It is
+// only consulted when mdm-lock.json does not exist. Corrupt or
+// newer-versioned files are an error, matching the final v1 patch releases.
+func readLegacyKnowledgeLockE(cwd string) (KnowledgeLockFile, error) {
 	if cwd == "" {
 		cwd, _ = os.Getwd()
 	}
-	data, err := os.ReadFile(filepath.Join(cwd, "knowledge-lock.json"))
+	path := filepath.Join(cwd, "knowledge-lock.json")
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return EmptyKnowledgeLock()
+		if os.IsNotExist(err) {
+			return EmptyKnowledgeLock(), nil
+		}
+		return EmptyKnowledgeLock(), errUnreadableLock(path, err)
 	}
 	var lk KnowledgeLockFile
 	if err := json.Unmarshal(data, &lk); err != nil {
-		return EmptyKnowledgeLock()
+		return EmptyKnowledgeLock(), errUnreadableLock(path, err)
+	}
+	if lk.Version > knowledgeLockVersion {
+		return EmptyKnowledgeLock(), errNewerLock(path, lk.Version, knowledgeLockVersion)
 	}
 	if lk.Bundles == nil || lk.Version < knowledgeLockVersion {
-		return EmptyKnowledgeLock()
+		return EmptyKnowledgeLock(), nil
 	}
-	return lk
+	return lk, nil
 }
 
 func ReadKnowledgeLock(cwd string) KnowledgeLockFile {

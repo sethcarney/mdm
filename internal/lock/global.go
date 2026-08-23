@@ -47,7 +47,8 @@ type DismissedPrompts struct {
 }
 
 // GlobalState is the in-memory form of mdm-state.json. Unknown top-level
-// keys are captured on read and re-emitted on write.
+// keys are captured on read and re-emitted on write, and so are unknown
+// keys inside each skill entry (see ProjectLockFile).
 type GlobalState struct {
 	Version          int
 	Skills           map[string]SkillLockEntry
@@ -55,6 +56,7 @@ type GlobalState struct {
 	ConfiguredAgents []string
 	Experimental     []string
 	extra            map[string]json.RawMessage
+	rawSkills        map[string]json.RawMessage
 }
 
 // MarshalJSON emits known keys in a fixed order, then unknown keys sorted.
@@ -86,7 +88,11 @@ func (s GlobalState) MarshalJSON() ([]byte, error) {
 			return nil, err
 		}
 	}
-	if err := writeKey("skills", s.Skills); err != nil {
+	mergedSkills, err := marshalSection(s.Skills, s.rawSkills, knownGlobalSkillEntryKeys)
+	if err != nil {
+		return nil, err
+	}
+	if err := writeKey("skills", mergedSkills); err != nil {
 		return nil, err
 	}
 	if s.Dismissed != (DismissedPrompts{}) {
@@ -135,6 +141,7 @@ func (s *GlobalState) UnmarshalJSON(data []byte) error {
 	if err := decode("configuredAgents", &s.ConfiguredAgents); err != nil {
 		return err
 	}
+	s.rawSkills = captureRawEntries(raw["skills"])
 	if err := decode("skills", &s.Skills); err != nil {
 		return err
 	}
@@ -184,7 +191,12 @@ func readGlobalStateE() (GlobalState, error) {
 	path := GetGlobalStatePath()
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return readLegacyGlobalLock(), nil
+		if os.IsNotExist(err) {
+			return readLegacyGlobalLock(), nil
+		}
+		// Only absence falls back to the legacy file — an unreadable
+		// mdm-state.json must abort, not read as empty.
+		return EmptyGlobalState(), errUnreadableLock(path, err)
 	}
 	var s GlobalState
 	if err := json.Unmarshal(data, &s); err != nil {
@@ -202,6 +214,11 @@ func readGlobalStateE() (GlobalState, error) {
 	return s, nil
 }
 
+// readLegacyGlobalLock keeps v1's deliberate read-as-empty tolerance for
+// the global lock (version resets there were how old global locks were
+// discarded on upgrade). Everyday reads may fall back through it, but
+// `mdm migrate` strict-parses the file before retiring it — see
+// PlanGlobalMigration.
 func readLegacyGlobalLock() GlobalState {
 	data, err := os.ReadFile(legacyGlobalLockPath())
 	if err != nil {
@@ -239,7 +256,7 @@ func WriteGlobalState(s GlobalState) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(data, '\n'), 0600)
+	return writeFileAtomic(path, append(data, '\n'), 0600)
 }
 
 func EmptyGlobalState() GlobalState {

@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
+	"strings"
 )
 
 // ──────────────────────────────────────────────────────────
@@ -19,10 +21,10 @@ import (
 // newer-format project a silent no-op that exits 0 in CI (fixed in the
 // final v1 patch releases). Aborting in the read path also stops
 // read-modify-write commands from clobbering a file written by a newer
-// version. The *legacy* v1 files keep tolerant reads here: v2's own
-// tombstone carries a deliberately newer version for v1 binaries to trip
-// on, and `mdm migrate` re-parses legacy files strictly before touching
-// them.
+// version. The *legacy* project files fail the same way the final v1 patch
+// releases did — corrupt or newer-versioned files abort rather than read
+// as empty — with one exception: v2's own tombstone carries a deliberately
+// newer version for v1 binaries to trip on, and reads as empty here.
 // ──────────────────────────────────────────────────────────
 
 func errNewerLock(path string, fileVersion, knownVersion int) error {
@@ -38,6 +40,30 @@ func errUnreadableLock(path string, err error) error {
 func fatalLock(err error) {
 	fmt.Fprintln(os.Stderr, err)
 	os.Exit(2)
+}
+
+// writeFileAtomic writes via a temp file in the same directory plus rename,
+// so a write that dies partway (disk full, crash) can never leave a
+// half-written lock behind — a truncated mdm-lock.json would abort every
+// subsequent command, including the migration that could have repaired it.
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp*")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.Remove(tmp.Name()) }()
+	if err := tmp.Chmod(perm); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
 }
 
 // ──────────────────────────────────────────────────────────
@@ -63,7 +89,9 @@ const ProjectLockName = "mdm-lock.json"
 const projectLockVersion = 1
 
 // ProjectLockFile is the in-memory form of mdm-lock.json. Unknown
-// top-level keys are captured on read and re-emitted on write.
+// top-level keys are captured on read and re-emitted on write, and so are
+// unknown keys inside each entry — a per-entry field added by a newer v2
+// survives this binary rewriting the entry's known fields.
 type ProjectLockFile struct {
 	Version          int
 	ConfiguredAgents []string
@@ -71,6 +99,128 @@ type ProjectLockFile struct {
 	Knowledge        map[string]KnowledgeLockEntry
 	Plugins          map[string]PluginLockEntry
 	extra            map[string]json.RawMessage
+	rawSkills        map[string]json.RawMessage
+	rawKnowledge     map[string]json.RawMessage
+	rawPlugins       map[string]json.RawMessage
+}
+
+// knownJSONKeys lists a struct's json field names, so entry marshalling can
+// tell a field this binary deliberately cleared (known, stays gone) from a
+// field it has never heard of (unknown, must survive).
+func knownJSONKeys(v any) map[string]bool {
+	keys := map[string]bool{}
+	t := reflect.TypeOf(v)
+	for i := 0; i < t.NumField(); i++ {
+		name, _, _ := strings.Cut(t.Field(i).Tag.Get("json"), ",")
+		if name != "" && name != "-" {
+			keys[name] = true
+		}
+	}
+	return keys
+}
+
+var (
+	knownSkillEntryKeys       = knownJSONKeys(LocalSkillLockEntry{})
+	knownKnowledgeEntryKeys   = knownJSONKeys(KnowledgeLockEntry{})
+	knownPluginEntryKeys      = knownJSONKeys(PluginLockEntry{})
+	knownGlobalSkillEntryKeys = knownJSONKeys(SkillLockEntry{})
+)
+
+// mergeEntryExtras marshals a typed entry, then folds back any keys from
+// the originally read JSON that the entry struct does not know about.
+func mergeEntryExtras(typed any, raw json.RawMessage, known map[string]bool) (json.RawMessage, error) {
+	typedJSON, err := json.Marshal(typed)
+	if err != nil {
+		return nil, err
+	}
+	if raw == nil {
+		return typedJSON, nil
+	}
+	var rawMap map[string]json.RawMessage
+	if json.Unmarshal(raw, &rawMap) != nil {
+		return typedJSON, nil
+	}
+	extras := false
+	for k := range rawMap {
+		if !known[k] {
+			extras = true
+			break
+		}
+	}
+	if !extras {
+		return typedJSON, nil
+	}
+	var out map[string]json.RawMessage
+	if err := json.Unmarshal(typedJSON, &out); err != nil {
+		return nil, err
+	}
+	for k, v := range rawMap {
+		if !known[k] {
+			out[k] = v
+		}
+	}
+	return json.Marshal(out)
+}
+
+// marshalSection renders one entry map, preserving unknown per-entry keys
+// captured at read time.
+func marshalSection[E any](entries map[string]E, raws map[string]json.RawMessage, known map[string]bool) (map[string]json.RawMessage, error) {
+	out := make(map[string]json.RawMessage, len(entries))
+	for name, entry := range entries {
+		merged, err := mergeEntryExtras(entry, raws[name], known)
+		if err != nil {
+			return nil, err
+		}
+		out[name] = merged
+	}
+	return out, nil
+}
+
+// mergedSection is one entry section rendered for writing.
+type mergedSection struct {
+	key   string
+	value map[string]json.RawMessage
+}
+
+// mergedSections renders each non-empty entry section with unknown
+// per-entry keys folded back, in the fixed write order.
+func (l ProjectLockFile) mergedSections() ([]mergedSection, error) {
+	var out []mergedSection
+	if len(l.Skills) > 0 {
+		v, err := marshalSection(l.Skills, l.rawSkills, knownSkillEntryKeys)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, mergedSection{"skills", v})
+	}
+	if len(l.Knowledge) > 0 {
+		v, err := marshalSection(l.Knowledge, l.rawKnowledge, knownKnowledgeEntryKeys)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, mergedSection{"knowledge", v})
+	}
+	if len(l.Plugins) > 0 {
+		v, err := marshalSection(l.Plugins, l.rawPlugins, knownPluginEntryKeys)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, mergedSection{"plugins", v})
+	}
+	return out, nil
+}
+
+// captureRawEntries snapshots a section's entries as raw JSON for the
+// unknown-key merge on write.
+func captureRawEntries(section json.RawMessage) map[string]json.RawMessage {
+	if section == nil {
+		return nil
+	}
+	var m map[string]json.RawMessage
+	if json.Unmarshal(section, &m) != nil {
+		return nil
+	}
+	return m
 }
 
 func (l ProjectLockFile) isEmpty() bool {
@@ -107,18 +257,12 @@ func (l ProjectLockFile) MarshalJSON() ([]byte, error) {
 			return nil, err
 		}
 	}
-	if len(l.Skills) > 0 {
-		if err := writeKey("skills", l.Skills); err != nil {
-			return nil, err
-		}
+	sections, err := l.mergedSections()
+	if err != nil {
+		return nil, err
 	}
-	if len(l.Knowledge) > 0 {
-		if err := writeKey("knowledge", l.Knowledge); err != nil {
-			return nil, err
-		}
-	}
-	if len(l.Plugins) > 0 {
-		if err := writeKey("plugins", l.Plugins); err != nil {
+	for _, s := range sections {
+		if err := writeKey(s.key, s.value); err != nil {
 			return nil, err
 		}
 	}
@@ -158,6 +302,9 @@ func (l *ProjectLockFile) UnmarshalJSON(data []byte) error {
 	if err := decode("configuredAgents", &l.ConfiguredAgents); err != nil {
 		return err
 	}
+	l.rawSkills = captureRawEntries(raw["skills"])
+	l.rawKnowledge = captureRawEntries(raw["knowledge"])
+	l.rawPlugins = captureRawEntries(raw["plugins"])
 	if err := decode("skills", &l.Skills); err != nil {
 		return err
 	}
@@ -197,7 +344,13 @@ func readProjectLockE(cwd string) (ProjectLockFile, error) {
 	path := GetProjectLockPath(cwd)
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return readLegacyLocks(cwd), nil
+		if os.IsNotExist(err) {
+			return readLegacyLocksE(cwd)
+		}
+		// Only absence falls back to the legacy files — an unreadable
+		// mdm-lock.json (permissions, a directory) must abort, or `mdm
+		// skills install` becomes a silent exit-0 no-op in CI.
+		return EmptyProjectLock(), errUnreadableLock(path, err)
 	}
 	var lk ProjectLockFile
 	if err := json.Unmarshal(data, &lk); err != nil {
@@ -228,7 +381,7 @@ func WriteProjectLock(lk ProjectLockFile, cwd string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(data, '\n'), 0600)
+	return writeFileAtomic(path, append(data, '\n'), 0600)
 }
 
 func EmptyProjectLock() ProjectLockFile {
@@ -249,13 +402,24 @@ func normalizeProjectLock(lk *ProjectLockFile) {
 	}
 }
 
-// readLegacyLocks assembles a project lock from the v1 per-feature files.
-func readLegacyLocks(cwd string) ProjectLockFile {
+// readLegacyLocksE assembles a project lock from the v1 per-feature files.
+func readLegacyLocksE(cwd string) (ProjectLockFile, error) {
 	lk := EmptyProjectLock()
-	legacy := readLegacySkillsLock(cwd)
+	legacy, err := readLegacySkillsLockE(cwd)
+	if err != nil {
+		return lk, err
+	}
+	kb, err := readLegacyKnowledgeLockE(cwd)
+	if err != nil {
+		return lk, err
+	}
+	pl, err := readLegacyPluginsLockE(cwd)
+	if err != nil {
+		return lk, err
+	}
 	lk.Skills = legacy.Skills
 	lk.ConfiguredAgents = legacy.ConfiguredAgents
-	lk.Knowledge = readLegacyKnowledgeLock(cwd).Bundles
-	lk.Plugins = readLegacyPluginsLock(cwd).Plugins
-	return lk
+	lk.Knowledge = kb.Bundles
+	lk.Plugins = pl.Plugins
+	return lk, nil
 }

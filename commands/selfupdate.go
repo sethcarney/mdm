@@ -374,7 +374,10 @@ func runSelfUpdate(currentVersion string, useBeta bool) {
 			ansiYellow, latestVersion, ansiText, ansiReset, ansiYellow, ansiReset)
 	}
 	replaceBinary(tmpPath, execPath, latestVersion)
-	if crossing {
+	// On Windows replaceBinary only returns when the swap script failed to
+	// launch — execPath still holds the old binary, which has no migrate
+	// to offer; the reminder above already covers it.
+	if crossing && runtime.GOOS != "windows" {
 		offerMajorMigration(latestVersion, execPath)
 	}
 }

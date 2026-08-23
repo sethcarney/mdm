@@ -32,9 +32,25 @@ type Info struct {
 // graduated to full support in v2.
 var All = []Info{}
 
+// Graduated lists former experimental features that are now fully
+// supported, so their old opt-ins get a helpful answer instead of
+// "unknown feature".
+var Graduated = []string{"knowledge", "plugins"}
+
 func IsKnown(name string) bool {
 	for _, info := range All {
 		if string(info.Feature) == name {
+			return true
+		}
+	}
+	return false
+}
+
+// IsGraduated reports whether name was experimental in a previous release
+// and is now fully supported.
+func IsGraduated(name string) bool {
+	for _, g := range Graduated {
+		if g == name {
 			return true
 		}
 	}

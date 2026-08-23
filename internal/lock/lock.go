@@ -29,26 +29,46 @@ type LocalSkillLockFile struct {
 	ConfiguredAgents []string                       `json:"configuredAgents,omitempty"`
 }
 
-// readLegacySkillsLock reads the v1 skills-lock.json directly. It is only
-// consulted when mdm-lock.json does not exist.
-func readLegacySkillsLock(cwd string) LocalSkillLockFile {
+// legacyTombstone reports whether a legacy file is v2's own migration
+// tombstone (carrying a _moved pointer) rather than v1 data.
+func legacyTombstone(data []byte) bool {
+	var t struct {
+		Moved string `json:"_moved"`
+	}
+	return json.Unmarshal(data, &t) == nil && t.Moved != ""
+}
+
+// readLegacySkillsLockE reads the v1 skills-lock.json directly. It is only
+// consulted when mdm-lock.json does not exist. It fails the same way the
+// final v1 patch releases did — corrupt or newer-versioned files are an
+// error, not an empty lock — except for v2's own tombstone, which reads as
+// empty by design.
+func readLegacySkillsLockE(cwd string) (LocalSkillLockFile, error) {
 	if cwd == "" {
 		cwd, _ = os.Getwd()
 	}
-	data, err := os.ReadFile(filepath.Join(cwd, "skills-lock.json"))
+	path := filepath.Join(cwd, "skills-lock.json")
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return EmptyLocalLock()
+		if os.IsNotExist(err) {
+			return EmptyLocalLock(), nil
+		}
+		return EmptyLocalLock(), errUnreadableLock(path, err)
+	}
+	if legacyTombstone(data) {
+		return EmptyLocalLock(), nil
 	}
 	var lock LocalSkillLockFile
 	if err := json.Unmarshal(data, &lock); err != nil {
-		return EmptyLocalLock()
+		return EmptyLocalLock(), errUnreadableLock(path, err)
 	}
-	// A version above localLockVersion is v2's own tombstone (or another
-	// future format) — nothing a legacy read should surface.
-	if lock.Skills == nil || lock.Version != localLockVersion {
-		return EmptyLocalLock()
+	if lock.Version > localLockVersion {
+		return EmptyLocalLock(), errNewerLock(path, lock.Version, localLockVersion)
 	}
-	return lock
+	if lock.Skills == nil || lock.Version < localLockVersion {
+		return EmptyLocalLock(), nil
+	}
+	return lock, nil
 }
 
 func ReadLocalLock(cwd string) LocalSkillLockFile {
@@ -93,7 +113,8 @@ func HasProjectSkills(cwd string) bool {
 	if _, err := os.Stat(filepath.Join(cwd, ProjectLockName)); err == nil {
 		return true
 	}
-	if _, err := os.Stat(filepath.Join(cwd, "skills-lock.json")); err == nil {
+	// A migration tombstone is a pointer, not project skills.
+	if data, err := os.ReadFile(filepath.Join(cwd, "skills-lock.json")); err == nil && !legacyTombstone(data) {
 		return true
 	}
 	skillsDir := filepath.Join(cwd, ".agents", "skills")

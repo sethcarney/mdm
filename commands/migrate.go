@@ -3,13 +3,13 @@ package commands
 import (
 	"fmt"
 	"os"
-	"sort"
 
 	"github.com/spf13/cobra"
 
 	"github.com/sethcarney/mdm/internal/experimental"
 	"github.com/sethcarney/mdm/internal/lock"
 	"github.com/sethcarney/mdm/internal/ui"
+	"github.com/sethcarney/mdm/internal/update"
 )
 
 func buildMigrateCmd() *cobra.Command {
@@ -58,9 +58,13 @@ func runMigrate(dryRun, yes, noTombstone, force bool) error {
 	if err != nil {
 		return fmt.Errorf("cannot migrate: %w — fix or remove the file and re-run", err)
 	}
-	globalLegacyPath, globalNeeded := lock.LegacyGlobalLockExists()
+	gplan, err := lock.PlanGlobalMigration()
+	if err != nil {
+		return fmt.Errorf("cannot migrate: %w — fix or remove the file and re-run", err)
+	}
 
-	if !plan.Needed() && !globalNeeded {
+	if !plan.Needed() && !gplan.Needed() {
+		clearGraduatedOptIns()
 		fmt.Printf("\n%sNothing to migrate — no v1 lock files found.%s\n\n", ansiDim, ansiReset)
 		return nil
 	}
@@ -71,9 +75,10 @@ func runMigrate(dryRun, yes, noTombstone, force bool) error {
 			return err
 		}
 	}
-	if globalNeeded {
-		fmt.Printf("%sGlobal:%s\n", ansiText, ansiReset)
-		fmt.Printf("  %s → %s\n", globalLegacyPath, lock.GetGlobalStatePath())
+	if gplan.Needed() {
+		if err := printGlobalMigrationPlan(gplan, force); err != nil {
+			return err
+		}
 	}
 	fmt.Println()
 
@@ -82,31 +87,42 @@ func runMigrate(dryRun, yes, noTombstone, force bool) error {
 		return nil
 	}
 	if !yes {
+		if !update.IsTerminal() {
+			return fmt.Errorf("confirmation needed but this is not an interactive terminal — re-run with --yes")
+		}
 		confirmed, ok := ui.UiConfirm("Migrate now?")
 		if !ok || !confirmed {
 			fmt.Println("Cancelled.")
 			return nil
 		}
-		noTombstone = promptTombstoneCleanup(plan, noTombstone)
+		noTombstone, ok = promptTombstoneCleanup(plan, noTombstone)
+		if !ok {
+			fmt.Println("Cancelled.")
+			return nil
+		}
 	}
-	return executeMigration(cwd, plan.Needed(), globalNeeded, noTombstone)
+	return executeMigration(cwd, plan.Needed(), gplan.Needed(), noTombstone)
 }
 
 // promptTombstoneCleanup offers to delete skills-lock.json outright instead
 // of leaving the default tombstone. Only reached interactively; --yes keeps
-// the tombstone and --no-tombstone skips the question.
-func promptTombstoneCleanup(plan lock.ProjectMigration, noTombstone bool) bool {
+// the tombstone and --no-tombstone skips the question. ok=false means the
+// user cancelled — the migration must not run.
+func promptTombstoneCleanup(plan lock.ProjectMigration, noTombstone bool) (deleteOutright, ok bool) {
 	if noTombstone {
-		return true
+		return true, true
 	}
-	if _, ok := plan.Legacy["skills-lock.json"]; !ok {
-		return false
+	if _, present := plan.Legacy["skills-lock.json"]; !present {
+		return false, true
 	}
 	idx, ok := ui.UiSelect("What should happen to the old skills-lock.json?", []ui.UIOption{
 		{Label: "Leave a tombstone (recommended)", Hint: "points anyone still on v1 mdm at mdm-lock.json"},
 		{Label: "Delete it", Hint: "clean tree; a v1 mdm in this project would quietly find no skills"},
 	})
-	return ok && idx == 1
+	if !ok {
+		return false, false
+	}
+	return idx == 1, true
 }
 
 // printProjectMigrationPlan renders the project half of the plan and
@@ -122,22 +138,45 @@ func printProjectMigrationPlan(plan lock.ProjectMigration, noTombstone, force bo
 		if fname == "skills-lock.json" && !noTombstone {
 			fate = "leave a tombstone"
 		}
-		fmt.Printf("  %s — %d entr%s → mdm-lock.json, then %s\n",
-			fname, count, map[bool]string{true: "ies", false: "y"}[count != 1], fate)
+		if plan.TargetExists {
+			// Nothing flows into an existing mdm-lock.json — the legacy
+			// files are only retired.
+			fmt.Printf("  %s — %d entr%s, %s\n",
+				fname, count, map[bool]string{true: "ies", false: "y"}[count != 1], fate)
+		} else {
+			fmt.Printf("  %s — %d entr%s → mdm-lock.json, then %s\n",
+				fname, count, map[bool]string{true: "ies", false: "y"}[count != 1], fate)
+		}
 	}
 	if plan.TargetExists {
 		fmt.Printf("  %smdm-lock.json already exists; the legacy files above are leftovers%s\n", ansiDim, ansiReset)
 	}
-	if len(plan.Orphaned) > 0 {
-		sort.Strings(plan.Orphaned)
-		fmt.Printf("\n%sThese legacy entries are NOT in mdm-lock.json and would be discarded:%s\n", ansiYellow, ansiReset)
-		for _, o := range plan.Orphaned {
-			fmt.Printf("  %s\n", o)
-		}
-		if !force {
-			fmt.Println()
-			return fmt.Errorf("refusing to discard entries — re-add them with 'mdm skills add' (or knowledge/plugins add), or re-run with --force to drop them")
-		}
+	return printOrphanWarning(plan.Orphaned, "mdm-lock.json", force)
+}
+
+// printGlobalMigrationPlan renders the global half of the plan and enforces
+// the --force requirement for discarding orphaned entries.
+func printGlobalMigrationPlan(gplan lock.GlobalMigration, force bool) error {
+	fmt.Printf("%sGlobal:%s\n", ansiText, ansiReset)
+	if gplan.TargetExists {
+		fmt.Printf("  %s — superseded by %s, delete\n", gplan.LegacyPath, lock.GetGlobalStatePath())
+	} else {
+		fmt.Printf("  %s → %s\n", gplan.LegacyPath, lock.GetGlobalStatePath())
+	}
+	return printOrphanWarning(gplan.Orphaned, "mdm-state.json", force)
+}
+
+func printOrphanWarning(orphaned []string, target string, force bool) error {
+	if len(orphaned) == 0 {
+		return nil
+	}
+	fmt.Printf("\n%sThese legacy entries are NOT in %s and would be discarded:%s\n", ansiYellow, target, ansiReset)
+	for _, o := range orphaned {
+		fmt.Printf("  %s\n", o)
+	}
+	if !force {
+		fmt.Println()
+		return fmt.Errorf("refusing to discard entries — if you removed them on purpose, re-run with --force to drop them; otherwise re-add them with 'mdm skills add' (or knowledge/plugins add)")
 	}
 	return nil
 }
@@ -147,10 +186,14 @@ func executeMigration(cwd string, projectNeeded, globalNeeded, noTombstone bool)
 		if err := lock.ExecuteProjectMigration(cwd, !noTombstone); err != nil {
 			return err
 		}
-		fmt.Printf("%s✓%s Project migrated to mdm-lock.json — commit it together with the removed files.\n", ansiGreen, ansiReset)
+		if _, err := os.Stat(lock.GetProjectLockPath(cwd)); err == nil {
+			fmt.Printf("%s✓%s Project migrated to mdm-lock.json — commit it together with the removed files.\n", ansiGreen, ansiReset)
+		} else {
+			fmt.Printf("%s✓%s Legacy lock files retired — they held no entries, so there is no mdm-lock.json to commit.\n", ansiGreen, ansiReset)
+		}
 	}
 	if globalNeeded {
-		if err := lock.MigrateGlobalState(); err != nil {
+		if err := lock.ExecuteGlobalMigration(); err != nil {
 			return err
 		}
 		fmt.Printf("%s✓%s Global state migrated to %s.\n", ansiGreen, ansiReset, lock.GetGlobalStatePath())
