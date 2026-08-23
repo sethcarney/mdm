@@ -379,6 +379,9 @@ mdm migrate --dry-run   # show the plan
 mdm migrate -y          # migrate without prompting
 ```
 
+Non-interactive runs (CI, pipes) need `--yes` — without it the command
+fails rather than silently doing nothing.
+
 `skills-lock.json` is replaced with a tombstone that points v1 users at
 `mdm-lock.json` — interactive runs offer to delete it outright instead.
 Patched v1 releases refuse the tombstone with an "upgrade mdm" error;

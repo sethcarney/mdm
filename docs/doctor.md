@@ -116,3 +116,8 @@ mdm doctor -p
 | Large project markdown               | Trim the file or exclude it from agent context                                |
 | Rules file missing or not linked     | Run `mdm rules link` to symlink the agent's instruction file to `AGENTS.md`   |
 | Skill missing for a configured agent | Run `mdm skills add` and select the agent to distribute existing skills to it |
+
+## Exit code
+
+`mdm doctor` exits `1` when any error-level issue is found, so it can gate
+CI. Warnings alone exit `0`.
