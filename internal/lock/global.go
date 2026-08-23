@@ -47,7 +47,8 @@ type DismissedPrompts struct {
 }
 
 // GlobalState is the in-memory form of mdm-state.json. Unknown top-level
-// keys are captured on read and re-emitted on write.
+// keys are captured on read and re-emitted on write, and so are unknown
+// keys inside each skill entry (see ProjectLockFile).
 type GlobalState struct {
 	Version          int
 	Skills           map[string]SkillLockEntry
@@ -55,6 +56,7 @@ type GlobalState struct {
 	ConfiguredAgents []string
 	Experimental     []string
 	extra            map[string]json.RawMessage
+	rawSkills        map[string]json.RawMessage
 }
 
 // MarshalJSON emits known keys in a fixed order, then unknown keys sorted.
@@ -86,7 +88,11 @@ func (s GlobalState) MarshalJSON() ([]byte, error) {
 			return nil, err
 		}
 	}
-	if err := writeKey("skills", s.Skills); err != nil {
+	mergedSkills, err := marshalSection(s.Skills, s.rawSkills, knownGlobalSkillEntryKeys)
+	if err != nil {
+		return nil, err
+	}
+	if err := writeKey("skills", mergedSkills); err != nil {
 		return nil, err
 	}
 	if s.Dismissed != (DismissedPrompts{}) {
@@ -135,6 +141,7 @@ func (s *GlobalState) UnmarshalJSON(data []byte) error {
 	if err := decode("configuredAgents", &s.ConfiguredAgents); err != nil {
 		return err
 	}
+	s.rawSkills = captureRawEntries(raw["skills"])
 	if err := decode("skills", &s.Skills); err != nil {
 		return err
 	}

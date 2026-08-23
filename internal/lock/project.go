@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
+	"strings"
 )
 
 // ──────────────────────────────────────────────────────────
@@ -87,7 +89,9 @@ const ProjectLockName = "mdm-lock.json"
 const projectLockVersion = 1
 
 // ProjectLockFile is the in-memory form of mdm-lock.json. Unknown
-// top-level keys are captured on read and re-emitted on write.
+// top-level keys are captured on read and re-emitted on write, and so are
+// unknown keys inside each entry — a per-entry field added by a newer v2
+// survives this binary rewriting the entry's known fields.
 type ProjectLockFile struct {
 	Version          int
 	ConfiguredAgents []string
@@ -95,6 +99,94 @@ type ProjectLockFile struct {
 	Knowledge        map[string]KnowledgeLockEntry
 	Plugins          map[string]PluginLockEntry
 	extra            map[string]json.RawMessage
+	rawSkills        map[string]json.RawMessage
+	rawKnowledge     map[string]json.RawMessage
+	rawPlugins       map[string]json.RawMessage
+}
+
+// knownJSONKeys lists a struct's json field names, so entry marshalling can
+// tell a field this binary deliberately cleared (known, stays gone) from a
+// field it has never heard of (unknown, must survive).
+func knownJSONKeys(v any) map[string]bool {
+	keys := map[string]bool{}
+	t := reflect.TypeOf(v)
+	for i := 0; i < t.NumField(); i++ {
+		name, _, _ := strings.Cut(t.Field(i).Tag.Get("json"), ",")
+		if name != "" && name != "-" {
+			keys[name] = true
+		}
+	}
+	return keys
+}
+
+var (
+	knownSkillEntryKeys       = knownJSONKeys(LocalSkillLockEntry{})
+	knownKnowledgeEntryKeys   = knownJSONKeys(KnowledgeLockEntry{})
+	knownPluginEntryKeys      = knownJSONKeys(PluginLockEntry{})
+	knownGlobalSkillEntryKeys = knownJSONKeys(SkillLockEntry{})
+)
+
+// mergeEntryExtras marshals a typed entry, then folds back any keys from
+// the originally read JSON that the entry struct does not know about.
+func mergeEntryExtras(typed any, raw json.RawMessage, known map[string]bool) (json.RawMessage, error) {
+	typedJSON, err := json.Marshal(typed)
+	if err != nil {
+		return nil, err
+	}
+	if raw == nil {
+		return typedJSON, nil
+	}
+	var rawMap map[string]json.RawMessage
+	if json.Unmarshal(raw, &rawMap) != nil {
+		return typedJSON, nil
+	}
+	extras := false
+	for k := range rawMap {
+		if !known[k] {
+			extras = true
+			break
+		}
+	}
+	if !extras {
+		return typedJSON, nil
+	}
+	var out map[string]json.RawMessage
+	if err := json.Unmarshal(typedJSON, &out); err != nil {
+		return nil, err
+	}
+	for k, v := range rawMap {
+		if !known[k] {
+			out[k] = v
+		}
+	}
+	return json.Marshal(out)
+}
+
+// marshalSection renders one entry map, preserving unknown per-entry keys
+// captured at read time.
+func marshalSection[E any](entries map[string]E, raws map[string]json.RawMessage, known map[string]bool) (map[string]json.RawMessage, error) {
+	out := make(map[string]json.RawMessage, len(entries))
+	for name, entry := range entries {
+		merged, err := mergeEntryExtras(entry, raws[name], known)
+		if err != nil {
+			return nil, err
+		}
+		out[name] = merged
+	}
+	return out, nil
+}
+
+// captureRawEntries snapshots a section's entries as raw JSON for the
+// unknown-key merge on write.
+func captureRawEntries(section json.RawMessage) map[string]json.RawMessage {
+	if section == nil {
+		return nil
+	}
+	var m map[string]json.RawMessage
+	if json.Unmarshal(section, &m) != nil {
+		return nil
+	}
+	return m
 }
 
 func (l ProjectLockFile) isEmpty() bool {
@@ -132,17 +224,29 @@ func (l ProjectLockFile) MarshalJSON() ([]byte, error) {
 		}
 	}
 	if len(l.Skills) > 0 {
-		if err := writeKey("skills", l.Skills); err != nil {
+		merged, err := marshalSection(l.Skills, l.rawSkills, knownSkillEntryKeys)
+		if err != nil {
+			return nil, err
+		}
+		if err := writeKey("skills", merged); err != nil {
 			return nil, err
 		}
 	}
 	if len(l.Knowledge) > 0 {
-		if err := writeKey("knowledge", l.Knowledge); err != nil {
+		merged, err := marshalSection(l.Knowledge, l.rawKnowledge, knownKnowledgeEntryKeys)
+		if err != nil {
+			return nil, err
+		}
+		if err := writeKey("knowledge", merged); err != nil {
 			return nil, err
 		}
 	}
 	if len(l.Plugins) > 0 {
-		if err := writeKey("plugins", l.Plugins); err != nil {
+		merged, err := marshalSection(l.Plugins, l.rawPlugins, knownPluginEntryKeys)
+		if err != nil {
+			return nil, err
+		}
+		if err := writeKey("plugins", merged); err != nil {
 			return nil, err
 		}
 	}
@@ -182,6 +286,9 @@ func (l *ProjectLockFile) UnmarshalJSON(data []byte) error {
 	if err := decode("configuredAgents", &l.ConfiguredAgents); err != nil {
 		return err
 	}
+	l.rawSkills = captureRawEntries(raw["skills"])
+	l.rawKnowledge = captureRawEntries(raw["knowledge"])
+	l.rawPlugins = captureRawEntries(raw["plugins"])
 	if err := decode("skills", &l.Skills); err != nil {
 		return err
 	}

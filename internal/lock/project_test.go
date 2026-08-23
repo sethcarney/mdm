@@ -52,6 +52,101 @@ func TestProjectLockPreservesUnknownKeys(t *testing.T) {
 	}
 }
 
+func TestProjectLockPreservesUnknownEntryKeys(t *testing.T) {
+	cwd := t.TempDir()
+	content := `{
+  "version": 1,
+  "skills": {
+    "my-skill": {"source": "o/r", "sourceType": "github", "futureField": {"pinned": true}}
+  },
+  "knowledge": {
+    "kb": {"source": "x", "sourceType": "local", "installDir": "knowledge/kb", "specVersion": "0.1", "installedAt": "t", "updatedAt": "t", "futureHash": "abc"}
+  }
+}
+`
+	if err := os.WriteFile(GetProjectLockPath(cwd), []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// A read-modify-write of another entry must not strip per-entry fields
+	// this binary does not know about.
+	if err := AddSkillToLocalLock("other", LocalSkillLockEntry{Source: "a/b", SourceType: "github"}, cwd); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(GetProjectLockPath(cwd))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw struct {
+		Skills    map[string]map[string]json.RawMessage `json:"skills"`
+		Knowledge map[string]map[string]json.RawMessage `json:"knowledge"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatal(err)
+	}
+	var future struct {
+		Pinned bool `json:"pinned"`
+	}
+	if err := json.Unmarshal(raw.Skills["my-skill"]["futureField"], &future); err != nil || !future.Pinned {
+		t.Errorf("unknown skill-entry key not preserved: %s", raw.Skills["my-skill"]["futureField"])
+	}
+	if string(raw.Skills["my-skill"]["source"]) != `"o/r"` {
+		t.Errorf("known skill-entry key mangled: %s", raw.Skills["my-skill"]["source"])
+	}
+	if string(raw.Knowledge["kb"]["futureHash"]) != `"abc"` {
+		t.Errorf("unknown knowledge-entry key not preserved: %s", raw.Knowledge["kb"]["futureHash"])
+	}
+
+	// A field this binary knows and deliberately cleared must stay gone —
+	// the merge only resurrects keys outside the struct.
+	lk := ReadProjectLock(cwd)
+	e := lk.Skills["my-skill"]
+	e.SkillPath = ""
+	lk.Skills["my-skill"] = e
+	if err := WriteProjectLock(lk, cwd); err != nil {
+		t.Fatal(err)
+	}
+	data, _ = os.ReadFile(GetProjectLockPath(cwd))
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := raw.Skills["my-skill"]["skillPath"]; ok {
+		t.Error("cleared known field resurrected by the unknown-key merge")
+	}
+	if err := json.Unmarshal(raw.Skills["my-skill"]["futureField"], &future); err != nil || !future.Pinned {
+		t.Error("unknown skill-entry key lost on second write")
+	}
+}
+
+func TestGlobalStatePreservesUnknownEntryKeys(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	path := GetGlobalStatePath()
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatal(err)
+	}
+	content := `{"version":1,"skills":{"g1":{"source":"o/r","sourceType":"github","sourceUrl":"u","installedAt":"t","updatedAt":"t","futureField":7}}}`
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := AddSkillToGlobalState("g2", SkillLockEntry{Source: "a/b", SourceType: "github", SourceURL: "u2"}); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw struct {
+		Skills map[string]map[string]json.RawMessage `json:"skills"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatal(err)
+	}
+	if string(raw.Skills["g1"]["futureField"]) != "7" {
+		t.Errorf("unknown global skill-entry key not preserved: %s", raw.Skills["g1"]["futureField"])
+	}
+}
+
 func TestProjectLockSectionsAreIsolated(t *testing.T) {
 	cwd := t.TempDir()
 	if err := AddBundleToKnowledgeLock("sales", KnowledgeLockEntry{Source: "x", SourceType: "local", InstallDir: "knowledge/sales", SpecVersion: "0.1"}, cwd); err != nil {
