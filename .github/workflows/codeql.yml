@@ -3,8 +3,10 @@ name: CodeQL
 on:
   push:
     branches: [main]
+  # No branch filter: a PR into any base (main, v2, a release branch) gets
+  # scanned, so the required check can never sit waiting on a PR whose base
+  # the filter didn't anticipate.
   pull_request:
-    branches: [main]
   schedule:
     - cron: "0 10 * * 1" # Weekly on Monday
 
