@@ -3,7 +3,7 @@
 // manifest parsing, skill discovery under skills/, and mcp.json server
 // configuration.
 //
-// Validation is performed locally against the rules below — the spec
+// Validation is performed locally against the rules below - the spec
 // forbids retrieving schemas during plugin loading.
 package plugin
 
@@ -109,7 +109,7 @@ func LoadManifest(root string) (*Manifest, []Issue, error) {
 		return nil, nil, fmt.Errorf("%s is missing the required $schema field", ManifestFile)
 	}
 	if m.Schema != ManifestSchema {
-		return nil, nil, fmt.Errorf("unsupported $schema %q — this build supports %s", m.Schema, ManifestSchema)
+		return nil, nil, fmt.Errorf("unsupported $schema %q - this build supports %s", m.Schema, ManifestSchema)
 	}
 	if m.Name == "" {
 		return nil, nil, fmt.Errorf("%s is missing the required name field", ManifestFile)
@@ -158,7 +158,7 @@ func setManifestField(m *Manifest, key string, value json.RawMessage, issues *[]
 				File:     ManifestFile,
 				Severity: SeverityWarning,
 				Rule:     "extensions-not-object",
-				Message:  "extensions is not an object — ignored",
+				Message:  "extensions is not an object - ignored",
 			})
 			m.Extensions = nil
 		}
@@ -168,7 +168,7 @@ func setManifestField(m *Manifest, key string, value json.RawMessage, issues *[]
 			File:     ManifestFile,
 			Severity: SeverityWarning,
 			Rule:     "unknown-field",
-			Message:  fmt.Sprintf("unknown top-level field %q — ignored", key),
+			Message:  fmt.Sprintf("unknown top-level field %q - ignored", key),
 		})
 		return nil
 	}

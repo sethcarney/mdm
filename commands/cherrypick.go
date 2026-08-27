@@ -51,9 +51,9 @@ func buildCherryPickCmd(ver string) *cobra.Command {
 		Long: fmt.Sprintf(`Copy selected skills out of someone else's repository and into your own,
 so you can edit them and ship them as yours.
 
-Unlike %smdm skills add%s — which installs a skill into each agent's skills
+Unlike %smdm skills add%s - which installs a skill into each agent's skills
 directory and tracks the upstream source so %smdm skills update%s can replace it
-— cherry-pick vendors the skill into ./%s, where it becomes part of your
+- cherry-pick vendors the skill into ./%s, where it becomes part of your
 repository. Nothing overwrites it afterwards; divergence from upstream is the
 point.
 
@@ -64,7 +64,7 @@ copied in as %s%s%s.
 
 %sLicensing:%s a fork redistributes someone else's work. mdm records what it can
 find and warns when a source declares no license at all, but honouring the terms
-— attribution, share-alike, or asking first — is yours to do.
+- attribution, share-alike, or asking first - is yours to do.
 
 %sExamples:%s
   mdm skills cherry-pick vercel-labs/agent-skills
@@ -130,7 +130,7 @@ type upstreamContext struct {
 	parsed     source.ParsedSource
 	input      string // source as typed, without any #ref fragment
 	root       string // materialized repository (or local dir) root
-	searchRoot string // root plus any subpath — where skills are discovered
+	searchRoot string // root plus any subpath - where skills are discovered
 	ref        string
 	commit     string
 }
@@ -298,7 +298,7 @@ func confirmUnlicensed(skills []*skill.Skill, licenses map[string]licenseInfo, o
 
 	fmt.Printf("\n%sNo license found for: %s%s\n", ansiYellow, strings.Join(unlicensed, ", "), ansiReset)
 	fmt.Printf("%sNeither the skill's frontmatter nor the source repository declares one. Absent a\n", ansiDim)
-	fmt.Printf("license, the default is that no redistribution rights are granted — check with the\n")
+	fmt.Printf("license, the default is that no redistribution rights are granted - check with the\n")
 	fmt.Printf("original author before publishing this fork.%s\n\n", ansiReset)
 
 	if opts.Yes || opts.DryRun {
@@ -373,7 +373,7 @@ func cherryPickSkill(s *skill.Skill, lic licenseInfo, up upstreamContext, opts C
 func clearForkDest(destDir, skillName, cwd string, force bool) bool {
 	if _, err := os.Stat(destDir); err == nil {
 		if !force {
-			ui.LogError(fmt.Sprintf("%s: %s already exists — pass --force to replace it (local edits will be lost)",
+			ui.LogError(fmt.Sprintf("%s: %s already exists - pass --force to replace it (local edits will be lost)",
 				skillName, shortenPath(destDir, cwd)))
 			return false
 		}
@@ -401,7 +401,7 @@ func rewriteForkName(destDir, newName string) error {
 
 // upstreamRecord describes where the material came from. When the fork is taken
 // from a skill that was itself installed by mdm, the lock file knows the real
-// upstream — recording the local directory alone would credit the wrong author.
+// upstream - recording the local directory alone would credit the wrong author.
 func upstreamRecord(s *skill.Skill, up upstreamContext, lic licenseInfo, cwd string) fork.Upstream {
 	rec := fork.Upstream{
 		Name:       s.Name,
@@ -461,7 +461,7 @@ func isRemoteSourceType(st string) bool {
 func printCherryPickSummary(forked []string, licenses map[string]licenseInfo, opts CherryPickOptions) {
 	fmt.Println()
 	if opts.DryRun {
-		fmt.Printf("%sDry run — nothing was written.%s\n\n", ansiDim, ansiReset)
+		fmt.Printf("%sDry run - nothing was written.%s\n\n", ansiDim, ansiReset)
 		return
 	}
 
@@ -475,7 +475,7 @@ func printCherryPickSummary(forked []string, licenses map[string]licenseInfo, op
 		fmt.Printf("  %s$%s mdm skills add %s\n\n", ansiDim, ansiReset, dir)
 	}
 	if opts.NoAttribution {
-		fmt.Printf("  %s%s was not written (--no-attribution) — the upstream license terms still apply.%s\n\n",
+		fmt.Printf("  %s%s was not written (--no-attribution) - the upstream license terms still apply.%s\n\n",
 			ansiYellow, fork.AttributionFileName, ansiReset)
 		return
 	}
@@ -483,7 +483,7 @@ func printCherryPickSummary(forked []string, licenses map[string]licenseInfo, op
 		if lic.Path != "" || lic.Declared {
 			continue
 		}
-		fmt.Printf("  %sSome forks have no upstream license — see %s before publishing them.%s\n\n",
+		fmt.Printf("  %sSome forks have no upstream license - see %s before publishing them.%s\n\n",
 			ansiYellow, fork.AttributionFileName, ansiReset)
 		return
 	}
@@ -491,8 +491,8 @@ func printCherryPickSummary(forked []string, licenses map[string]licenseInfo, op
 
 // clobbersForks reports whether installing to this agent would write over the
 // forks directory itself. Installing a skill replaces the agent's <skills
-// dir>/<name>, so when that directory is the forks directory — OpenClaw reads
-// ./skills, mdm's own default — the install would destroy the very source it is
+// dir>/<name>, so when that directory is the forks directory - OpenClaw reads
+// ./skills, mdm's own default - the install would destroy the very source it is
 // installing from.
 func clobbersForks(agentName string, global bool, cwd, forksRoot string) bool {
 	forksAbs, err := filepath.Abs(forksRoot)
@@ -525,7 +525,7 @@ func dropClobberingAgents(agents []string, global bool, cwd, forksRoot string) [
 			if a := agent.AllAgents[name]; a != nil {
 				display = a.DisplayName
 			}
-			ui.LogInfo(fmt.Sprintf("%s already reads %s — skipping its install so the fork is not overwritten",
+			ui.LogInfo(fmt.Sprintf("%s already reads %s - skipping its install so the fork is not overwritten",
 				display, shortenPath(forksRoot, cwd)))
 			continue
 		}

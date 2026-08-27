@@ -25,7 +25,7 @@ func buildSkillsCmd(ver string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "skills",
 		Short: "Manage skills for AI agents",
-		Long: fmt.Sprintf(`Manage skills — reusable markdown-based prompt libraries for AI agents.
+		Long: fmt.Sprintf(`Manage skills - reusable markdown-based prompt libraries for AI agents.
 
 %sExamples:%s
   mdm skills add vercel-labs/agent-skills

@@ -47,7 +47,7 @@ func TestResolveLicensePrefersTheSkillsOwnFile(t *testing.T) {
 		t.Error("expected the skill's own license file to win over the repository root")
 	}
 	if lic.File != "LICENSE.md" {
-		t.Errorf("File = %q, want LICENSE.md — a file already inside the skill keeps its name", lic.File)
+		t.Errorf("File = %q, want LICENSE.md - a file already inside the skill keeps its name", lic.File)
 	}
 	if lic.ID != "MIT" {
 		t.Errorf("ID = %q, want MIT", lic.ID)
@@ -322,13 +322,13 @@ func TestRemoveAgentSkillsDirRemovesEverythingWhenNoForks(t *testing.T) {
 }
 
 // Installing a fork into an agent that reads the forks directory would replace
-// the fork with a symlink to a copy of itself — destroying the source.
+// the fork with a symlink to a copy of itself - destroying the source.
 func TestClobbersForks(t *testing.T) {
 	cwd := t.TempDir()
 	forksRoot := filepath.Join(cwd, defaultForksDir)
 
 	if !clobbersForks("openclaw", false, cwd, forksRoot) {
-		t.Error("OpenClaw reads ./skills — installing there would overwrite the fork")
+		t.Error("OpenClaw reads ./skills - installing there would overwrite the fork")
 	}
 	if clobbersForks("claude-code", false, cwd, forksRoot) {
 		t.Error("claude-code has its own directory and is safe to install to")

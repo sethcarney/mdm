@@ -23,7 +23,7 @@ Without arguments, an interactive multiselect lets you choose which skills to re
 ## Examples
 
 ```bash
-# Interactive — pick scope, then pick skills to remove
+# Interactive - pick scope, then pick skills to remove
 mdm skills remove
 
 # Remove a specific skill (prompts for scope)
@@ -47,7 +47,7 @@ For each skill, mdm removes:
 - Any agent-specific symlinks or copies (e.g. `.claude/skills/<skill>`, `~/.cursor/skills/<skill>`).
 - The entry in `skills-lock.json`.
 
-If `--agent` is provided, only that agent's symlink or copy is removed — the canonical directory and other agent links remain.
+If `--agent` is provided, only that agent's symlink or copy is removed - the canonical directory and other agent links remain.
 
 ## Orphan cleanup
 

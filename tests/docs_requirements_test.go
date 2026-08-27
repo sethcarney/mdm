@@ -156,7 +156,7 @@ func TestDocsLockMatchesDirectPins(t *testing.T) {
 
 // TestDocsLockPythonVersionMatchesWorkflow keeps the resolution honest. Markers
 // like `python_version < "3.13"` mean a lock compiled for one interpreter can
-// omit a dependency another one needs — and under --require-hashes a missing
+// omit a dependency another one needs - and under --require-hashes a missing
 // dependency fails the install instead of being fetched.
 func TestDocsLockPythonVersionMatchesWorkflow(t *testing.T) {
 	workflow := readRepoFile(t, docsWorkflow)

@@ -2,7 +2,7 @@
 
 Manage project-level instruction files for AI agents.
 
-`AGENTS.md` is the universal source of truth. It is read natively by Codex CLI, Gemini CLI, OpenCode, and Replit. `mdm rules link` symlinks every other agent's instruction file — `CLAUDE.md`, `.cursorrules`, `.windsurfrules`, `.clinerules`, etc. — to `AGENTS.md` so every tool reads the same content from one place.
+`AGENTS.md` is the universal source of truth. It is read natively by Codex CLI, Gemini CLI, OpenCode, and Replit. `mdm rules link` symlinks every other agent's instruction file - `CLAUDE.md`, `.cursorrules`, `.windsurfrules`, `.clinerules`, etc. - to `AGENTS.md` so every tool reads the same content from one place.
 
 ## Why AGENTS.md?
 
@@ -19,7 +19,7 @@ Many AI tools each look for a different file name in your project root:
 | Gemini CLI        | `GEMINI.md`                       |
 | OpenCode / Replit | `AGENTS.md`                       |
 
-Without a shared source, you end up copying the same instructions into multiple files and keeping them in sync by hand. `AGENTS.md` is designed as the universal compatibility file — use it as the single source and symlink everything else to it.
+Without a shared source, you end up copying the same instructions into multiple files and keeping them in sync by hand. `AGENTS.md` is designed as the universal compatibility file - use it as the single source and symlink everything else to it.
 
 ## Commands
 
@@ -33,7 +33,7 @@ mdm rules unlink   Remove symlinks created by mdm rules link
 
 Interactive setup. Walks you through three steps:
 
-### Step 1 — Find your current rules
+### Step 1 - Find your current rules
 
 The command scans your project for any known instruction files that already contain content. If it finds some, you are asked to pick which one is your current source of truth:
 
@@ -41,16 +41,16 @@ The command scans your project for any known instruction files that already cont
 ? Which file contains your current rules?
   CLAUDE.md          Claude Code · # Project Overview...
   .cursorrules       Cursor · # Rules for this project...
-  None of these — start with an empty AGENTS.md
+  None of these - start with an empty AGENTS.md
 ```
 
 - If you select a file, its content is copied into `AGENTS.md`.
 - If you select "None of these", an empty `AGENTS.md` is created for you to fill in.
 - If `AGENTS.md` already has content, this step is skipped automatically.
 
-### Step 2 — Select your tools
+### Step 2 - Select your tools
 
-A searchable multiselect shows agents that have a unique instruction file. Agents that read `AGENTS.md` natively (Codex, Gemini CLI, OpenCode, Replit, etc.) are shown in a locked panel on the right — they need no symlinking and are always covered. Agents you have previously configured or that are detected as installed are pre-checked.
+A searchable multiselect shows agents that have a unique instruction file. Agents that read `AGENTS.md` natively (Codex, Gemini CLI, OpenCode, Replit, etc.) are shown in a locked panel on the right - they need no symlinking and are always covered. Agents you have previously configured or that are detected as installed are pre-checked.
 
 ```
 Which AI tools are you using in this project?  │  always included:
@@ -64,7 +64,7 @@ Which AI tools are you using in this project?  │  always included:
 
 Selecting agents here also updates `configuredAgents` in `skills-lock.json`, so subsequent `mdm skills add` commands default to the same set.
 
-### Step 3 — Create symlinks
+### Step 3 - Create symlinks
 
 Each selected tool's instruction file is replaced with a symlink pointing to `AGENTS.md`. The file that was promoted in Step 1 is also replaced with a symlink (its content now lives in `AGENTS.md`).
 
@@ -88,7 +88,7 @@ Existing real files are replaced with symlinks only after per-file confirmation.
 ### Examples
 
 ```bash
-# Interactive — scan, pick source, select tools, symlink
+# Interactive - scan, pick source, select tools, symlink
 mdm rules link
 
 # Link only Claude Code and Cursor (no prompt)
@@ -165,7 +165,7 @@ Remove 2 symlink(s)? [y/N]
 Pass `--agent` to skip the picker and target specific agents directly, or `-y` to skip the confirmation prompt.
 
 ```bash
-mdm rules unlink                        # interactive — pick then confirm
+mdm rules unlink                        # interactive - pick then confirm
 mdm rules unlink --agent cursor         # only remove cursor's symlink (no picker)
 mdm rules unlink -y                     # skip confirmation
 ```

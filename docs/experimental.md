@@ -3,7 +3,7 @@
 Some mdm features ship behind an experimental gate while the standards or
 conventions they build on are still settling. Experimental features:
 
-- may change or be removed in **any** release — they are exempt from semantic
+- may change or be removed in **any** release - they are exempt from semantic
   versioning until they graduate
 - are hidden from `--help` and shell completion until enabled
 - print a warning banner on every invocation while enabled
@@ -41,5 +41,5 @@ mdm experimental
 
 | Feature | What it does | Spec |
 |---|---|---|
-| `knowledge` | Manage Open Knowledge Format (OKF) bundles — install, validate, and audit markdown knowledge bases for AI agents. See [docs/specs/knowledge.md](specs/knowledge.md). | [OKF v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf) |
-| `plugins` | Manage Agent Plugins — portable packages of skills and MCP servers; install, validate, and wire MCP servers into agent configs. See [docs/specs/plugins.md](specs/plugins.md). | [Agent Plugins v1.0.0](https://agent-plugins.org) |
+| `knowledge` | Manage Open Knowledge Format (OKF) bundles - install, validate, and audit markdown knowledge bases for AI agents. See [docs/specs/knowledge.md](specs/knowledge.md). | [OKF v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf) |
+| `plugins` | Manage Agent Plugins - portable packages of skills and MCP servers; install, validate, and wire MCP servers into agent configs. See [docs/specs/plugins.md](specs/plugins.md). | [Agent Plugins v1.0.0](https://agent-plugins.org) |

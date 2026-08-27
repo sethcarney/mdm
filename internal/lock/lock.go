@@ -16,8 +16,8 @@ import (
 //
 // A project lock file this binary cannot understand must abort the
 // command, not read as empty: the old fallback made `mdm skills install`
-// in a project migrated by a newer mdm a silent no-op — exit 0, nothing
-// installed — which is the worst possible failure in CI. These helpers
+// in a project migrated by a newer mdm a silent no-op - exit 0, nothing
+// installed - which is the worst possible failure in CI. These helpers
 // end the process because every caller of the lock readers would have to
 // abort anyway, and a hard exit also stops read-modify-write commands
 // (`mdm skills add`) from clobbering a file written by a newer version.

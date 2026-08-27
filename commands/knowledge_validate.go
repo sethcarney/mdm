@@ -121,10 +121,10 @@ func printKnowledgeValidateReport(bundle *okf.Bundle, issues []okf.Issue, errs, 
 	}
 	switch {
 	case errs > 0:
-		fmt.Printf("%s✗%s %d document(s) — %d error(s), %d warning(s)\n\n", ansiRed, ansiReset, len(bundle.Docs), errs, warns)
+		fmt.Printf("%s✗%s %d document(s) - %d error(s), %d warning(s)\n\n", ansiRed, ansiReset, len(bundle.Docs), errs, warns)
 	case warns > 0:
-		fmt.Printf("%s✓%s %d document(s) valid — %d warning(s)\n\n", ansiGreen, ansiReset, len(bundle.Docs), warns)
+		fmt.Printf("%s✓%s %d document(s) valid - %d warning(s)\n\n", ansiGreen, ansiReset, len(bundle.Docs), warns)
 	default:
-		fmt.Printf("%s✓%s %d document(s) valid — no issues\n\n", ansiGreen, ansiReset, len(bundle.Docs))
+		fmt.Printf("%s✓%s %d document(s) valid - no issues\n\n", ansiGreen, ansiReset, len(bundle.Docs))
 	}
 }

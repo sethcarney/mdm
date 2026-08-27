@@ -67,7 +67,7 @@ mdm
 
 ## `mdm skills`
 
-Manage skills — reusable markdown prompt libraries — for your AI agents.
+Manage skills - reusable markdown prompt libraries - for your AI agents.
 
 ### `skills add` <small>alias: `a`</small>
 
@@ -101,7 +101,7 @@ git URL with a `#ref`, a local path, or a well-known alias (`vercel`,
 ### `skills cherry-pick` <small>aliases: `fork`, `cp`</small>
 
 Fork third-party skills into `./skills` so you can edit them and ship them as
-your own. Unlike `skills add`, nothing updates them afterwards — the copy is
+your own. Unlike `skills add`, nothing updates them afterwards - the copy is
 yours, with its provenance and license recorded inside it.
 
 ```bash
@@ -219,7 +219,7 @@ mdm skills init [name]
 
 ### `skills install`
 
-Restore all skills from `skills-lock.json` — ideal for CI and onboarding.
+Restore all skills from `skills-lock.json` - ideal for CI and onboarding.
 
 ```bash
 mdm skills install
@@ -293,7 +293,7 @@ project and global scope.
 
 ## `mdm knowledge` <small>experimental</small>
 
-Manage Open Knowledge Format (OKF) bundles. Hidden until enabled — see
+Manage Open Knowledge Format (OKF) bundles. Hidden until enabled - see
 [experimental features](experimental.md).
 
 | Command | Description |
@@ -320,9 +320,9 @@ Manage Open Knowledge Format (OKF) bundles. Hidden until enabled — see
 
 ## `mdm plugins` <small>experimental</small>
 
-Manage Agent Plugins — portable packages of skills and MCP servers following
+Manage Agent Plugins - portable packages of skills and MCP servers following
 the vendor-neutral [agent-plugins.org](https://agent-plugins.org) standard.
-Hidden until enabled — see [experimental features](experimental.md).
+Hidden until enabled - see [experimental features](experimental.md).
 
 | Command | Description |
 | --- | --- |
@@ -366,7 +366,7 @@ Currently available features:
 | Feature | Description |
 | --- | --- |
 | `knowledge` | Manage OKF knowledge bundles (`mdm knowledge`) |
-| `plugins` | Manage Agent Plugins — skills + MCP servers (`mdm plugins`) |
+| `plugins` | Manage Agent Plugins - skills + MCP servers (`mdm plugins`) |
 
 [:octicons-arrow-right-24: Details](experimental.md)
 
@@ -380,7 +380,7 @@ machine, builds a GitHub issue-form URL with those fields filled in, prints
 it, and opens it when a browser is available.
 
 Nothing is sent anywhere: mdm does no network I/O and no telemetry, and this
-command doesn't change that — it only constructs a URL; you review and submit
+command doesn't change that - it only constructs a URL; you review and submit
 the form yourself. `$HOME` is scrubbed to `~` in every value, and no
 repository names or usernames are included. On a crash, mdm prints the same
 prefilled URL automatically with the panic captured (the full output goes to
@@ -404,7 +404,7 @@ always get the URL printed even when nothing can open it.
 
 ## `mdm doctor`
 
-Check installed skills and project markdown for health issues — broken symlinks,
+Check installed skills and project markdown for health issues - broken symlinks,
 hash mismatches, missing READMEs, and oversized markdown files.
 
 ```bash

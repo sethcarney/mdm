@@ -10,7 +10,7 @@ mdm skills sync
 
 Scans `node_modules` in the current directory for packages that contain a `SKILL.md` file. Discovered skills are shown and you can select which ones to install, then choose a scope and target agents.
 
-This is the workflow for skill packages distributed through npm, yarn, or pnpm — install the package normally, then run `mdm skills sync` to make it available to your AI tools.
+This is the workflow for skill packages distributed through npm, yarn, or pnpm - install the package normally, then run `mdm skills sync` to make it available to your AI tools.
 
 ## Flow
 

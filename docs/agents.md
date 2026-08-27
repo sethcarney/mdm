@@ -10,15 +10,15 @@ Agents fall into three categories that determine whether they need explicit conf
 
 | Category               | Description                                             | Needs tracking?                                   |
 | ---------------------- | ------------------------------------------------------- | ------------------------------------------------- |
-| **Shared skills dir**  | Uses `.agents/skills` — skills are auto-installed       | Only if they also have a unique instructions file |
+| **Shared skills dir**  | Uses `.agents/skills` - skills are auto-installed       | Only if they also have a unique instructions file |
 | **Uses AGENTS.md**     | Reads `AGENTS.md` natively for instructions             | Only if they also have a unique skills dir        |
-| **Both (no tracking)** | Shared skills dir + AGENTS.md (or no instructions file) | Never — always supported automatically            |
+| **Both (no tracking)** | Shared skills dir + AGENTS.md (or no instructions file) | Never - always supported automatically            |
 
 Agents in the "both" category (Codex, Gemini CLI, Warp, Replit, etc.) appear as **always included** in every picker and are never added to `configuredAgents`. Agents with a unique skills directory or a non-AGENTS.md instructions file (Claude Code, Cursor, GitHub Copilot, etc.) must be explicitly configured.
 
 ## Why configure agents?
 
-Without a configured list, `mdm skills add` prompts you to pick agents every time. Once you run `mdm agents add`, your preferred agents are pre-selected in every future install prompt — and `mdm skills add --yes` installs to exactly that list without prompting at all.
+Without a configured list, `mdm skills add` prompts you to pick agents every time. Once you run `mdm agents add`, your preferred agents are pre-selected in every future install prompt - and `mdm skills add --yes` installs to exactly that list without prompting at all.
 
 `mdm rules link` also updates `configuredAgents` automatically when you select agents interactively.
 
@@ -68,7 +68,7 @@ If no agents are configured yet, the command tells you how to set them up.
 
 ## mdm agents add
 
-With no arguments, opens a searchable multiselect. Agents that are always supported automatically (shared skills dir + AGENTS.md) are shown in a locked panel to the right of the prompt — they require no configuration and cannot be deselected. Your current configured list is pre-checked in the left panel. Confirming replaces the entire list with your selection.
+With no arguments, opens a searchable multiselect. Agents that are always supported automatically (shared skills dir + AGENTS.md) are shown in a locked panel to the right of the prompt - they require no configuration and cannot be deselected. Your current configured list is pre-checked in the left panel. Confirming replaces the entire list with your selection.
 
 ```
 Which agents do you want to configure?  │  always included:
@@ -83,7 +83,7 @@ Which agents do you want to configure?  │  always included:
 When called with agent names, those agents are appended to the existing list (duplicates are ignored).
 
 ```bash
-# Interactive picker — replaces the current list
+# Interactive picker - replaces the current list
 mdm agents add
 
 # Append specific agents
@@ -116,16 +116,16 @@ Remove 1 agent(s): Windsurf? [y/N]
 
 After removing agents from the configured list, mdm also cleans up the files that belong exclusively to each removed agent:
 
-- **Skills directory** — the agent's own skills folder (e.g. `.claude/skills/`, `.roo/skills/`) is removed if it exists. The shared `.agents/skills/` directory is never touched.
+- **Skills directory** - the agent's own skills folder (e.g. `.claude/skills/`, `.roo/skills/`) is removed if it exists. The shared `.agents/skills/` directory is never touched.
 
     !!! warning "OpenClaw's skills directory is `./skills/`"
-        Removing OpenClaw deletes `./skills/` — the same directory many projects
+        Removing OpenClaw deletes `./skills/` - the same directory many projects
         use for hand-written skills. mdm cannot tell your own skills from an
         OpenClaw install, so anything in there that is not a
         [cherry-picked fork](skills/cherry-pick.md) goes with it. Commit the
         directory first, or keep your skills elsewhere. See
         [Troubleshooting](troubleshooting.md#mdm-agents-remove-deleted-skills-i-wrote-by-hand).
-- **Instructions file** — the agent's instructions file (e.g. `CLAUDE.md`, `.cursorrules`, `.github/copilot-instructions.md`) is removed. The shared `AGENTS.md` is never touched.
+- **Instructions file** - the agent's instructions file (e.g. `CLAUDE.md`, `.cursorrules`, `.github/copilot-instructions.md`) is removed. The shared `AGENTS.md` is never touched.
 
 ```bash
 # Interactive removal

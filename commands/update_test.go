@@ -140,7 +140,7 @@ func TestPlanUpdatesSkipsUpToDateAndErrored(t *testing.T) {
 }
 
 // When the check reports an update with no replacement tag, the candidate's own
-// ref is re-applied rather than dropped — re-fetching an unpinned default branch
+// ref is re-applied rather than dropped - re-fetching an unpinned default branch
 // would silently change what is installed.
 func TestPlanUpdatesKeepsCurrentRefWhenNoNewTag(t *testing.T) {
 	candidates := []updateCandidate{gitCandidate("alpha", "acme/skills", "v1.0.0")}

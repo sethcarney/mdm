@@ -34,7 +34,7 @@ if ($CosignCmd) {
     Remove-Item -Force $BundleFile
     Write-Host "Signature verified!"
 } else {
-    Write-Host "cosign not found — skipping signature verification."
+    Write-Host "cosign not found - skipping signature verification."
     Write-Host "Install cosign to verify: https://docs.sigstore.dev/cosign/system_config/installation/"
 }
 

@@ -15,8 +15,8 @@ Only the latest release receives security fixes.
 ## Git Transport Restrictions
 
 When installing skills from a git source, mdm only uses the **https** and **ssh**
-git transports. Git's local-command transports (`ext::`, `fd::`) — which execute
-arbitrary commands rather than fetching from a server — along with `git://`,
+git transports. Git's local-command transports (`ext::`, `fd::`) - which execute
+arbitrary commands rather than fetching from a server - along with `git://`,
 `http://`, and `file://` are rejected before git is invoked.
 
 This matters because a repository source string is untrusted input, and
@@ -35,7 +35,7 @@ All release binaries are signed with [cosign](https://docs.sigstore.dev/cosign/s
 
 ### Verify with cosign
 
-The signature is tied to the official GitHub Actions OIDC identity — no GPG keys or secrets required.
+The signature is tied to the official GitHub Actions OIDC identity - no GPG keys or secrets required.
 
 **Using the `.sig` + `.pem` files:**
 

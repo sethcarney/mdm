@@ -35,7 +35,7 @@ type AgentConfig struct {
 
 	// SharedSkillsDir is true when this agent reads skills from the shared
 	// .agents/skills directory. Skills installed there are available
-	// automatically — no per-agent skills directory needs to be configured.
+	// automatically - no per-agent skills directory needs to be configured.
 	SharedSkillsDir bool
 
 	// NativeInstructions is true when this agent reads AGENTS.md natively or
@@ -590,7 +590,7 @@ func DetectInstalledAgents() []string {
 //
 // These functions read the explicit SharedSkillsDir and NativeInstructions
 // boolean fields on AgentConfig. Do not add new string comparisons against
-// SkillsDir or InstructionsFile in calling code — use these helpers instead.
+// SkillsDir or InstructionsFile in calling code - use these helpers instead.
 
 // UsesSharedSkillsDir reports whether the agent reads skills from the shared
 // .agents/skills directory (SharedSkillsDir == true).

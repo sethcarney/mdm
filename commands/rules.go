@@ -23,7 +23,7 @@ func buildRulesCmd() *cobra.Command {
 		Short: "Manage agent instruction files",
 		Long: fmt.Sprintf(`Manage project-level instruction files for AI agents.
 
-%sAGENTS.md%s is the universal source of truth — read natively by Codex, Gemini CLI,
+%sAGENTS.md%s is the universal source of truth - read natively by Codex, Gemini CLI,
 OpenCode, and Replit. Use %smdm rules link%s to symlink agent-specific files
 (CLAUDE.md, .cursorrules, .windsurfrules, etc.) to it so every tool sees the
 same instructions.
@@ -61,8 +61,8 @@ func buildRulesLinkCmd() *cobra.Command {
 You will be prompted to select which AI tools you use. The command then:
 
   1. Checks whether any of your agent instruction files already have content
-  2. If one does — promotes its content into AGENTS.md
-  3. If several do — asks which one to use as the source
+  2. If one does - promotes its content into AGENTS.md
+  3. If several do - asks which one to use as the source
   4. Symlinks all agent-specific files (CLAUDE.md, .cursorrules, etc.) → AGENTS.md
 
 Existing real files are replaced with symlinks only after confirmation (or with -y).
@@ -144,7 +144,7 @@ func scanForExistingRuleFiles(cwd string) []ruleFile {
 }
 
 func pickAndWriteSourceOfTruth(found []ruleFile, agentsMDPath string) bool {
-	const noneLabel = "None of these — start with an empty AGENTS.md"
+	const noneLabel = "None of these - start with an empty AGENTS.md"
 	opts := make([]ui.UIOption, 0, len(found)+1)
 	for _, f := range found {
 		hint := strings.Join(f.agentLabels, ", ")
@@ -537,7 +537,7 @@ func buildRulesUnlinkCmd() *cobra.Command {
 		Use:   "unlink",
 		Short: "Remove symlinks from agent instruction files",
 		Long: fmt.Sprintf(`Remove symlinks that were created by %smdm rules link%s.
-Only symlinks are removed — real files are never touched.
+Only symlinks are removed - real files are never touched.
 
 %sExamples:%s
   mdm rules unlink

@@ -186,7 +186,7 @@ func findReleaseURLs(release *githubRelease, assetName, latestVersion string) (s
 	}
 	vlog(verboseFlag, "selected asset %q → %s (checksums=%q)", assetName, downloadURL, checksumsURL)
 	if !isGitHubURL(downloadURL) {
-		fmt.Fprintf(os.Stderr, "Unexpected download host in release asset — aborting.\n")
+		fmt.Fprintf(os.Stderr, "Unexpected download host in release asset - aborting.\n")
 		return "", "", false
 	}
 	return downloadURL, checksumsURL, true
@@ -220,13 +220,13 @@ func downloadAndVerify(client *http.Client, downloadURL, checksumsURL, assetName
 		return nil, err
 	}
 	if int64(len(dlBody)) > maxBinaryBytes {
-		fmt.Fprintf(os.Stderr, "Downloaded binary exceeds %d MB limit — aborting.\n", maxBinaryBytes/1024/1024)
+		fmt.Fprintf(os.Stderr, "Downloaded binary exceeds %d MB limit - aborting.\n", maxBinaryBytes/1024/1024)
 		return nil, fmt.Errorf("binary too large")
 	}
 	vlog(verboseFlag, "downloaded %d bytes", len(dlBody))
 	if checksumText != "" {
 		if !verifyChecksums(dlBody, checksumText, assetName) {
-			fmt.Fprintf(os.Stderr, "SHA256 checksum mismatch for %s — aborting update.\n", assetName)
+			fmt.Fprintf(os.Stderr, "SHA256 checksum mismatch for %s - aborting update.\n", assetName)
 			return nil, fmt.Errorf("checksum mismatch")
 		}
 		fmt.Printf("%sSHA256 verified.%s\n", ansiDim, ansiReset)
@@ -369,8 +369,8 @@ func runSelfUpdate(currentVersion string, useBeta bool) {
 	crossing := crossesMajor(currentVersion, latestVersion)
 	if crossing && runtime.GOOS == "windows" {
 		// The Windows swap happens after this process exits, so the new
-		// binary cannot be run from here — leave the instruction instead.
-		fmt.Printf("%s%s is a new major version — once the update applies, run %smdm migrate%s%s to update your lock files.%s\n",
+		// binary cannot be run from here - leave the instruction instead.
+		fmt.Printf("%s%s is a new major version - once the update applies, run %smdm migrate%s%s to update your lock files.%s\n",
 			ansiYellow, latestVersion, ansiText, ansiReset, ansiYellow, ansiReset)
 	}
 	replaceBinary(tmpPath, execPath, latestVersion)
@@ -390,11 +390,11 @@ func crossesMajor(current, latest string) bool {
 
 // offerMajorMigration runs after the binary swap when the upgrade crossed a
 // major version. Lock file formats may have changed across the boundary, so
-// it offers to run the NEW binary's `migrate` — only the new binary knows
+// it offers to run the NEW binary's `migrate` - only the new binary knows
 // its own migrations; this process is still executing the old code.
 func offerMajorMigration(latestVersion, execPath string) {
 	fmt.Println()
-	fmt.Printf("%s%s is a new major version — lock file formats may have changed.%s\n",
+	fmt.Printf("%s%s is a new major version - lock file formats may have changed.%s\n",
 		ansiYellow, latestVersion, ansiReset)
 	if !update.IsTerminal() {
 		fmt.Printf("%sRun %smdm migrate%s%s in your projects to update their lock files.%s\n",
@@ -412,6 +412,6 @@ func offerMajorMigration(latestVersion, execPath string) {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		ui.LogWarn(fmt.Sprintf("mdm migrate did not finish cleanly: %v — run it again manually", err))
+		ui.LogWarn(fmt.Sprintf("mdm migrate did not finish cleanly: %v - run it again manually", err))
 	}
 }

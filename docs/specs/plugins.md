@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Draft |
-| **Stability** | Experimental — gated behind `MDM_EXPERIMENTAL=plugins` / `mdm experimental enable plugins` |
+| **Stability** | Experimental - gated behind `MDM_EXPERIMENTAL=plugins` / `mdm experimental enable plugins` |
 | **Author** | Dakota Kim |
 | **Created** | 2026-08-06 |
 | **Tracking issue** | TBD |
@@ -12,7 +12,7 @@
 ## Summary
 
 Add an experimental `mdm plugins` command group that installs, validates, and
-manages **Agent Plugins** — the vendor-neutral agent-plugins.org format for
+manages **Agent Plugins** - the vendor-neutral agent-plugins.org format for
 packaging skills and MCP servers as portable plugin directories. The spec
 deliberately defines no lockfile, registry, or install mechanism; that is the
 gap a package manager fills. mdm reuses its existing acquisition, locking, and
@@ -26,7 +26,7 @@ directories for client-specific content.
 
 Note this is **not** the same thing as Claude Code's
 `.claude-plugin/marketplace.json` format, which `internal/skill` reads for
-skill grouping — that is a marketplace index; agent-plugins.org defines the
+skill grouping - that is a marketplace index; agent-plugins.org defines the
 plugin package itself.
 
 ## Goals
@@ -39,8 +39,8 @@ plugin package itself.
    only; a broken server or skill is skipped individually).
 3. **MCP wiring**: translate `mcp.json` into each agent's native MCP config
    (Claude Code's `.mcp.json`, Cursor's `.cursor/mcp.json`), performing the
-   launcher duties the spec assigns to clients — `${PLUGIN_ROOT}` /
-   `${PLUGIN_DATA}` expansion, env injection, command resolution — at install
+   launcher duties the spec assigns to clients - `${PLUGIN_ROOT}` /
+   `${PLUGIN_DATA}` expansion, env injection, command resolution - at install
    time, since the agent (not mdm) launches the servers.
 4. **Author tooling**: `mdm plugins init` scaffolds a conformant plugin;
    `mdm plugins validate` checks one against the spec.
@@ -77,12 +77,12 @@ mdm plugins
 
 ### On-disk layout
 
-- `.agents/plugins/<name>/` — the plugin, copied verbatim. This directory *is*
+- `.agents/plugins/<name>/` - the plugin, copied verbatim. This directory *is*
   the spec's `PLUGIN_ROOT`.
-- `.agents/plugins-data/<name>/` — the spec's `PLUGIN_DATA`: created on
+- `.agents/plugins-data/<name>/` - the spec's `PLUGIN_DATA`: created on
   install, preserved across updates, deleted only by `remove --purge-data`.
   Doctor suggests gitignoring `plugins-data/` once it holds anything.
-- `.agents/skills/<skill>` — a **symlink into the plugin directory**, and each
+- `.agents/skills/<skill>` - a **symlink into the plugin directory**, and each
   agent's skills dir links to the canonical entry as usual. One copy on disk,
   atomic updates, and ownership is self-evident from the link target.
 
@@ -120,7 +120,7 @@ Claude Code (`.mcp.json`, typed entries with streamable HTTP spelled `http`)
 and Cursor (`.cursor/mcp.json`, bare entries) ship in v1; another agent is one
 map entry.
 
-Server ids are namespaced `<plugin>--<server>` — the spec forbids `--` inside
+Server ids are namespaced `<plugin>--<server>` - the spec forbids `--` inside
 plugin names, so the split is unambiguous, and it avoids the `:` and `__`
 sequences agents use for MCP tool-name mangling.
 
@@ -138,7 +138,7 @@ Per the spec's package-boundary rule, every file mdm reads out of a plugin
 must resolve inside the filesystem-resolved plugin root. An escaping
 `plugin.json` symlink rejects the plugin, an escaping `mcp.json` disables
 MCP, an escaping `SKILL.md` skips that skill, and the install copy skips
-(with a warning) any symlink that resolves outside the root — so a
+(with a warning) any symlink that resolves outside the root - so a
 malicious plugin cannot pull files from elsewhere on disk into the
 project. Directory symlinks are never followed during the copy; file
 symlinks that resolve within the root are copied as regular files.
@@ -167,7 +167,7 @@ ids, and the `plugins-data/` gitignore hint.
 
 ## Testing strategy
 
-- **Unit (`internal/plugin`)**: table-driven spec conformance — every name
+- **Unit (`internal/plugin`)**: table-driven spec conformance - every name
   rule, the fatal/non-fatal manifest matrix, the closed server union,
   command/cwd/URL constraints, symlink-escape rejection, non-recursive
   placeholder expansion.

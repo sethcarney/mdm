@@ -128,7 +128,7 @@ func TestDiagnoseSkillMdMissingFields(t *testing.T) {
 func TestCheckLargeMarkdownSkipsDirs(t *testing.T) {
 	dir := t.TempDir()
 
-	// Large .md file inside .git — must be skipped
+	// Large .md file inside .git - must be skipped
 	gitDir := filepath.Join(dir, ".git")
 	if err := os.Mkdir(gitDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -137,7 +137,7 @@ func TestCheckLargeMarkdownSkipsDirs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Large .md file inside node_modules — must be skipped
+	// Large .md file inside node_modules - must be skipped
 	nmDir := filepath.Join(dir, "node_modules")
 	if err := os.Mkdir(nmDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -146,7 +146,7 @@ func TestCheckLargeMarkdownSkipsDirs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Small SKILL.md in root — should NOT generate a size issue
+	// Small SKILL.md in root - should NOT generate a size issue
 	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: t\ndescription: d\n---\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +209,7 @@ func TestCheckProjectMarkdownSkipsExistingDirs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Non-existent dir added to skipDirs — should not cause a panic or side effects
+	// Non-existent dir added to skipDirs - should not cause a panic or side effects
 	skipDirs := map[string]bool{
 		filepath.Clean(skillsDir):                    true,
 		filepath.Join(root, "nonexistent-agent-dir"): true,

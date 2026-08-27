@@ -8,7 +8,7 @@
 # pinned GOTOOLCHAIN rather than pulled as prebuilt binaries: golangci-lint has
 # to be compiled with the project's Go to parse its go1.26 sources.
 #
-# Safe to re-run — already-installed tools at the pinned version are skipped.
+# Safe to re-run - already-installed tools at the pinned version are skipped.
 
 set -euo pipefail
 
@@ -25,7 +25,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 # in the layer committed by every feature-install build step. The tmpfs in
 # devcontainer.json's runArgs normally masks that, so this is a fallback for
 # hosts that ignore runArgs: with /tmp at 0755, non-root processes cannot
-# create temp files — go build's work directories included — so repair it
+# create temp files - go build's work directories included - so repair it
 # before anything below needs one. No-op under docker or behind the tmpfs.
 if [ "$(stat -c '%a' /tmp)" != "1777" ]; then
 	echo "==> restoring /tmp permissions (1777)"
@@ -35,7 +35,7 @@ fi
 # The Go version has exactly one source of truth: the `go` directive in go.mod.
 #
 # The pin has to be explicit, because under the default GOTOOLCHAIN=auto the
-# go.mod version is only a *minimum* — a newer toolchain in the base image would
+# go.mod version is only a *minimum* - a newer toolchain in the base image would
 # silently win, and the container would stop matching CI. Writing it to the
 # persistent Go env file (rather than exporting it, or setting containerEnv in
 # devcontainer.json) means every `go` command honours it in any shell, and that
@@ -51,7 +51,7 @@ echo "==> pinned GOTOOLCHAIN=go${GO_VERSION} (from go.mod)"
 # Claude Code's credentials live in the named volume mounted at ~/.claude (see
 # devcontainer.json). Docker creates a fresh volume owned by root when its mount
 # point does not already exist in the image, which would leave Claude Code
-# unable to write its token. Fix that once, only when it actually needs fixing —
+# unable to write its token. Fix that once, only when it actually needs fixing -
 # a recursive chown over an established session history is not free.
 CLAUDE_DIR="${HOME}/.claude"
 if [ -d "$CLAUDE_DIR" ] && [ ! -w "$CLAUDE_DIR" ]; then

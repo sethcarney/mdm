@@ -15,7 +15,7 @@ import (
 // skills-lock.json: the skill locks are read into fixed structs and
 // rewritten wholesale, so an older mdm binary touching skills would
 // silently drop unknown keys. A separate file keeps the experimental
-// knowledge feature invisible to — and incorruptible by — stable binaries.
+// knowledge feature invisible to - and incorruptible by - stable binaries.
 // ──────────────────────────────────────────────────────────
 
 const knowledgeLockVersion = 1

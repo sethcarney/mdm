@@ -158,7 +158,7 @@ func TestListSkills(t *testing.T) {
 		names = append(names, s.Name)
 	}
 	if len(skills) != 2 || names[0] != "alpha" || names[1] != "beta" {
-		t.Errorf("skills = %v, want [alpha beta] — no recursion into nested dirs", names)
+		t.Errorf("skills = %v, want [alpha beta] - no recursion into nested dirs", names)
 	}
 	if len(issues) != 1 || issues[0].Rule != "invalid-skill" {
 		t.Errorf("issues = %v, want one invalid-skill warning", issues)

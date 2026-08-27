@@ -30,7 +30,7 @@ BINARY_NAME="mdm"
 # The binary itself lives here, and INSTALL_DIR gets a symlink to it.
 #
 # Replacing a running executable means unlinking and recreating it, which is a
-# permission on the *directory*, not on the file — so with the binary directly
+# permission on the *directory*, not on the file - so with the binary directly
 # in a root-owned /usr/local/bin, `mdm upgrade` fails for the remoteUser with
 # "permission denied" and rebuilding the image is the only way to take a new
 # release. This directory is handed to that user below, which makes the upgrade
@@ -50,7 +50,7 @@ fi
 
 # Debian/Ubuntu base images vary in how stripped down they are; curl and the CA
 # bundle in particular are missing from the slim variants. Install only what is
-# actually absent, and only once — apt-get update on every feature build is slow.
+# actually absent, and only once - apt-get update on every feature build is slow.
 apt_updated=false
 ensure_packages() {
 	local missing=()
@@ -153,7 +153,7 @@ echo "==> downloading ${CHECKSUM_FILE}"
 curl -fsSL "${BASE_URL}/${CHECKSUM_FILE}" -o "${WORK_DIR}/${CHECKSUM_FILE}"
 
 # Keep only this asset's line. A missing or duplicated entry means the manifest
-# is not what we expect, and verifying against it would prove nothing — an empty
+# is not what we expect, and verifying against it would prove nothing - an empty
 # checksum file makes `sha256sum -c` succeed by checking zero files.
 grep -E "[[:space:]]\*?${ASSET}\$" "${WORK_DIR}/${CHECKSUM_FILE}" >"${WORK_DIR}/expected.sha256" || true
 matches="$(wc -l <"${WORK_DIR}/expected.sha256")"
@@ -164,7 +164,7 @@ fi
 
 echo "==> verifying checksum"
 if ! (cd "$WORK_DIR" && sha256sum -c expected.sha256); then
-	echo "mdm-feature: checksum verification FAILED for ${ASSET} — refusing to install." >&2
+	echo "mdm-feature: checksum verification FAILED for ${ASSET} - refusing to install." >&2
 	exit 1
 fi
 
@@ -176,7 +176,7 @@ ln -sfn "${BINARY_DIR}/${BINARY_NAME}" "${INSTALL_DIR}/${BINARY_NAME}"
 
 # _REMOTE_USER is the user the container will actually run as, set by the
 # devcontainer CLI for every feature install. Hand it the directory so it can
-# replace the binary — the symlink in /usr/local/bin stays root-owned, so the
+# replace the binary - the symlink in /usr/local/bin stays root-owned, so the
 # only thing this user gains is the ability to upgrade its own mdm.
 #
 # Running this script by hand there is no _REMOTE_USER, and a base image can

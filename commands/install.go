@@ -33,16 +33,16 @@ func buildInstallFromLockCmd(ver string) *cobra.Command {
 }
 
 // hintPluginsInstall points at `mdm plugins install` when the project has a
-// plugins-lock.json — plugin restore is a separate command with its own lock.
+// plugins-lock.json - plugin restore is a separate command with its own lock.
 func hintPluginsInstall(cwd string) {
 	if len(lock.ReadPluginsLock(cwd).Plugins) == 0 {
 		return
 	}
 	if experimental.Enabled(experimental.Plugins) {
-		fmt.Printf("%sThis project also has plugins — restore them with 'mdm plugins install'.%s\n", ansiDim, ansiReset)
+		fmt.Printf("%sThis project also has plugins - restore them with 'mdm plugins install'.%s\n", ansiDim, ansiReset)
 		return
 	}
-	fmt.Printf("%sThis project has a plugins-lock.json — enable plugin support with 'mdm experimental enable plugins', then run 'mdm plugins install'.%s\n", ansiDim, ansiReset)
+	fmt.Printf("%sThis project has a plugins-lock.json - enable plugin support with 'mdm experimental enable plugins', then run 'mdm plugins install'.%s\n", ansiDim, ansiReset)
 }
 
 func runInstallFromLock(yes bool, allowHiddenChars bool) {
@@ -62,11 +62,11 @@ func runInstallFromLock(yes bool, allowHiddenChars bool) {
 		fmt.Printf("Add skills with %smdm skills add <package>%s\n\n", ansiText, ansiReset)
 
 	case hasLocal && !hasGlobal:
-		// Only local lock has skills — restore silently
+		// Only local lock has skills - restore silently
 		restoreFromLocalLock(localL, yes, allowHiddenChars)
 
 	case !hasLocal && hasGlobal:
-		// Only global lock has skills — explain and ask
+		// Only global lock has skills - explain and ask
 		fmt.Printf("\n%sNo skills found in local skills-lock.json.%s\n", ansiDim, ansiReset)
 		fmt.Printf("%sFound %d skill(s) in global skills-lock.json (%s).%s\n\n",
 			ansiDim, len(globalL.Skills), lock.GetSkillLockPath(), ansiReset)
@@ -85,8 +85,8 @@ func runInstallFromLock(yes bool, allowHiddenChars bool) {
 			restoreFromLocalLock(localL, yes, allowHiddenChars)
 		} else {
 			idx, ok := ui.UiSelect("Install from which skills-lock.json?", []ui.UIOption{
-				{Label: fmt.Sprintf("Local  — %d skill(s)", len(localL.Skills)), Hint: lock.GetLocalLockPath(cwd)},
-				{Label: fmt.Sprintf("Global — %d skill(s)", len(globalL.Skills)), Hint: lock.GetSkillLockPath()},
+				{Label: fmt.Sprintf("Local  - %d skill(s)", len(localL.Skills)), Hint: lock.GetLocalLockPath(cwd)},
+				{Label: fmt.Sprintf("Global - %d skill(s)", len(globalL.Skills)), Hint: lock.GetSkillLockPath()},
 			})
 			if !ok {
 				fmt.Println("Cancelled.")
