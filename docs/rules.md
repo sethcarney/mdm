@@ -62,7 +62,7 @@ Which AI tools are you using in this project?  │  always included:
   type to filter · space to toggle · enter to confirm
 ```
 
-Selecting agents here also updates `configuredAgents` in `mdm-lock.json`, so subsequent `mdm skills add` commands default to the same set.
+Selecting agents here also updates `configuredAgents` in `mdm.lock`, so subsequent `mdm skills add` commands default to the same set.
 
 ### Step 3 — Create symlinks
 

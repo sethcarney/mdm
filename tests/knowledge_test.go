@@ -142,14 +142,14 @@ func TestKnowledgeAddListRemoveLocal(t *testing.T) {
 	if _, err := os.Stat(installed); err != nil {
 		t.Fatalf("expected installed bundle at %s: %v", installed, err)
 	}
-	lockPath := filepath.Join(project, "mdm-lock.json")
+	lockPath := filepath.Join(project, lockName)
 	lockData, err := os.ReadFile(lockPath)
 	if err != nil {
-		t.Fatalf("expected mdm-lock.json: %v", err)
+		t.Fatalf("expected mdm.lock: %v", err)
 	}
 	for _, want := range []string{"src-bundle", "specVersion", "contentHash", "knowledge/src-bundle"} {
 		if !strings.Contains(string(lockData), want) {
-			t.Errorf("expected %q in mdm-lock.json, got:\n%s", want, lockData)
+			t.Errorf("expected %q in mdm.lock, got:\n%s", want, lockData)
 		}
 	}
 
@@ -171,7 +171,7 @@ func TestKnowledgeAddListRemoveLocal(t *testing.T) {
 		t.Error("expected installed bundle directory to be removed")
 	}
 	if _, err := os.Stat(lockPath); !os.IsNotExist(err) {
-		t.Error("expected mdm-lock.json to be removed with the last bundle")
+		t.Error("expected mdm.lock to be removed with the last bundle")
 	}
 }
 
@@ -188,8 +188,8 @@ func TestKnowledgeAddDryRunWritesNothing(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(project, "knowledge")); !os.IsNotExist(err) {
 		t.Error("dry run must not create the knowledge directory")
 	}
-	if _, err := os.Stat(filepath.Join(project, "mdm-lock.json")); !os.IsNotExist(err) {
-		t.Error("dry run must not write mdm-lock.json")
+	if _, err := os.Stat(filepath.Join(project, lockName)); !os.IsNotExist(err) {
+		t.Error("dry run must not write mdm.lock")
 	}
 }
 
@@ -210,8 +210,8 @@ func TestKnowledgeAddBlocksHiddenChars(t *testing.T) {
 	if !strings.Contains(combined, "Hidden character") {
 		t.Errorf("expected hidden character finding, got:\n%s", combined)
 	}
-	if _, err := os.Stat(filepath.Join(project, "mdm-lock.json")); !os.IsNotExist(err) {
-		t.Error("blocked install must not write mdm-lock.json")
+	if _, err := os.Stat(filepath.Join(project, lockName)); !os.IsNotExist(err) {
+		t.Error("blocked install must not write mdm.lock")
 	}
 }
 
@@ -224,7 +224,7 @@ func TestKnowledgeLockSurvivesSkillsOperations(t *testing.T) {
 	if _, stderr, code := runMdmInDir(t, project, env, "knowledge", "add", "./src-bundle", "-y"); code != 0 {
 		t.Fatalf("knowledge add exited %d: %s", code, stderr)
 	}
-	lockPath := filepath.Join(project, "mdm-lock.json")
+	lockPath := filepath.Join(project, lockName)
 	before := readLockSection(t, lockPath, "knowledge")
 	if before == "" {
 		t.Fatal("expected a knowledge section after knowledge add")
@@ -245,7 +245,7 @@ func TestKnowledgeLockSurvivesSkillsOperations(t *testing.T) {
 	}
 	after := readLockSection(t, lockPath, "skills")
 	if after == "" {
-		t.Fatal("expected skills add to write a skills section into mdm-lock.json")
+		t.Fatal("expected skills add to write a skills section into mdm.lock")
 	}
 	if _, err := os.Stat(filepath.Join(project, "skills-lock.json")); !os.IsNotExist(err) {
 		t.Error("skills add must not write the legacy skills-lock.json")

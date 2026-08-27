@@ -153,7 +153,7 @@ func assertToolkitLockEntry(t *testing.T, dir string) {
 			SpecVersion string   `json:"specVersion"`
 		} `json:"plugins"`
 	}
-	raw, err := os.ReadFile(filepath.Join(dir, "mdm-lock.json"))
+	raw, err := os.ReadFile(filepath.Join(dir, lockName))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +180,7 @@ func TestPluginsAddListRemoveRoundTrip(t *testing.T) {
 		filepath.Join(".agents", "plugins-data", "toolkit"),
 		filepath.Join(".agents", "skills", "alpha", "SKILL.md"),
 		filepath.Join(".claude", "skills", "alpha", "SKILL.md"),
-		"mdm-lock.json",
+		lockName,
 	)
 	// The canonical skill entry is a symlink into the plugin directory.
 	if info, err := os.Lstat(filepath.Join(dir, ".agents", "skills", "alpha")); err != nil || info.Mode()&os.ModeSymlink == 0 {
@@ -206,7 +206,7 @@ func TestPluginsAddListRemoveRoundTrip(t *testing.T) {
 		filepath.Join(".agents", "plugins", "toolkit"),
 		filepath.Join(".agents", "skills", "alpha"),
 		filepath.Join(".claude", "skills", "alpha"),
-		"mdm-lock.json",
+		lockName,
 	)
 	// The data dir survives unless --purge-data is given.
 	assertPathsExist(t, dir, filepath.Join(".agents", "plugins-data", "toolkit"))
@@ -240,7 +240,7 @@ func TestPluginsAddDryRunWritesNothing(t *testing.T) {
 	if !strings.Contains(stdout, "Dry run") {
 		t.Errorf("expected dry-run notice, got: %q", stdout)
 	}
-	for _, p := range []string{".agents", "mdm-lock.json"} {
+	for _, p := range []string{".agents", lockName} {
 		if _, err := os.Stat(filepath.Join(dir, p)); !os.IsNotExist(err) {
 			t.Errorf("dry run must not create %s", p)
 		}
@@ -264,7 +264,7 @@ func TestPluginsAddBlocksHiddenChars(t *testing.T) {
 	if !strings.Contains(combined, "Hidden character") {
 		t.Errorf("expected hidden character finding, got:\n%s", combined)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "mdm-lock.json")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(dir, lockName)); !os.IsNotExist(err) {
 		t.Error("blocked install must not write the lock")
 	}
 
@@ -402,7 +402,7 @@ func assertWiredLockMCP(t *testing.T, dir string) {
 			MCP map[string][]string `json:"mcp"`
 		} `json:"plugins"`
 	}
-	raw, err := os.ReadFile(filepath.Join(dir, "mdm-lock.json"))
+	raw, err := os.ReadFile(filepath.Join(dir, lockName))
 	if err != nil {
 		t.Fatal(err)
 	}

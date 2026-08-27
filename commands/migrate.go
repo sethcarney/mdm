@@ -17,18 +17,18 @@ func buildMigrateCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "migrate",
-		Short: "Move v1 lock files into mdm-lock.json and mdm-state.json",
+		Short: "Move v1 lock files into " + lockName + " and mdm-state.json",
 		Long: fmt.Sprintf(`Migrate a project (and this machine's global state) from the v1 lock
 files to the v2 layout:
 
-  skills-lock.json + knowledge-lock.json + plugins-lock.json → mdm-lock.json
+  skills-lock.json + knowledge-lock.json + plugins-lock.json → %[1]s
   ~/.agents/skills-lock.json                                 → ~/.agents/mdm-state.json
 
 skills-lock.json is replaced with a tombstone by default, so anyone
 still running a v1 mdm against the project finds a pointer to
-mdm-lock.json instead of silence. Interactive runs offer to delete it
+%[1]s instead of silence. Interactive runs offer to delete it
 outright instead; --no-tombstone does the same without asking. Commit
-mdm-lock.json and the removals together.
+%[1]s and the removals together.
 
 v2 reads the v1 files transparently, so migrating is not urgent — but
 writes only ever go to the new files, and mdm doctor will keep pointing
@@ -36,7 +36,7 @@ here until the old ones are gone.
 
 %sExamples:%s
   mdm migrate --dry-run
-  mdm migrate -y`, ansiBold, ansiReset),
+  mdm migrate -y`, lockName, ansiBold, ansiReset),
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cmd.SilenceUsage = true
@@ -47,7 +47,7 @@ here until the old ones are gone.
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be migrated without changing anything")
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Skip the confirmation prompt")
 	cmd.Flags().BoolVar(&noTombstone, "no-tombstone", false, "Delete skills-lock.json instead of leaving a tombstone for v1 binaries")
-	cmd.Flags().BoolVar(&force, "force", false, "Retire legacy files even when they hold entries missing from mdm-lock.json (discards those entries)")
+	cmd.Flags().BoolVar(&force, "force", false, "Retire legacy files even when they hold entries missing from "+lockName+" (discards those entries)")
 	return cmd
 }
 
@@ -116,7 +116,7 @@ func promptTombstoneCleanup(plan lock.ProjectMigration, noTombstone bool) (delet
 		return false, true
 	}
 	idx, ok := ui.UiSelect("What should happen to the old skills-lock.json?", []ui.UIOption{
-		{Label: "Leave a tombstone (recommended)", Hint: "points anyone still on v1 mdm at mdm-lock.json"},
+		{Label: "Leave a tombstone (recommended)", Hint: "points anyone still on v1 mdm at " + lockName},
 		{Label: "Delete it", Hint: "clean tree; a v1 mdm in this project would quietly find no skills"},
 	})
 	if !ok {
@@ -139,19 +139,19 @@ func printProjectMigrationPlan(plan lock.ProjectMigration, noTombstone, force bo
 			fate = "leave a tombstone"
 		}
 		if plan.TargetExists {
-			// Nothing flows into an existing mdm-lock.json — the legacy
+			// Nothing flows into an existing mdm.lock — the legacy
 			// files are only retired.
 			fmt.Printf("  %s — %d entr%s, %s\n",
 				fname, count, map[bool]string{true: "ies", false: "y"}[count != 1], fate)
 		} else {
-			fmt.Printf("  %s — %d entr%s → mdm-lock.json, then %s\n",
-				fname, count, map[bool]string{true: "ies", false: "y"}[count != 1], fate)
+			fmt.Printf("  %s — %d entr%s → %s, then %s\n",
+				fname, count, map[bool]string{true: "ies", false: "y"}[count != 1], lockName, fate)
 		}
 	}
 	if plan.TargetExists {
-		fmt.Printf("  %smdm-lock.json already exists; the legacy files above are leftovers%s\n", ansiDim, ansiReset)
+		fmt.Printf("  %s%s already exists; the legacy files above are leftovers%s\n", ansiDim, lockName, ansiReset)
 	}
-	return printOrphanWarning(plan.Orphaned, "mdm-lock.json", force)
+	return printOrphanWarning(plan.Orphaned, lockName, force)
 }
 
 // printGlobalMigrationPlan renders the global half of the plan and enforces
@@ -187,9 +187,9 @@ func executeMigration(cwd string, projectNeeded, globalNeeded, noTombstone bool)
 			return err
 		}
 		if _, err := os.Stat(lock.GetProjectLockPath(cwd)); err == nil {
-			fmt.Printf("%s✓%s Project migrated to mdm-lock.json — commit it together with the removed files.\n", ansiGreen, ansiReset)
+			fmt.Printf("%s✓%s Project migrated to %s — commit it together with the removed files.\n", ansiGreen, ansiReset, lockName)
 		} else {
-			fmt.Printf("%s✓%s Legacy lock files retired — they held no entries, so there is no mdm-lock.json to commit.\n", ansiGreen, ansiReset)
+			fmt.Printf("%s✓%s Legacy lock files retired — they held no entries, so there is no %s to commit.\n", ansiGreen, ansiReset, lockName)
 		}
 	}
 	if globalNeeded {

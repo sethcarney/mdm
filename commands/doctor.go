@@ -178,7 +178,7 @@ func runDoctor(opts DoctorOptions) {
 }
 
 // checkLegacyLockFiles flags v1 project lock files that mdm migrate should
-// fold into mdm-lock.json.
+// fold into mdm.lock.
 func checkLegacyLockFiles(cwd string) []doctorIssue {
 	plan, err := lock.PlanProjectMigration(cwd)
 	if err != nil {
@@ -192,7 +192,7 @@ func checkLegacyLockFiles(cwd string) []doctorIssue {
 		if _, ok := plan.Legacy[fname]; ok {
 			issues = append(issues, doctorIssue{
 				Level:   "warn",
-				Message: fmt.Sprintf("%s is a v1 lock file — fold it into mdm-lock.json with `mdm migrate`", fname),
+				Message: fmt.Sprintf("%s is a v1 lock file — fold it into %s with `mdm migrate`", fname, lockName),
 			})
 		}
 	}

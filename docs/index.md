@@ -108,7 +108,7 @@ solves exactly that.
 
     ---
 
-    Commit an `mdm-lock.json` so teammates run `mdm skills install` once and
+    Commit an `mdm.lock` so teammates run `mdm skills install` once and
     onboard with whatever agent they prefer.
 
     [:octicons-arrow-right-24: skills install](skills/install.md)
@@ -145,7 +145,7 @@ mdm
 ├── knowledge     Manage OKF knowledge bundles
 ├── plugins       Manage Agent Plugins (skills + MCP servers)
 ├── doctor        Check installed skills and project markdown for health issues
-├── migrate       Fold v1 lock files into mdm-lock.json
+├── migrate       Fold v1 lock files into mdm.lock
 ├── bug           Open a prefilled bug-report form (no network I/O)
 ├── experimental  Manage experimental feature gates
 ├── upgrade       Self-update the mdm binary from GitHub releases

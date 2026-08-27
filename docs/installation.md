@@ -70,7 +70,7 @@ goes in a lifecycle command:
 "postCreateCommand": "mdm skills install"
 ```
 
-That restores every skill recorded in the repo's `mdm-lock.json` when the
+That restores every skill recorded in the repo's `mdm.lock` when the
 container is created — see [`mdm skills install`](skills/install.md). `mdm rules
 link` fits the same slot.
 

@@ -15,8 +15,8 @@ func buildPluginsInstallCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "install",
-		Short: "Restore all plugins from mdm-lock.json",
-		Long: `Restore every plugin recorded in mdm-lock.json, re-fetching each
+		Short: "Restore all plugins from " + lockName,
+		Long: `Restore every plugin recorded in ` + lockName + `, re-fetching each
 from its recorded source and ref. Intended for CI and onboarding, like
 'mdm skills install'.`,
 		Args: cobra.NoArgs,
@@ -34,13 +34,13 @@ func runPluginsInstall(allowHiddenChars, skipMCP bool) {
 	cwd, _ := os.Getwd()
 	lk := lock.ReadPluginsLock(cwd)
 	if len(lk.Plugins) == 0 {
-		fmt.Printf("\n%sNo plugins found in mdm-lock.json.%s\n\n", ansiDim, ansiReset)
+		fmt.Printf("\n%sNo plugins found in %s.%s\n\n", ansiDim, lockName, ansiReset)
 		fmt.Printf("Add plugins with %smdm plugins add <source>%s\n\n", ansiText, ansiReset)
 		return
 	}
 
 	names := selectPluginLockEntries(lk, nil)
-	fmt.Printf("\n%sRestoring %d plugin(s) from mdm-lock.json...%s\n", ansiText, len(names), ansiReset)
+	fmt.Printf("\n%sRestoring %d plugin(s) from %s...%s\n", ansiText, len(names), lockName, ansiReset)
 	for _, name := range names {
 		reinstallPlugin(name, lk.Plugins[name], allowHiddenChars, skipMCP)
 	}

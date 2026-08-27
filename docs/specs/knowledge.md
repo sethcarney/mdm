@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Implemented — graduated to full support in v2 |
-| **Stability** | Stable. This document is the original design spec, kept as a historical record: the experimental gate it describes was removed in v2, and the separate `knowledge-lock.json` became the `knowledge` section of `mdm-lock.json` (see `mdm migrate`). |
+| **Stability** | Stable. This document is the original design spec, kept as a historical record: the experimental gate it describes was removed in v2, and the separate `knowledge-lock.json` became the `knowledge` section of `mdm.lock` (see `mdm migrate`). |
 | **Author** | Dakota Kim |
 | **Created** | 2026-07-06 |
 | **Tracking issue** | TBD |

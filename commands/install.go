@@ -18,7 +18,7 @@ func buildInstallFromLockCmd(ver string) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "install",
-		Short: "Restore skills from mdm-lock.json",
+		Short: "Restore skills from " + lockName,
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			showLogo(ver)
@@ -53,7 +53,7 @@ func runInstallFromLock(yes bool, allowHiddenChars bool) {
 
 	switch {
 	case !hasLocal && !hasGlobal:
-		fmt.Printf("\n%sNo mdm-lock.json found.%s\n\n", ansiDim, ansiReset)
+		fmt.Printf("\n%sNo %s found.%s\n\n", ansiDim, lockName, ansiReset)
 		fmt.Printf("Add skills with %smdm skills add <package>%s\n\n", ansiText, ansiReset)
 
 	case hasLocal && !hasGlobal:
@@ -62,7 +62,7 @@ func runInstallFromLock(yes bool, allowHiddenChars bool) {
 
 	case !hasLocal && hasGlobal:
 		// Only global lock has skills — explain and ask
-		fmt.Printf("\n%sNo skills found in the local mdm-lock.json.%s\n", ansiDim, ansiReset)
+		fmt.Printf("\n%sNo skills found in the local %s.%s\n", ansiDim, lockName, ansiReset)
 		fmt.Printf("%sFound %d skill(s) in the global state file (%s).%s\n\n",
 			ansiDim, len(globalL.Skills), lock.GetGlobalStatePath(), ansiReset)
 		if !yes {
@@ -98,7 +98,7 @@ func runInstallFromLock(yes bool, allowHiddenChars bool) {
 
 // restoreFromLocalLock installs all skills recorded in the project-level lock file.
 func restoreFromLocalLock(l lock.LocalSkillLockFile, yes bool, allowHiddenChars bool) {
-	fmt.Printf("\n%sRestoring %d skill(s) from the local mdm-lock.json...%s\n\n", ansiText, len(l.Skills), ansiReset)
+	fmt.Printf("\n%sRestoring %d skill(s) from the local %s...%s\n\n", ansiText, len(l.Skills), lockName, ansiReset)
 
 	// Convert local entries to a common source/ref map.
 	entries := make(map[string]sourceRef, len(l.Skills))

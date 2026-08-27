@@ -5,28 +5,28 @@
       "content": "MDM (Markdown Management) is a Go CLI for managing reusable markdown-based prompt libraries ('skills') for AI coding agents. It is intentionally a tool for *humans and CI* — not for an agent to run on itself. Treat the README and AGENTS.md as the canonical source for the public CLI surface. The CLI surface is defined entirely in commands/*.go using Cobra; main.go is a thin entry that calls commands.BuildRootCmd."
     },
     {
-      "content": "Two pieces of state matter throughout the codebase: (1) the lock files — written by internal/lock/: mdm-lock.json at the project root (skills, knowledge, and plugins sections plus configuredAgents) and the per-machine ~/.agents/mdm-state.json; v1's skills-lock.json / knowledge-lock.json / plugins-lock.json are read as a fallback until `mdm migrate` retires them. (2) The agent registry — internal/agent/agent.go defines AllAgents, the map of ~45 supported AI tools and their per-agent skills/instruction file paths. Almost every command reads or writes one of these."
+      "content": "Two pieces of state matter throughout the codebase: (1) the lock files — written by internal/lock/: mdm.lock at the project root (skills, knowledge, and plugins sections plus configuredAgents) and the per-machine ~/.agents/mdm-state.json; v1's skills-lock.json / knowledge-lock.json / plugins-lock.json are read as a fallback until `mdm migrate` retires them. (2) The agent registry — internal/agent/agent.go defines AllAgents, the map of ~45 supported AI tools and their per-agent skills/instruction file paths. Almost every command reads or writes one of these."
     },
     {
-      "content": "The mdm skills add install flow is the most important pipeline in the codebase. It lives in commands/installer.go and orchestrates: source parsing (internal/source) → fetch via git clone or GitHub blob API (internal/git, internal/blob) → SKILL.md discovery (internal/skill) → hidden-character scan (internal/security/markdownscan, invoked from commands/hidden_scan.go) → agent picker → copy or symlink into each agent's skills directory → record in mdm-lock.json. Any docs page about installs should reference this order."
+      "content": "The mdm skills add install flow is the most important pipeline in the codebase. It lives in commands/installer.go and orchestrates: source parsing (internal/source) → fetch via git clone or GitHub blob API (internal/git, internal/blob) → SKILL.md discovery (internal/skill) → hidden-character scan (internal/security/markdownscan, invoked from commands/hidden_scan.go) → agent picker → copy or symlink into each agent's skills directory → record in mdm.lock. Any docs page about installs should reference this order."
     },
     {
-      "content": "Security posture is a deliberate selling point. There are three layers: (1) Hidden-character / prompt-smuggling scan over every markdown file before install — see commands/hidden_scan.go and internal/security/markdownscan. (2) Pre-install advisory check against skills.sh and OSV — see commands/audit.go. (3) Lockfile hash verification — installs can be reproduced byte-for-byte from mdm-lock.json. Do not document these as optional; the scan is mandatory and requires --allow-hidden-chars to bypass."
+      "content": "Security posture is a deliberate selling point. There are three layers: (1) Hidden-character / prompt-smuggling scan over every markdown file before install — see commands/hidden_scan.go and internal/security/markdownscan. (2) Pre-install advisory check against skills.sh and OSV — see commands/audit.go. (3) Lockfile hash verification — installs can be reproduced byte-for-byte from mdm.lock. Do not document these as optional; the scan is mandatory and requires --allow-hidden-chars to bypass."
     },
     {
       "content": "Agent terminology is overloaded — the docs use 'agent' to mean an AI tool (Claude Code, Cursor, etc.), never the DeepWiki / Devin sense of an autonomous code agent. AllAgents in internal/agent/agent.go fall into three categories: agents with their own skills directory (need a per-agent symlink), agents that use the shared .agents/skills directory, and agents that read AGENTS.md natively for instructions. Most rules.go and agents.go logic exists to handle these three categories correctly."
     },
     {
-      "content": "Do not invent flags or commands that are not in commands/*.go. Verified top-level commands as of this writing: skills, knowledge, plugins, agents, rules, doctor, migrate, experimental, bug, upgrade, uninstall, completion. The mdm agents command group (list / add / remove) is separate from internal/agent/ — agents is the user-facing 'configured agents' list that drives default install targets, persisted in mdm-lock.json's configuredAgents field."
+      "content": "Do not invent flags or commands that are not in commands/*.go. Verified top-level commands as of this writing: skills, knowledge, plugins, agents, rules, doctor, migrate, experimental, bug, upgrade, uninstall, completion. The mdm agents command group (list / add / remove) is separate from internal/agent/ — agents is the user-facing 'configured agents' list that drives default install targets, persisted in mdm.lock's configuredAgents field."
     },
     {
       "content": "Build and release: GoReleaser builds binaries for Linux/macOS/Windows (x64 + arm64) on tag push (v* in .github/workflows/release.yml). The Windows binary embeds an icon via assets/mdm.ico → resource_windows.syso (generated by make syso using the goversioninfo tool dependency declared in go.mod). internal/version/version.go's 'dev' string is overridden via -ldflags at release time; never bump it for releases."
     },
     {
-      "content": "Pre-PR / CI checks are THREE, not four: go test ./..., govulncheck ./... (v1.5.0), and golangci-lint run ./... (v2.12.2). All three must pass — .github/workflows/ci.yml is the authority, and the `ci` target in the Makefile mirrors it at the same pinned versions. golangci-lint replaced the retired Go Report Card service and the earlier standalone gofmt and gocyclo steps, so do NOT describe those as separate checks: formatting is the gofmt formatter and cyclomatic complexity is the gocyclo linter at min-complexity 16, both configured in .golangci.yml. Both tools are installed under GOTOOLCHAIN=go1.26.6 so they are built with the Go that can parse this module's sources. `make ci` reports formatting without changing anything; to fix it run `golangci-lint fmt`, or `make fmt`, which runs gofmt -s -w . directly. Any doc page on contributing must mention all three, not just tests. Note that the go-report-card skill in mdm-lock.json is installed from sethcarney/custom-plugins and is not part of this repository's source."
+      "content": "Pre-PR / CI checks are THREE, not four: go test ./..., govulncheck ./... (v1.5.0), and golangci-lint run ./... (v2.12.2). All three must pass — .github/workflows/ci.yml is the authority, and the `ci` target in the Makefile mirrors it at the same pinned versions. golangci-lint replaced the retired Go Report Card service and the earlier standalone gofmt and gocyclo steps, so do NOT describe those as separate checks: formatting is the gofmt formatter and cyclomatic complexity is the gocyclo linter at min-complexity 16, both configured in .golangci.yml. Both tools are installed under GOTOOLCHAIN=go1.26.6 so they are built with the Go that can parse this module's sources. `make ci` reports formatting without changing anything; to fix it run `golangci-lint fmt`, or `make fmt`, which runs gofmt -s -w . directly. Any doc page on contributing must mention all three, not just tests. Note that the go-report-card skill in mdm.lock is installed from sethcarney/custom-plugins and is not part of this repository's source."
     },
     {
-      "content": "Two distinct ownership models exist for skills, and conflating them produces wrong documentation. An INSTALLED skill (mdm skills add) is maintained upstream: it lives in agent skills directories, is recorded in mdm-lock.json with its source and ref, and mdm skills update replaces it. A FORKED skill (mdm skills cherry-pick) is maintained by the project: it lives in ./skills, carries its provenance in .mdm-origin.json, and nothing re-fetches it — divergence from upstream is the point. internal/fork owns the provenance, hashing, and license detection for the second model."
+      "content": "Two distinct ownership models exist for skills, and conflating them produces wrong documentation. An INSTALLED skill (mdm skills add) is maintained upstream: it lives in agent skills directories, is recorded in mdm.lock with its source and ref, and mdm skills update replaces it. A FORKED skill (mdm skills cherry-pick) is maintained by the project: it lives in ./skills, carries its provenance in .mdm-origin.json, and nothing re-fetches it — divergence from upstream is the point. internal/fork owns the provenance, hashing, and license detection for the second model."
     }
   ],
   "pages": [
@@ -40,7 +40,7 @@
     },
     {
       "title": "Quick Start",
-      "purpose": "Walk a new user through the common end-to-end flow: (1) `mdm rules link` to unify CLAUDE.md / .cursorrules / .clinerules onto AGENTS.md, (2) `mdm agents add` to pick which AI tools to target, (3) `mdm skills add owner/repo` to install a skill bundle, (4) `mdm skills install` to restore everything from mdm-lock.json on a new checkout. Each step should reference the dedicated page for that command."
+      "purpose": "Walk a new user through the common end-to-end flow: (1) `mdm rules link` to unify CLAUDE.md / .cursorrules / .clinerules onto AGENTS.md, (2) `mdm agents add` to pick which AI tools to target, (3) `mdm skills add owner/repo` to install a skill bundle, (4) `mdm skills install` to restore everything from mdm.lock on a new checkout. Each step should reference the dedicated page for that command."
     },
     {
       "title": "Skills Management",
@@ -77,12 +77,12 @@
     },
     {
       "title": "Listing skills (mdm skills list)",
-      "purpose": "Document `mdm skills list`. Cover output format (skill name, scope, source, ref), the --global / --project / --json flags, and how it reads from mdm-lock.json rather than scanning disk. Alias: ls.",
+      "purpose": "Document `mdm skills list`. Cover output format (skill name, scope, source, ref), the --global / --project / --json flags, and how it reads from mdm.lock rather than scanning disk. Alias: ls.",
       "parent": "Skills Management"
     },
     {
       "title": "Removing skills (mdm skills remove)",
-      "purpose": "Document `mdm skills remove`. Explain the interactive picker when no skill name is given, the per-agent cleanup it does (removes symlinks in each agent's skills directory, removes the shared content from .agents/skills, updates mdm-lock.json), and the --agent / --skill / --global / --yes flags. Aliases: rm, r.",
+      "purpose": "Document `mdm skills remove`. Explain the interactive picker when no skill name is given, the per-agent cleanup it does (removes symlinks in each agent's skills directory, removes the shared content from .agents/skills, updates mdm.lock), and the --agent / --skill / --global / --yes flags. Aliases: rm, r.",
       "parent": "Skills Management"
     },
     {
@@ -92,7 +92,7 @@
     },
     {
       "title": "Updating skills (mdm skills update)",
-      "purpose": "Document `mdm skills update [skills...]` — re-fetches each installed skill from its recorded source+ref in mdm-lock.json. Distinguish it from `mdm skills audit` (audit reports availability, update applies changes). Note the alias `check` for read-only behavior and how it interacts with hashes recorded in the lockfile.",
+      "purpose": "Document `mdm skills update [skills...]` — re-fetches each installed skill from its recorded source+ref in mdm.lock. Distinguish it from `mdm skills audit` (audit reports availability, update applies changes). Note the alias `check` for read-only behavior and how it interacts with hashes recorded in the lockfile.",
       "parent": "Skills Management"
     },
     {
@@ -107,7 +107,7 @@
     },
     {
       "title": "Restoring from lockfile (mdm skills install)",
-      "purpose": "Document `mdm skills install` — the CI / onboarding command that re-installs every skill recorded in mdm-lock.json using the original source, ref, and configured agents. Distinguish from `mdm skills add` (manual single-skill install) and `mdm skills update` (re-fetch + update). Mention how it interacts with the lockfile hash to enforce reproducibility.",
+      "purpose": "Document `mdm skills install` — the CI / onboarding command that re-installs every skill recorded in mdm.lock using the original source, ref, and configured agents. Distinguish from `mdm skills add` (manual single-skill install) and `mdm skills update` (re-fetch + update). Mention how it interacts with the lockfile hash to enforce reproducibility.",
       "parent": "Skills Management"
     },
     {
@@ -117,7 +117,7 @@
     },
     {
       "title": "Configured agents (mdm agents)",
-      "purpose": "Document the top-level `mdm agents` command group. Explain why a configured agent list exists (it becomes the default install target so `mdm skills add` does not have to prompt), what the three agent categories are (shared skills dir, AGENTS.md-native, unique skills dir + unique instructions file), and how the list is stored per scope (project: mdm-lock.json's configuredAgents field; global: ~/.agents/mdm-state.json). Document each subcommand (list, add, remove), their flags including --available and --json on list and --yes on remove, and how `mdm rules link` also writes to configuredAgents."
+      "purpose": "Document the top-level `mdm agents` command group. Explain why a configured agent list exists (it becomes the default install target so `mdm skills add` does not have to prompt), what the three agent categories are (shared skills dir, AGENTS.md-native, unique skills dir + unique instructions file), and how the list is stored per scope (project: mdm.lock's configuredAgents field; global: ~/.agents/mdm-state.json). Document each subcommand (list, add, remove), their flags including --available and --json on list and --yes on remove, and how `mdm rules link` also writes to configuredAgents."
     },
     {
       "title": "Rules and AGENTS.md",
@@ -133,7 +133,7 @@
     },
     {
       "title": "Removing the CLI (mdm uninstall)",
-      "purpose": "Document `mdm uninstall` (alias: remove-cli). It removes only the binary itself — not skills, not mdm-lock.json, not agent instruction files. Note that on Windows it schedules the deletion in a background script because a running binary cannot delete itself."
+      "purpose": "Document `mdm uninstall` (alias: remove-cli). It removes only the binary itself — not skills, not mdm.lock, not agent instruction files. Note that on Windows it schedules the deletion in a background script because a running binary cannot delete itself."
     },
     {
       "title": "Shell completion",
@@ -159,7 +159,7 @@
       "parent": "Architecture"
     },
     {
-      "title": "Lockfile (mdm-lock.json)",
+      "title": "Lockfile (mdm.lock)",
       "purpose": "Document the schema written and read by internal/lock/. Each entry records: skill name, source string, parsed source type, ref (branch / tag / commit), content hash, install timestamp, target scope. The top-level configuredAgents array records the project's default agent targets (shared with mdm agents and mdm rules link). Show a representative example. Mention that hashes are used by `mdm doctor` to detect drift and by `mdm skills install` to enforce reproducibility.",
       "parent": "Architecture"
     },

@@ -8,7 +8,7 @@ import (
 )
 
 // ──────────────────────────────────────────────────────────
-// Local (project) skill lock — the skills section of mdm-lock.json
+// Local (project) skill lock — the skills section of mdm.lock
 // ──────────────────────────────────────────────────────────
 
 const localLockVersion = 1
@@ -21,7 +21,7 @@ type LocalSkillLockEntry struct {
 }
 
 // LocalSkillLockFile is a view of the skills section of the project lock.
-// Reading and writing it goes through mdm-lock.json (with legacy
+// Reading and writing it goes through mdm.lock (with legacy
 // skills-lock.json fallback on read); the other sections are preserved.
 type LocalSkillLockFile struct {
 	Version          int                            `json:"version"`
@@ -39,7 +39,7 @@ func legacyTombstone(data []byte) bool {
 }
 
 // readLegacySkillsLockE reads the v1 skills-lock.json directly. It is only
-// consulted when mdm-lock.json does not exist. It fails the same way the
+// consulted when mdm.lock does not exist. It fails the same way the
 // final v1 patch releases did — corrupt or newer-versioned files are an
 // error, not an empty lock — except for v2's own tombstone, which reads as
 // empty by design.

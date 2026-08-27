@@ -8,11 +8,11 @@ import (
 )
 
 // ──────────────────────────────────────────────────────────
-// Knowledge bundle lock — the knowledge section of mdm-lock.json
+// Knowledge bundle lock — the knowledge section of mdm.lock
 //
 // v1 kept knowledge entries in their own knowledge-lock.json so a stable
 // binary rewriting the skills lock could not drop them. In v2 the unified
-// mdm-lock.json preserves unknown top-level keys on every write (see
+// mdm.lock preserves unknown top-level keys on every write (see
 // project.go), so the sections share one file safely.
 // ──────────────────────────────────────────────────────────
 
@@ -38,7 +38,7 @@ type KnowledgeLockFile struct {
 }
 
 // readLegacyKnowledgeLockE reads the v1 knowledge-lock.json directly. It is
-// only consulted when mdm-lock.json does not exist. Corrupt or
+// only consulted when mdm.lock does not exist. Corrupt or
 // newer-versioned files are an error, matching the final v1 patch releases.
 func readLegacyKnowledgeLockE(cwd string) (KnowledgeLockFile, error) {
 	if cwd == "" {

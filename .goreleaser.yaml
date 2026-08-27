@@ -74,7 +74,7 @@ release:
   header: |
     > [!IMPORTANT]
     > **Upgrading from v1?** v2 folds the per-feature lock files into one
-    > `mdm-lock.json` (and renames the global lock to `mdm-state.json`).
+    > `mdm.lock` (and renames the global lock to `mdm-state.json`).
     > Run `mdm migrate` in each project after upgrading — v1 files are read
     > transparently until then, but writes only go to the new files. The
     > `knowledge` and `plugins` commands graduated from experimental and no

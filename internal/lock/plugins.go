@@ -8,11 +8,11 @@ import (
 )
 
 // ──────────────────────────────────────────────────────────
-// Agent Plugins lock — the plugins section of mdm-lock.json
+// Agent Plugins lock — the plugins section of mdm.lock
 //
 // v1 kept plugin entries in their own plugins-lock.json so a stable binary
 // rewriting the skills lock could not drop them. In v2 the unified
-// mdm-lock.json preserves unknown top-level keys on every write (see
+// mdm.lock preserves unknown top-level keys on every write (see
 // project.go), so the sections share one file safely.
 // ──────────────────────────────────────────────────────────
 
@@ -47,7 +47,7 @@ type PluginLockFile struct {
 }
 
 // readLegacyPluginsLockE reads the v1 plugins-lock.json directly. It is only
-// consulted when mdm-lock.json does not exist. Corrupt or newer-versioned
+// consulted when mdm.lock does not exist. Corrupt or newer-versioned
 // files are an error, matching the final v1 patch releases.
 func readLegacyPluginsLockE(cwd string) (PluginLockFile, error) {
 	if cwd == "" {

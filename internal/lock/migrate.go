@@ -32,8 +32,8 @@ var LegacyProjectLockNames = []string{"skills-lock.json", "knowledge-lock.json",
 const SkillsTombstone = `{
   "version": 2,
   "skills": {},
-  "_moved": "mdm-lock.json",
-  "_comment": "This project migrated to mdm v2 and its lock now lives in mdm-lock.json. Patched v1 releases refuse this file with an upgrade pointer; older v1 releases read it as empty and will install nothing from it - upgrade mdm instead. Delete this file once nothing runs a v1 mdm against this project."
+  "_moved": "` + ProjectLockName + `",
+  "_comment": "This project migrated to mdm v2 and its lock now lives in ` + ProjectLockName + `. Patched v1 releases refuse this file with an upgrade pointer; older v1 releases read it as empty and will install nothing from it - upgrade mdm instead. Delete this file once nothing runs a v1 mdm against this project."
 }
 `
 
@@ -42,10 +42,10 @@ type ProjectMigration struct {
 	// Legacy maps each legacy file name that exists to the number of
 	// entries it holds.
 	Legacy map[string]int
-	// TargetExists reports whether mdm-lock.json is already present.
+	// TargetExists reports whether mdm.lock is already present.
 	TargetExists bool
 	// Orphaned lists legacy entries (as "file: name") that are absent from
-	// the existing mdm-lock.json and would be discarded by retiring the
+	// the existing mdm.lock and would be discarded by retiring the
 	// legacy files. Only populated when TargetExists.
 	Orphaned []string
 	// merged is the target lock assembled from the strictly parsed legacy
@@ -187,7 +187,7 @@ func (m *ProjectMigration) absorb(d legacyFileData) {
 }
 
 // ExecuteProjectMigration performs the migration PlanProjectMigration
-// described: it writes the lock the plan assembled to mdm-lock.json (when
+// described: it writes the lock the plan assembled to mdm.lock (when
 // it does not exist yet), replaces skills-lock.json with a tombstone (or
 // deletes it with tombstone=false), and deletes the other legacy files.
 // Call PlanProjectMigration first; a plan with orphaned entries discards

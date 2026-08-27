@@ -59,7 +59,7 @@ func TestKnowledgeLockRemoveDeletesLockWhenEmpty(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(GetProjectLockPath(cwd)); !os.IsNotExist(err) {
-		t.Error("expected mdm-lock.json to be deleted when the last entry is removed")
+		t.Error("expected mdm.lock to be deleted when the last entry is removed")
 	}
 	// Removing a missing entry is a no-op.
 	if err := RemoveBundleFromKnowledgeLock("missing", cwd); err != nil {

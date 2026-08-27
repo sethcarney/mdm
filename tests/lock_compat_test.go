@@ -14,7 +14,7 @@ import (
 func TestNewerLockVersionAborts(t *testing.T) {
 	dir := t.TempDir()
 	lockContent := `{"version": 99, "skills": {}}`
-	if err := os.WriteFile(filepath.Join(dir, "mdm-lock.json"), []byte(lockContent), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, lockName), []byte(lockContent), 0600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -40,7 +40,7 @@ func TestNewerLockVersionAborts(t *testing.T) {
 	if code == 0 {
 		t.Fatal("expected skills add to abort instead of overwriting a newer lock")
 	}
-	after, err := os.ReadFile(filepath.Join(dir, "mdm-lock.json"))
+	after, err := os.ReadFile(filepath.Join(dir, lockName))
 	if err != nil || string(after) != lockContent {
 		t.Errorf("newer lock file must be left untouched, got: %s (err=%v)", after, err)
 	}
@@ -48,7 +48,7 @@ func TestNewerLockVersionAborts(t *testing.T) {
 
 func TestCorruptLockAborts(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "mdm-lock.json"), []byte("{not json"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, lockName), []byte("{not json"), 0600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -66,7 +66,7 @@ func TestCorruptLockAborts(t *testing.T) {
 // legacy file, not abort on it.
 func TestTombstoneDoesNotAbortV2(t *testing.T) {
 	dir := t.TempDir()
-	tomb := `{"version": 2, "skills": {}, "_moved": "mdm-lock.json"}`
+	tomb := `{"version": 2, "skills": {}, "_moved": "` + lockName + `"}`
 	if err := os.WriteFile(filepath.Join(dir, "skills-lock.json"), []byte(tomb), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestTombstoneDoesNotAbortV2(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("v2 must tolerate its own tombstone, exited %d:\n%s%s", code, stdout, stderr)
 	}
-	if !strings.Contains(stdout, "No mdm-lock.json found") {
+	if !strings.Contains(stdout, "No "+lockName+" found") {
 		t.Errorf("tombstone-only project should read as empty, got: %q", stdout)
 	}
 }

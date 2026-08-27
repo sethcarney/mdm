@@ -14,7 +14,7 @@ import (
 // ──────────────────────────────────────────────────────────
 // Forward compatibility
 //
-// mdm-lock.json and mdm-state.json abort the command when this binary
+// mdm.lock and mdm-state.json abort the command when this binary
 // cannot understand them — a version from a newer mdm, or invalid JSON —
 // rather than reading as empty. The v1 line learned this the hard way:
 // its empty-on-unreadable fallback made `mdm skills install` in a
@@ -44,7 +44,7 @@ func fatalLock(err error) {
 
 // writeFileAtomic writes via a temp file in the same directory plus rename,
 // so a write that dies partway (disk full, crash) can never leave a
-// half-written lock behind — a truncated mdm-lock.json would abort every
+// half-written lock behind — a truncated mdm.lock would abort every
 // subsequent command, including the migration that could have repaired it.
 func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp*")
@@ -67,10 +67,10 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 }
 
 // ──────────────────────────────────────────────────────────
-// Unified project lock (mdm-lock.json)
+// Unified project lock (mdm.lock)
 //
 // v2 stores every project-scoped section — skills, knowledge bundles,
-// plugins, configured agents — in a single mdm-lock.json at the project
+// plugins, configured agents — in a single mdm.lock at the project
 // root. The v1 binaries' hazard (locks read into fixed structs and
 // rewritten wholesale, silently dropping keys they don't know) is closed
 // here rather than by splitting files: unknown top-level keys survive a
@@ -78,17 +78,17 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 // mdm cannot be destroyed by an older v2 binary touching its own section.
 //
 // Reads fall back to the v1 files (skills-lock.json, knowledge-lock.json,
-// plugins-lock.json) when mdm-lock.json does not exist; writes always go
-// to mdm-lock.json. The v1 files are left in place — `mdm migrate` owns
+// plugins-lock.json) when mdm.lock does not exist; writes always go
+// to mdm.lock. The v1 files are left in place — `mdm migrate` owns
 // retiring them.
 // ──────────────────────────────────────────────────────────
 
 // ProjectLockName is the unified project lock file at the project root.
-const ProjectLockName = "mdm-lock.json"
+const ProjectLockName = "mdm.lock"
 
 const projectLockVersion = 1
 
-// ProjectLockFile is the in-memory form of mdm-lock.json. Unknown
+// ProjectLockFile is the in-memory form of mdm.lock. Unknown
 // top-level keys are captured on read and re-emitted on write, and so are
 // unknown keys inside each entry — a per-entry field added by a newer v2
 // survives this binary rewriting the entry's known fields.
@@ -320,7 +320,7 @@ func (l *ProjectLockFile) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// GetProjectLockPath returns the path of mdm-lock.json for the project.
+// GetProjectLockPath returns the path of mdm.lock for the project.
 func GetProjectLockPath(cwd string) string {
 	if cwd == "" {
 		cwd, _ = os.Getwd()
@@ -328,7 +328,7 @@ func GetProjectLockPath(cwd string) string {
 	return filepath.Join(cwd, ProjectLockName)
 }
 
-// ReadProjectLock reads mdm-lock.json, falling back to the legacy v1 lock
+// ReadProjectLock reads mdm.lock, falling back to the legacy v1 lock
 // files when it does not exist. A missing lock reads as empty; one this
 // binary cannot understand aborts the process (see Forward compatibility
 // above).
@@ -348,7 +348,7 @@ func readProjectLockE(cwd string) (ProjectLockFile, error) {
 			return readLegacyLocksE(cwd)
 		}
 		// Only absence falls back to the legacy files — an unreadable
-		// mdm-lock.json (permissions, a directory) must abort, or `mdm
+		// mdm.lock (permissions, a directory) must abort, or `mdm
 		// skills install` becomes a silent exit-0 no-op in CI.
 		return EmptyProjectLock(), errUnreadableLock(path, err)
 	}
@@ -366,7 +366,7 @@ func readProjectLockE(cwd string) (ProjectLockFile, error) {
 	return lk, nil
 }
 
-// WriteProjectLock writes mdm-lock.json. A lock with nothing left in it
+// WriteProjectLock writes mdm.lock. A lock with nothing left in it
 // removes the file instead, matching the v1 knowledge/plugins behavior.
 func WriteProjectLock(lk ProjectLockFile, cwd string) error {
 	path := GetProjectLockPath(cwd)

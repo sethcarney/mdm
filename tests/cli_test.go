@@ -207,8 +207,8 @@ func TestInstallNoLockFile(t *testing.T) {
 	stdout, stderr, _ := runMdmInDir(t, tmpDir, env, "skills", "install", "-y")
 	combined := stdout + stderr
 
-	if !strings.Contains(combined, "No mdm-lock.json found") {
-		t.Errorf("expected 'No mdm-lock.json found' in output, got stdout=%q stderr=%q", stdout, stderr)
+	if !strings.Contains(combined, "No "+lockName+" found") {
+		t.Errorf("expected 'No mdm.lock found' in output, got stdout=%q stderr=%q", stdout, stderr)
 	}
 	if strings.Contains(combined, "Please provide a package source") {
 		t.Errorf("unexpected 'Please provide a package source' error in output: stdout=%q stderr=%q", stdout, stderr)
@@ -220,7 +220,7 @@ func TestInstallHelp(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("mdm skills install --help exited %d", code)
 	}
-	if !strings.Contains(stdout, "Restore skills from mdm-lock.json") {
+	if !strings.Contains(stdout, "Restore skills from "+lockName) {
 		t.Errorf("expected install help to contain description, got: %q", stdout)
 	}
 }
@@ -291,20 +291,20 @@ func TestLocalSkillLockUsesRelativePath(t *testing.T) {
 	}
 
 	// Read the produced lock file.
-	lockPath := filepath.Join(projectDir, "mdm-lock.json")
+	lockPath := filepath.Join(projectDir, lockName)
 	data, err := os.ReadFile(lockPath)
 	if err != nil {
-		t.Fatalf("reading mdm-lock.json: %v", err)
+		t.Fatalf("reading mdm.lock: %v", err)
 	}
 	content := string(data)
 
 	// The stored source must NOT be an absolute path — it should be relative.
 	if strings.Contains(content, skillDir) {
-		t.Errorf("mdm-lock.json contains the absolute skill path %q; expected a relative path.\nlock file:\n%s", skillDir, content)
+		t.Errorf("mdm.lock contains the absolute skill path %q; expected a relative path.\nlock file:\n%s", skillDir, content)
 	}
 	// It should start with "./" or "../" in the JSON.
 	if !strings.Contains(content, `"./`) && !strings.Contains(content, `"../`) {
-		t.Errorf("mdm-lock.json does not contain a relative path (./ or ../).\nlock file:\n%s", content)
+		t.Errorf("mdm.lock does not contain a relative path (./ or ../).\nlock file:\n%s", content)
 	}
 }
 

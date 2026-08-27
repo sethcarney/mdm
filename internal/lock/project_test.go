@@ -197,7 +197,7 @@ func TestProjectLockLegacyFallback(t *testing.T) {
 		t.Errorf("legacy configuredAgents not read: %v", lk.ConfiguredAgents)
 	}
 
-	// Once mdm-lock.json exists it wins; the legacy files are ignored but
+	// Once mdm.lock exists it wins; the legacy files are ignored but
 	// left in place for `mdm migrate`.
 	if err := WriteProjectLock(lk, cwd); err != nil {
 		t.Fatal(err)
@@ -205,10 +205,10 @@ func TestProjectLockLegacyFallback(t *testing.T) {
 	writeJSON("skills-lock.json", `{"version":1,"skills":{"ghost":{"source":"o/r","sourceType":"github"}}}`)
 	lk = ReadProjectLock(cwd)
 	if _, ok := lk.Skills["ghost"]; ok {
-		t.Error("legacy file consulted even though mdm-lock.json exists")
+		t.Error("legacy file consulted even though mdm.lock exists")
 	}
 	if _, ok := lk.Skills["s1"]; !ok {
-		t.Error("migrated entry missing from mdm-lock.json")
+		t.Error("migrated entry missing from mdm.lock")
 	}
 	for _, name := range []string{"skills-lock.json", "knowledge-lock.json", "plugins-lock.json"} {
 		if _, err := os.Stat(filepath.Join(cwd, name)); err != nil {
@@ -262,7 +262,7 @@ func TestProjectLockEmptyWriteRemovesFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(GetProjectLockPath(cwd)); !os.IsNotExist(err) {
-		t.Error("expected mdm-lock.json to be removed when nothing is left in it")
+		t.Error("expected mdm.lock to be removed when nothing is left in it")
 	}
 	// But not when another section still has entries.
 	if err := AddBundleToKnowledgeLock("k", KnowledgeLockEntry{Source: "x", SourceType: "local", InstallDir: "knowledge/k", SpecVersion: "0.1"}, cwd); err != nil {
@@ -275,7 +275,7 @@ func TestProjectLockEmptyWriteRemovesFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(GetProjectLockPath(cwd)); err != nil {
-		t.Errorf("mdm-lock.json should survive while the knowledge section has entries: %v", err)
+		t.Errorf("mdm.lock should survive while the knowledge section has entries: %v", err)
 	}
 }
 
@@ -303,7 +303,7 @@ func TestProjectLockUnreadableErrors(t *testing.T) {
 }
 
 func TestLegacyFallbackFailsLoudly(t *testing.T) {
-	// With no mdm-lock.json, everyday reads fall back to the v1 files.
+	// With no mdm.lock, everyday reads fall back to the v1 files.
 	// Corrupt or newer-versioned legacy files must abort the same way the
 	// final v1 patch releases did — not read as empty (the CI silent-no-op
 	// trap).
@@ -334,7 +334,7 @@ func TestLegacyFallbackFailsLoudly(t *testing.T) {
 func TestProjectLockToleratesLegacyTombstone(t *testing.T) {
 	cwd := t.TempDir()
 	// Only the tombstone exists: a fresh clone after a --no-commit mishap,
-	// or a v2 binary revisiting a migrated project whose mdm-lock.json was
+	// or a v2 binary revisiting a migrated project whose mdm.lock was
 	// deleted. It must read as empty, never abort.
 	if err := os.WriteFile(filepath.Join(cwd, "skills-lock.json"), []byte(SkillsTombstone), 0600); err != nil {
 		t.Fatal(err)

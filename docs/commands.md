@@ -31,7 +31,7 @@ mdm
 │   ├── update [skills...]                  # Re-fetch from recorded source+ref (alias: check)
 │   ├── audit [skills...]                   # Check for updates & security advisories
 │   ├── init [name]                         # Scaffold a new SKILL.md
-│   ├── install                             # Restore all skills from mdm-lock.json
+│   ├── install                             # Restore all skills from mdm.lock
 │   └── sync                                # Sync skills from node_modules
 ├── knowledge                               # Manage OKF knowledge bundles
 │   ├── add <source>                        # Install a bundle (alias: a)
@@ -40,7 +40,7 @@ mdm
 │   ├── update [bundles...]                 # Re-fetch bundles
 │   ├── validate [path]                     # Check OKF conformance & links
 │   ├── init [name]                         # Scaffold a minimal bundle
-│   └── install                             # Restore bundles from mdm-lock.json
+│   └── install                             # Restore bundles from mdm.lock
 ├── plugins                                 # Manage Agent Plugins
 │   ├── add <source>                        # Install a plugin, link skills, wire MCP (alias: a)
 │   ├── remove [plugins...]                 # Remove plugins (aliases: rm, r)
@@ -48,8 +48,8 @@ mdm
 │   ├── update [plugins...]                 # Re-fetch plugins
 │   ├── validate [path]                     # Check Agent Plugins conformance
 │   ├── init [name]                         # Scaffold a minimal plugin
-│   └── install                             # Restore plugins from mdm-lock.json
-├── migrate                                 # Fold v1 lock files into mdm-lock.json / mdm-state.json
+│   └── install                             # Restore plugins from mdm.lock
+├── migrate                                 # Fold v1 lock files into mdm.lock / mdm-state.json
 ├── experimental                            # Manage experimental features
 │   ├── list                                # Show features and status (alias: ls)
 │   ├── enable <feature>                    # Persist an opt-in
@@ -220,7 +220,7 @@ mdm skills init [name]
 
 ### `skills install`
 
-Restore all skills from `mdm-lock.json` — ideal for CI and onboarding.
+Restore all skills from `mdm.lock` — ideal for CI and onboarding.
 
 ```bash
 mdm skills install
@@ -304,7 +304,7 @@ Manage Open Knowledge Format (OKF) bundles.
 | `knowledge update [bundles...]` | Re-fetch bundles from their recorded source+ref |
 | `knowledge validate [path]` | Check OKF conformance and link integrity |
 | `knowledge init [name]` | Scaffold a minimal conformant bundle |
-| `knowledge install` | Restore all bundles from `mdm-lock.json` |
+| `knowledge install` | Restore all bundles from `mdm.lock` |
 
 | Flag | Applies to | Description |
 | --- | --- | --- |
@@ -331,7 +331,7 @@ the vendor-neutral [agent-plugins.org](https://agent-plugins.org) standard.
 | `plugins update [plugins...]` | Re-fetch plugins from their recorded source+ref (preserves the data dir) |
 | `plugins validate [path]` | Check Agent Plugins spec conformance |
 | `plugins init [name]` | Scaffold a minimal conformant plugin |
-| `plugins install` | Restore all plugins from `mdm-lock.json` |
+| `plugins install` | Restore all plugins from `mdm.lock` |
 
 | Flag | Applies to | Description |
 | --- | --- | --- |
@@ -370,7 +370,7 @@ graduated to full support in v2.
 ## `mdm migrate`
 
 Fold the v1 lock files into the v2 layout: `skills-lock.json`,
-`knowledge-lock.json`, and `plugins-lock.json` become one `mdm-lock.json`
+`knowledge-lock.json`, and `plugins-lock.json` become one `mdm.lock`
 at the project root, and the global `~/.agents/skills-lock.json` becomes
 `~/.agents/mdm-state.json`.
 
@@ -383,7 +383,7 @@ Non-interactive runs (CI, pipes) need `--yes` — without it the command
 fails rather than silently doing nothing.
 
 `skills-lock.json` is replaced with a tombstone that points v1 users at
-`mdm-lock.json` — interactive runs offer to delete it outright instead.
+`mdm.lock` — interactive runs offer to delete it outright instead.
 Patched v1 releases refuse the tombstone with an "upgrade mdm" error;
 older v1 releases read it as an empty lock.
 Commit the new lock and the removals together. v2 reads the v1 files
@@ -396,7 +396,7 @@ to run this for you when an upgrade crosses a major version.
 | `--dry-run` | Show what would be migrated without changing anything |
 | `--yes`, `-y` | Skip the confirmation prompt |
 | `--no-tombstone` | Delete `skills-lock.json` instead of leaving a tombstone |
-| `--force` | Discard legacy entries missing from an existing `mdm-lock.json` (they are listed first) |
+| `--force` | Discard legacy entries missing from an existing `mdm.lock` (they are listed first) |
 
 ---
 

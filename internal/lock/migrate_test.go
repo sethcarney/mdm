@@ -83,7 +83,7 @@ func assertMigratedProject(t *testing.T, cwd string) {
 	if err != nil {
 		t.Fatalf("expected a tombstone: %v", err)
 	}
-	if !strings.Contains(string(data), `"_moved": "mdm-lock.json"`) {
+	if !strings.Contains(string(data), `"_moved": "`+ProjectLockName+`"`) {
 		t.Errorf("tombstone missing _moved marker: %s", data)
 	}
 }
@@ -117,7 +117,7 @@ func TestPlanRejectsCorruptLegacyFile(t *testing.T) {
 
 func TestPlanReportsOrphanedEntries(t *testing.T) {
 	cwd := t.TempDir()
-	// mdm-lock.json exists and knows s1; the stale legacy file also has s2.
+	// mdm.lock exists and knows s1; the stale legacy file also has s2.
 	if err := AddSkillToLocalLock("s1", LocalSkillLockEntry{Source: "o/r", SourceType: "github"}, cwd); err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +134,7 @@ func TestPlanReportsOrphanedEntries(t *testing.T) {
 		t.Fatalf("unexpected plan: %+v", plan)
 	}
 
-	// Executing keeps mdm-lock.json as-is (s2 stays discarded) and retires
+	// Executing keeps mdm.lock as-is (s2 stays discarded) and retires
 	// the legacy file.
 	if err := ExecuteProjectMigration(cwd, true); err != nil {
 		t.Fatal(err)
@@ -229,7 +229,7 @@ func TestProjectMigrationRejectsUndecodableEntries(t *testing.T) {
 		t.Error("execute must refuse what the plan refuses")
 	}
 	if _, err := os.Stat(filepath.Join(cwd, ProjectLockName)); !os.IsNotExist(err) {
-		t.Error("no mdm-lock.json should be written for a refused migration")
+		t.Error("no mdm.lock should be written for a refused migration")
 	}
 	data, err := os.ReadFile(filepath.Join(cwd, "skills-lock.json"))
 	if err != nil || string(data) != bad {

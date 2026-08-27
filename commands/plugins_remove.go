@@ -21,7 +21,7 @@ func buildPluginsRemoveCmd() *cobra.Command {
 		Short:   "Remove installed Agent Plugins",
 		Aliases: []string{"rm", "r"},
 		Long: fmt.Sprintf(`Remove plugins, their skill links, their MCP config entries, and their
-mdm-lock.json entries.
+%s entries.
 
 The plugin's persistent data directory is preserved unless --purge-data
 is given.
@@ -31,7 +31,7 @@ If no plugin names are provided an interactive selection menu is shown.
 %sExamples:%s
   mdm plugins remove
   mdm plugins remove toolkit -y
-  mdm plugins remove toolkit --purge-data`, ansiBold, ansiReset),
+  mdm plugins remove toolkit --purge-data`, lockName, ansiBold, ansiReset),
 		Args: cobra.ArbitraryArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			runPluginsRemove(args, yes, purgeData)
@@ -125,7 +125,7 @@ func removeInstalledPlugin(name string, entry lock.PluginLockEntry, purgeData bo
 		}
 	}
 	if err := lock.RemovePluginFromLock(name, cwd); err != nil {
-		ui.LogWarn(fmt.Sprintf("could not update mdm-lock.json: %v", err))
+		ui.LogWarn(fmt.Sprintf("could not update %s: %v", lockName, err))
 	}
 	return true
 }

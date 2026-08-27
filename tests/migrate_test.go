@@ -29,8 +29,8 @@ func TestMigrateDryRunChangesNothing(t *testing.T) {
 	if !strings.Contains(stdout, "skills-lock.json") || !strings.Contains(stdout, "knowledge-lock.json") || !strings.Contains(stdout, "Dry run") {
 		t.Errorf("expected a migration plan and dry-run notice, got: %q", stdout)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "mdm-lock.json")); !os.IsNotExist(err) {
-		t.Error("dry run must not write mdm-lock.json")
+	if _, err := os.Stat(filepath.Join(dir, lockName)); !os.IsNotExist(err) {
+		t.Error("dry run must not write mdm.lock")
 	}
 	if _, err := os.Stat(filepath.Join(dir, "skills-lock.json")); err != nil {
 		t.Error("dry run must not touch legacy files")
@@ -46,9 +46,9 @@ func TestMigrateProjectEndToEnd(t *testing.T) {
 		t.Fatalf("migrate exited %d:\n%s%s", code, stdout, stderr)
 	}
 
-	lockData, err := os.ReadFile(filepath.Join(dir, "mdm-lock.json"))
+	lockData, err := os.ReadFile(filepath.Join(dir, lockName))
 	if err != nil {
-		t.Fatalf("expected mdm-lock.json: %v", err)
+		t.Fatalf("expected mdm.lock: %v", err)
 	}
 	for _, want := range []string{"my-skill", "kb", "claude-code"} {
 		if !strings.Contains(string(lockData), want) {
@@ -75,8 +75,8 @@ func TestMigrateProjectEndToEnd(t *testing.T) {
 
 func TestMigrateRefusesToDiscardWithoutForce(t *testing.T) {
 	dir := t.TempDir()
-	// mdm-lock.json knows nothing; the legacy file has an entry.
-	if err := os.WriteFile(filepath.Join(dir, "mdm-lock.json"), []byte(`{"version":1,"skills":{"other":{"source":"o/r","sourceType":"github"}}}`), 0600); err != nil {
+	// mdm.lock knows nothing; the legacy file has an entry.
+	if err := os.WriteFile(filepath.Join(dir, lockName), []byte(`{"version":1,"skills":{"other":{"source":"o/r","sourceType":"github"}}}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "skills-lock.json"), []byte(`{"version":1,"skills":{"stale":{"source":"o/r","sourceType":"github"}}}`), 0600); err != nil {
