@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/term"
 )
 
 // ANSI color/format constants (exported)
@@ -99,12 +100,19 @@ func Note(content, title string) {
 // ─── Spinner ───────────────────────────────────────────────────────────────────
 
 type Spinner struct {
-	msg  string
-	done chan struct{}
+	msg      string
+	done     chan struct{}
+	animated bool
 }
 
 func NewSpinner(msg string) *Spinner {
-	s := &Spinner{msg: msg, done: make(chan struct{})}
+	s := &Spinner{msg: msg, done: make(chan struct{}), animated: term.IsTerminal(os.Stdout.Fd())}
+	if !s.animated {
+		// Without a terminal, \r never overwrites the line, so every 80ms
+		// frame would land in the log as its own copy of the message.
+		fmt.Printf("%s%s%s\n", Dim, msg, Reset)
+		return s
+	}
 	go s.run()
 	return s
 }
@@ -130,9 +138,11 @@ func (s *Spinner) run() {
 }
 
 func (s *Spinner) Stop(msg string) {
-	close(s.done)
-	fmt.Print(ansiShowCursor)
-	fmt.Printf("%s%s%s %s\n", ansiCR, ansiClearLine, Dim, Reset)
+	if s.animated {
+		close(s.done)
+		fmt.Print(ansiShowCursor)
+		fmt.Printf("%s%s%s %s\n", ansiCR, ansiClearLine, Dim, Reset)
+	}
 	if msg != "" {
 		fmt.Printf("  %s%s%s\n", Dim, msg, Reset)
 	}
