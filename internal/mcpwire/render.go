@@ -9,8 +9,8 @@ import (
 )
 
 // RenderServer converts a validated plugin server into the agent-native
-// JSON object for this target. mdm is a config writer, not the launcher —
-// the agent is — so everything the spec asks the launcher to do is baked
+// JSON object for this target. mdm is a config writer, not the launcher -
+// the agent is - so everything the spec asks the launcher to do is baked
 // in here: ${PLUGIN_ROOT}/${PLUGIN_DATA} become absolute paths, both
 // variables are injected into the subprocess env, ./-prefixed commands
 // resolve inside the plugin root, and an omitted cwd defaults to it.

@@ -49,7 +49,7 @@ func buildAddCmd(ver string) *cobra.Command {
 
 The --agent (-a) and --skill (-s) flags accept multiple values. You can
 pass them space-separated after the flag or repeat the flag for each value
-— both styles are equivalent:
+- both styles are equivalent:
 
   mdm skills add owner/repo -a claude-code cursor
   mdm skills add owner/repo -a claude-code -a cursor
@@ -171,7 +171,7 @@ func filterWellKnownByName(skills []*registry.WellKnownSkill, filters []string) 
 }
 
 func selectWellKnownSkills(filtered []*registry.WellKnownSkill, opts AddOptions) ([]*registry.WellKnownSkill, bool) {
-	// Explicitly named skills (or "*") were already filtered — install them
+	// Explicitly named skills (or "*") were already filtered - install them
 	// without re-prompting, matching the clone path's selectSkills behavior.
 	if len(opts.Skills) > 0 || len(filtered) == 1 || opts.Yes {
 		return filtered, true
@@ -385,7 +385,7 @@ func cloneForAdd(parsed source.ParsedSource, ref string, opts AddOptions) (strin
 		spin.Stop("")
 		return tmpDir, err
 	}
-	vlog(true, "cloning %s (shallow, --depth 1) — large monorepos can take a while:", parsed.URL)
+	vlog(true, "cloning %s (shallow, --depth 1) - large monorepos can take a while:", parsed.URL)
 	start := time.Now()
 	tmpDir, err := git.CloneRepoWithOptions(parsed.URL, ref, git.CloneOptions{Verbose: true})
 	if err == nil {
@@ -400,9 +400,9 @@ func cloneForAdd(parsed source.ParsedSource, ref string, opts AddOptions) (strin
 func reportFastPathFallback(ownerRepo string, err error, verbose bool) {
 	switch {
 	case blob.IsRateLimited(err):
-		fmt.Fprintf(os.Stderr, "%sGitHub API rate limit reached — falling back to git clone (slower). Set GITHUB_TOKEN to avoid this.%s\n", ansiDim, ansiReset)
+		fmt.Fprintf(os.Stderr, "%sGitHub API rate limit reached - falling back to git clone (slower). Set GITHUB_TOKEN to avoid this.%s\n", ansiDim, ansiReset)
 	case err == blob.ErrTreeTruncated:
-		fmt.Fprintf(os.Stderr, "%sRepository is too large for the GitHub API path — falling back to git clone.%s\n", ansiDim, ansiReset)
+		fmt.Fprintf(os.Stderr, "%sRepository is too large for the GitHub API path - falling back to git clone.%s\n", ansiDim, ansiReset)
 	case err != nil:
 		vlog(verbose, "fast-path unavailable for %s (%v), falling back to full git clone", ownerRepo, err)
 	default:
@@ -533,7 +533,7 @@ func filterBlobSkillsByNames(skills []*blob.BlobSkill, names []string) []*blob.B
 }
 
 func selectBlobSkills(skills []*blob.BlobSkill, opts AddOptions) ([]*blob.BlobSkill, bool) {
-	// Explicitly named skills (or "*") were already filtered by runAddBlob —
+	// Explicitly named skills (or "*") were already filtered by runAddBlob -
 	// install them without re-prompting, matching the clone path's selectSkills.
 	// This keeps `mdm skills install` / `mdm skills update` non-interactive on
 	// the API fast path.
@@ -1039,7 +1039,7 @@ func promptAgents(opts AddOptions, global bool, cwd string) ([]string, bool) {
 	lockedOptions := buildLockedAgentOptions(global)
 
 	// If the user has a configured agent list for this scope, use it as the
-	// default — for both --yes and the interactive picker.
+	// default - for both --yes and the interactive picker.
 	configured := lock.GetConfiguredAgents(global, cwd)
 
 	if opts.Yes {
@@ -1087,7 +1087,7 @@ func promptAgents(opts AddOptions, global bool, cwd string) ([]string, bool) {
 		}
 	}
 	// Only save the user's explicit non-universal selections. Universal agents
-	// (.agents/skills) are always supported — no need to track them.
+	// (.agents/skills) are always supported - no need to track them.
 	if err := lock.SetConfiguredAgents(userSelected, global, cwd); err != nil {
 		ui.LogWarn(fmt.Sprintf("could not save agent preferences: %v", err))
 	}

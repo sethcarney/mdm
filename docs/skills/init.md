@@ -42,9 +42,9 @@ mdm follows the [Agent Skills open standard](https://agentskills.io/specificatio
 | Field | Required | Description |
 |---|---|---|
 | `name` | Yes | Skill identifier used as the `/skill-name` slash command. Lowercase letters, numbers, and hyphens only (max 64 characters). Must match the parent directory name. |
-| `description` | Yes | What the skill does and when to use it. Max 1024 characters. Claude uses this to decide when to load the skill automatically — put the key use case first. |
+| `description` | Yes | What the skill does and when to use it. Max 1024 characters. Claude uses this to decide when to load the skill automatically - put the key use case first. |
 | `license` | No | License name (e.g. `MIT`, `Apache-2.0`) or a reference to a bundled `LICENSE` file. |
-| `compatibility` | No | Plain-text description of environment requirements (max 500 characters). e.g. `"Node.js >=20, React ^18"`. mdm displays this in `mdm skills list`. Not enforced — informational only. |
+| `compatibility` | No | Plain-text description of environment requirements (max 500 characters). e.g. `"Node.js >=20, React ^18"`. mdm displays this in `mdm skills list`. Not enforced - informational only. |
 | `metadata` | No | Key-value pairs for custom properties (e.g. `internal: true` to hide from non-internal installs). |
 
 ## Examples
@@ -65,7 +65,7 @@ Once you have written your skill:
 2. Share it with `mdm skills add <owner>/<repo>`.
 3. Optionally submit to the [skills.sh](https://skills.sh) registry so others can find it with `mdm skills find`.
 
-A single repository can contain multiple skills — each in its own subdirectory with its own `SKILL.md`.
+A single repository can contain multiple skills - each in its own subdirectory with its own `SKILL.md`.
 
 ### Version tagging
 
@@ -97,4 +97,4 @@ compatibility: "Node.js >=20, React ^18, TypeScript >=5.0"
 ---
 ```
 
-This is informational — mdm displays it in `mdm skills list` so developers know what environment the skill targets. It is not enforced or validated.
+This is informational - mdm displays it in `mdm skills list` so developers know what environment the skill targets. It is not enforced or validated.

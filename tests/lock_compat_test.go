@@ -8,7 +8,7 @@ import (
 )
 
 // A lock file written by a newer mdm must abort the command with a clear
-// error, never read as empty — the old fallback made `mdm skills install`
+// error, never read as empty - the old fallback made `mdm skills install`
 // in a newer-format project a silent no-op that exits 0 in CI.
 func TestNewerLockVersionAborts(t *testing.T) {
 	dir := t.TempDir()

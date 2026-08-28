@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Project Is
 
-**MDM** (Markdown Management) is a Go CLI tool for managing "skills" — reusable markdown-based prompt libraries for AI agents (Claude Code, Cursor, Cline, Copilot, and 40+ others). Skills are installed from GitHub repos, GitLab, URLs, or local paths and placed into each agent's skills directory.
+**MDM** (Markdown Management) is a Go CLI tool for managing "skills" - reusable markdown-based prompt libraries for AI agents (Claude Code, Cursor, Cline, Copilot, and 40+ others). Skills are installed from GitHub repos, GitLab, URLs, or local paths and placed into each agent's skills directory.
 
 ## Git Conventions
 
@@ -47,8 +47,8 @@ the convention above before pushing, rather than pushing the generated name.
 ### Commit authorship
 
 Commits are authored by the person running the tool, not by the tool. An agent
-that finds a bot identity in `git config user.name` / `user.email` — some
-hosted environments preset one — should commit under the repository owner's
+that finds a bot identity in `git config user.name` / `user.email` - some
+hosted environments preset one - should commit under the repository owner's
 identity instead, matching what `git log` already shows:
 
 ```
@@ -82,7 +82,7 @@ Run with the debugger via `.vscode/launch.json` (Delve is configured).
 ## Dev container
 
 `.devcontainer/` provides a reproducible environment with the exact toolchain CI
-uses — no local Go install required. Open the repo in VS Code and choose
+uses - no local Go install required. Open the repo in VS Code and choose
 **Reopen in Container**, or run it headless:
 
 ```bash
@@ -104,7 +104,7 @@ What it pins:
 `postCreateCommand` runs `.devcontainer/post-create.sh`, which does `go mod
 download` and installs the three tools above. The tools are built with
 `go install` under a pinned `GOTOOLCHAIN` rather than downloaded as prebuilt
-binaries — golangci-lint has to be compiled with the project's Go to parse its
+binaries - golangci-lint has to be compiled with the project's Go to parse its
 go1.26 sources, the same reason `.github/workflows/ci.yml` sets
 `GOTOOLCHAIN=go1.26.6` before installing it. The script is idempotent, so
 re-running it on a rebuild skips tools already at the pinned version.
@@ -115,7 +115,7 @@ Bumping `go.mod` is enough to move the container. `post-create.sh` reads the
 `go` directive and runs `go env -w GOTOOLCHAIN=go<version>`, which every `go`
 command honours in any shell. The dev container feature only installs a
 bootstrap Go, so the first `go` command in a fresh container may download the
-pinned toolchain — a one-time cost that buys an exact match with CI.
+pinned toolchain - a one-time cost that buys an exact match with CI.
 
 The explicit pin matters: under the default `GOTOOLCHAIN=auto` the `go.mod`
 version is only a *minimum*, so a newer toolchain in the base image would
@@ -134,8 +134,8 @@ repository reports as unsigned.
 
 1. `.devcontainer/Dockerfile` pre-installs the packages the features would
    apt-get, so their install scripts skip apt entirely.
-2. `overrideFeatureInstallOrder` puts claude-code — the one feature that still
-   needs apt, for the nodesource repo — in the first feature step.
+2. `overrideFeatureInstallOrder` puts claude-code - the one feature that still
+   needs apt, for the nodesource repo - in the first feature step.
 3. `runArgs` mounts a tmpfs over `/tmp`, because the final image inherits the
    broken mode from the last feature step, and VS Code's attach sequence needs
    a writable `/tmp` (`mkdir -p /tmp/.X11-unix`) before any lifecycle hook
@@ -143,7 +143,7 @@ repository reports as unsigned.
    that ignore `runArgs`.
 
 All three are no-ops under docker. If a feature update starts failing this way
-again under podman, its install script has begun apt-getting something new —
+again under podman, its install script has begun apt-getting something new -
 add the package to the Dockerfile list.
 
 ### Claude Code
@@ -175,13 +175,13 @@ Claude configuration file not found at: /home/vscode/.claude.json
 A backup file exists at: /home/vscode/.claude/backups/.claude.json.backup.<ts>
 ```
 
-— the backup survived because `backups/` is inside the volume; the file it was
+- the backup survived because `backups/` is inside the volume; the file it was
 copied from was not. `CLAUDE_CONFIG_DIR` moves the whole config directory,
 `.claude.json` included, into the volume.
 
 `${devcontainerId}` scopes the volume to this project, so mdm does not share a
 session with every other repo on your machine. The target has to be
-`remoteUser`'s home directory — `tests/devcontainer_test.go` fails the build if
+`remoteUser`'s home directory - `tests/devcontainer_test.go` fails the build if
 those two stop agreeing, because the symptom otherwise is just being asked to
 sign in again after every rebuild, with no error to trace.
 
@@ -190,7 +190,7 @@ host is exposed to the container. Note that anything running in the container
 can still read the token in `~/.claude`, so treat it the way you would any
 other credential in your dev environment.
 
-The feature tag (`:1.0`) pins the feature's install script, not the CLI — the
+The feature tag (`:1.0`) pins the feature's install script, not the CLI - the
 feature installs the latest Claude Code, which then auto-updates itself. To pin
 a specific release instead, install it from a Dockerfile with
 `npm install -g @anthropic-ai/claude-code@X.Y.Z` and set `DISABLE_AUTOUPDATER=1`
@@ -199,13 +199,13 @@ in `containerEnv`.
 ### Drift protection
 
 `tests/devcontainer_test.go` fails the build when any pin disagrees with its
-source of truth — the `go` directive for the toolchain, and the `*_VERSION`
+source of truth - the `go` directive for the toolchain, and the `*_VERSION`
 assignments in `post-create.sh` for the tools. It covers the workflows, the
 `Makefile`, this file, and the dev container.
 
 Dependabot cannot do this job: it never rewrites go.mod's `go` directive, it
 does not parse `GOTOOLCHAIN` strings or `go install ...@v` lines inside workflow
-steps, and a `groups` block never spans package ecosystems — so the bumps could
+steps, and a `groups` block never spans package ecosystems - so the bumps could
 not land in one PR even in principle.
 
 ## Dev Container Feature
@@ -238,7 +238,7 @@ runs `<scenario key>.sh` for each key in `scenarios.json`.
 ### Versioning
 
 The version in `devcontainer-feature.json` is the **feature's** version, not
-mdm's — it tracks changes to `install.sh` and the options, and moves
+mdm's - it tracks changes to `install.sh` and the options, and moves
 independently of the release tags. Bump it there and the release workflow
 publishes `:1`, `:1.0`, `:1.0.0`, and `:latest`; the action skips a version
 that is already in the registry, so a run that changes nothing is a no-op.
@@ -254,7 +254,7 @@ consumers get a 401 from the registry when their container builds.
 ### Why the feature only installs a binary
 
 Feature install scripts run during **image build**, before the workspace is
-mounted, so nothing that reads or writes the repo can work there — `mdm skills
+mounted, so nothing that reads or writes the repo can work there - `mdm skills
 install` and `mdm rules link` belong in a `postCreateCommand`, which runs after
 the workspace exists. That is why there is no "run mdm on create" option: the
 option would have to run in a phase where there is no repo to run against.
@@ -269,7 +269,7 @@ running as.
 The binary itself goes to `/usr/local/lib/mdm/mdm`, chowned to `_REMOTE_USER`,
 and `/usr/local/bin/mdm` is a symlink to it. That is what makes `mdm upgrade`
 work inside the container: replacing a running executable means unlinking and
-recreating it, which is a permission on the *directory*, not on the file — so a
+recreating it, which is a permission on the *directory*, not on the file - so a
 binary sitting directly in a root-owned `/usr/local/bin` cannot be upgraded by
 the container's user at all, leaving an image rebuild as the only route to a
 new release. Chowning `/usr/local/bin` itself would hand that user every other
@@ -277,14 +277,14 @@ feature's binaries too, hence the private directory.
 
 `tests/devcontainer_feature_test.go` pins both halves, and
 `test/mdm/non_root_user.sh` performs the unlink-and-replace as the non-root
-user, because nothing else fails when this regresses — the container still
+user, because nothing else fails when this regresses - the container still
 builds, and only upgrades break, in someone else's container.
 
 ### Drift protection
 
 `tests/devcontainer_feature_test.go` ties the feature to the release it
 installs. `install.sh` hardcodes the repository, the asset names, and the
-checksum file name, none of which the compiler can see — so the test reads them
+checksum file name, none of which the compiler can see - so the test reads them
 back out of `.goreleaser.yaml` and fails the build when they disagree. It also
 checks that every feature has tests, that every scenario has a script (and every
 script a scenario), that pinned scenarios assert the version they pin, that the
@@ -312,7 +312,7 @@ hash the same way the Actions are pinned by SHA:
 
 | File | Role |
 | --- | --- |
-| `docs/requirements.in` | Direct dependencies — the file you edit |
+| `docs/requirements.in` | Direct dependencies - the file you edit |
 | `docs/requirements.txt` | Generated lock: every transitive dependency, `==` pinned, with artifact hashes |
 | `.github/workflows/docs.yml` | Installs the lock with `pip install --require-hashes` |
 
@@ -325,14 +325,14 @@ make docs-lock   # uv pip compile --generate-hashes, resolved for the Python the
 `--require-hashes` is what makes OpenSSF Scorecard count the pip command as
 pinned, and it is all-or-nothing: pip fails the whole install if any requirement
 lacks a hash or an `==` pin, so `requirements.txt` cannot be edited by hand.
-`tests/docs_requirements_test.go` enforces all of that — the flag in the
+`tests/docs_requirements_test.go` enforces all of that - the flag in the
 workflow, a fully hashed lock, the lock agreeing with `requirements.in`, and the
 `--python-version` in `make docs-lock` matching `setup-python` in the workflow.
 Dependabot watches `/docs` and recompiles the pair together.
 
 ## Dependency pinning
 
-Everything CI executes is pinned to an artifact, not to a name — that is what
+Everything CI executes is pinned to an artifact, not to a name - that is what
 OpenSSF Scorecard's Pinned-Dependencies check measures, and what keeps a
 republished tag from changing what runs.
 
@@ -344,7 +344,7 @@ republished tag from changing what runs.
 | pip (docs site) | `pip install --require-hashes` against `docs/requirements.txt` | Dependabot `pip`, `/docs` |
 | Go tools | `go install <module>@<version>` under a pinned `GOTOOLCHAIN` | `tests/devcontainer_test.go` |
 
-The root `package.json` is build tooling and nothing else — it pins the
+The root `package.json` is build tooling and nothing else - it pins the
 devcontainer CLI so `.github/workflows/devcontainer-feature.yml` can install it
 with `npm ci` instead of `npm install -g @devcontainers/cli@<version>`. The
 distinction matters even though both name an exact version: a version is not an
@@ -363,8 +363,8 @@ the generator reads `github.action_ref` at run time to decide which builder
 binary to download, so a SHA reference breaks the lookup outright. Pinning it is
 [documented as unsupported upstream](https://github.com/slsa-framework/slsa-github-generator#referencing-slsa-builders-and-generators).
 
-The alternative that would clear the warning — dropping the generator for
-`actions/attest-build-provenance` — trades SLSA Build Level 3 for Level 2 and
+The alternative that would clear the warning - dropping the generator for
+`actions/attest-build-provenance` - trades SLSA Build Level 3 for Level 2 and
 invalidates the `slsa-verifier` instructions in `SECURITY.md`. Losing a
 provenance level to gain a Scorecard point is the wrong direction, so the tag
 reference stays. Scorecard has no suppression syntax; the comment above the
@@ -480,13 +480,13 @@ mdm
 
 `mdm skills cherry-pick` → `cherrypick.go` reuses steps 1–3, then diverges:
 
-4. The skill directory is copied into `./skills/<name>` — the project's own tree,
+4. The skill directory is copied into `./skills/<name>` - the project's own tree,
    not an agent's
 5. `fork/` writes `.mdm-origin.json` (source, ref, commit, license, content hash)
    and `ATTRIBUTION.md`, and the upstream license text is copied in when the
    skill directory did not carry its own
 6. Nothing is recorded upstream-wards: with `--install` the lock entry points at
-   `./skills`, a *local* source, and `planUpdates` skips local sources — which is
+   `./skills`, a *local* source, and `planUpdates` skips local sources - which is
    what keeps `mdm skills update` from overwriting a fork
 
 That last point is the whole design. A fork is a file in the user's repository;
@@ -502,7 +502,7 @@ Create a file in `commands/`, define a `cobra.Command`, and register it either o
 
 ## Pre-PR Checklist
 
-Before opening a pull request, run these three checks — they mirror what CI runs
+Before opening a pull request, run these three checks - they mirror what CI runs
 and block merge on failure:
 
 ```bash
@@ -529,11 +529,11 @@ The Windows binary embeds an icon and version metadata via a `.syso` file that t
 
 ### How it works
 
-1. **`assets/mdm.svg`** — the canonical icon source (block-M + downward arrow, black on white).
-2. **`assets/mdm.ico`** — a committed multi-resolution ICO (16 / 32 / 48 / 64 / 128 / 256 px). Because it's committed, CI needs no external image tools.
-3. **`assets/versioninfo.json`** — goversioninfo config: file description, product name, icon path.
-4. **`resource_windows.syso`** — generated at build time by `make syso`; git-ignored. The `_windows` suffix is a Go build constraint so it's only linked into Windows targets.
-5. **`tools/gen-icon/`** — pure-Go program that renders the SVG shapes at all six sizes (4× supersampled for anti-aliasing) and writes `assets/mdm.ico`. No external tools required.
+1. **`assets/mdm.svg`** - the canonical icon source (block-M + downward arrow, black on white).
+2. **`assets/mdm.ico`** - a committed multi-resolution ICO (16 / 32 / 48 / 64 / 128 / 256 px). Because it's committed, CI needs no external image tools.
+3. **`assets/versioninfo.json`** - goversioninfo config: file description, product name, icon path.
+4. **`resource_windows.syso`** - generated at build time by `make syso`; git-ignored. The `_windows` suffix is a Go build constraint so it's only linked into Windows targets.
+5. **`tools/gen-icon/`** - pure-Go program that renders the SVG shapes at all six sizes (4× supersampled for anti-aliasing) and writes `assets/mdm.ico`. No external tools required.
 
 ### Updating the icon
 
@@ -556,7 +556,7 @@ Right-click `mdm.exe` → Properties → Details to verify the icon and version 
 
 ### goversioninfo is a declared tool dependency
 
-`goversioninfo` is pinned in `go.mod` under the `tool` directive (Go 1.24+). `make syso` invokes it via `go tool goversioninfo` — no manual install required.
+`goversioninfo` is pinned in `go.mod` under the `tool` directive (Go 1.24+). `make syso` invokes it via `go tool goversioninfo` - no manual install required.
 
 ## Release Process
 
@@ -567,6 +567,6 @@ git tag v1.5.8
 git push origin v1.5.8
 ```
 
-GoReleaser builds binaries for Linux/macOS/Windows (x64 + ARM64), creates a GitHub release, and injects the tag as the version via ldflags. `internal/version/version.go` holds a `"dev"` fallback for `go install` users — do not bump it for releases, the tag is the source of truth.
+GoReleaser builds binaries for Linux/macOS/Windows (x64 + ARM64), creates a GitHub release, and injects the tag as the version via ldflags. `internal/version/version.go` holds a `"dev"` fallback for `go install` users - do not bump it for releases, the tag is the source of truth.
 
 Pre-releases work the same way: push a tag like `v1.6.0-rc.1` and GoReleaser marks the GitHub release as a prerelease automatically. `mdm upgrade` skips prereleases because GitHub's `/releases/latest` API excludes them.

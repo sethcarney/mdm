@@ -10,7 +10,7 @@
 
 The markdown management CLI. No telemetry · Fully open source.
 
-📖 **Full documentation: [sethcarney.github.io/mdm](https://sethcarney.github.io/mdm/)** — install guide, complete [command reference](https://sethcarney.github.io/mdm/commands/), and per-command guides.
+📖 **Full documentation: [sethcarney.github.io/mdm](https://sethcarney.github.io/mdm/)** - install guide, complete [command reference](https://sethcarney.github.io/mdm/commands/), and per-command guides.
 
 ## Why mdm?
 
@@ -23,8 +23,8 @@ Managing markdown across multiple agentic coding tools is more painful than it s
 - **Skills from anywhere.** Install from GitHub, GitLab, arbitrary URLs, local paths, or the [skills.sh](https://skills.sh) registry.
 - **Reproducible installs.** Repos can commit a `skills-lock.json` with their recommended skills so new teammates run `mdm skills install` once and onboard with whatever agent they prefer.
 - **Security-focused by default.** Every install runs a deterministic local scan for hidden characters and prompt-smuggling patterns, and `mdm skills audit` checks for updates and OSV security advisories.
-- **Knowledge bundles _(experimental)_.** `mdm knowledge` installs, validates, and updates [Open Knowledge Format (OKF)](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf) bundles for AI agents. It's gated behind an experimental flag — see [docs/experimental.md](docs/experimental.md) to enable it.
-- **Agent Plugins _(experimental)_.** `mdm plugins` installs, validates, and updates [Agent Plugins](https://agent-plugins.org) — portable packages of skills and MCP servers — and wires their MCP servers into each agent's config. It's gated behind an experimental flag — see [docs/experimental.md](docs/experimental.md) to enable it.
+- **Knowledge bundles _(experimental)_.** `mdm knowledge` installs, validates, and updates [Open Knowledge Format (OKF)](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf) bundles for AI agents. It's gated behind an experimental flag - see [docs/experimental.md](docs/experimental.md) to enable it.
+- **Agent Plugins _(experimental)_.** `mdm plugins` installs, validates, and updates [Agent Plugins](https://agent-plugins.org) - portable packages of skills and MCP servers - and wires their MCP servers into each agent's config. It's gated behind an experimental flag - see [docs/experimental.md](docs/experimental.md) to enable it.
 - **No telemetry, fully open source.**
 
 Prefer a UI? There's also a [VS Code extension](https://marketplace.visualstudio.com/items?itemName=SethsSoftware.mdm-sidebar).
@@ -61,7 +61,7 @@ mdm is published as a [Dev Container Feature](https://containers.dev/implementor
 }
 ```
 
-The feature installs the release binary for the container's architecture to `/usr/local/bin/mdm`, verified against the release checksums — no Go toolchain needed in the image. Pin a release with `{"version": "1.9.1"}`, and pair it with `"postCreateCommand": "mdm skills install"` to restore the skills in `skills-lock.json` on create. See [src/mdm/README.md](src/mdm/README.md) for the full options.
+The feature installs the release binary for the container's architecture to `/usr/local/bin/mdm`, verified against the release checksums - no Go toolchain needed in the image. Pin a release with `{"version": "1.9.1"}`, and pair it with `"postCreateCommand": "mdm skills install"` to restore the skills in `skills-lock.json` on create. See [src/mdm/README.md](src/mdm/README.md) for the full options.
 
 ## Usage
 
@@ -95,7 +95,7 @@ Run `mdm --help` for the full command reference. See [docs/rules.md](docs/rules.
 > [!WARNING]
 > **`mdm agents remove openclaw` deletes `./skills/`.** Removing an agent cleans
 > up the skills directory that belongs to it, and OpenClaw's project skills
-> directory is `skills/` — the same place many projects keep hand-written
+> directory is `skills/` - the same place many projects keep hand-written
 > skills. mdm cannot tell your own work from an OpenClaw install, so anything in
 > there that is not a [cherry-picked fork](https://sethcarney.github.io/mdm/skills/cherry-pick/)
 > (those carry an `.mdm-origin.json` marker and are preserved) is deleted along
@@ -105,7 +105,7 @@ Run `mdm --help` for the full command reference. See [docs/rules.md](docs/rules.
 
 Skill installs run a deterministic local hidden-character scan over markdown files before copying or symlinking content. See [docs/security/hidden-character-scan.md](docs/security/hidden-character-scan.md) for the exact checks and bypass policy.
 
-When installing from a git source, mdm restricts git to the **https** and **ssh** transports. This blocks git's `ext::`/`fd::` local-command transports, which would otherwise let a repository source string — including one replayed from a checked-in `skills-lock.json` — execute arbitrary commands. See [docs/security/git-transport-restrictions.md](docs/security/git-transport-restrictions.md) for the rationale and the full allow/deny list.
+When installing from a git source, mdm restricts git to the **https** and **ssh** transports. This blocks git's `ext::`/`fd::` local-command transports, which would otherwise let a repository source string - including one replayed from a checked-in `skills-lock.json` - execute arbitrary commands. See [docs/security/git-transport-restrictions.md](docs/security/git-transport-restrictions.md) for the rationale and the full allow/deny list.
 
 ## Development
 

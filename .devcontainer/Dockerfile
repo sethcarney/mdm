@@ -3,7 +3,7 @@
 # themselves.
 #
 # Why: under podman, a buildah bug (containers/buildah#6503) corrupts /tmp in
-# the image layer committed by every feature-install step — each of those steps
+# the image layer committed by every feature-install step - each of those steps
 # bind-mounts under /tmp, and the committed layer loses /tmp's 1777 mode. The
 # first feature builds against a healthy /tmp; any later feature that runs
 # `apt-get update` fails with
@@ -14,13 +14,13 @@
 # build dies with "repository is not signed" for every source.
 #
 # Every feature this repo uses skips apt when nothing it needs is missing, so
-# installing their package lists here — an ordinary build step that runs before
-# any feature bind mount exists — keeps the feature steps apt-free. Under
+# installing their package lists here - an ordinary build step that runs before
+# any feature bind mount exists - keeps the feature steps apt-free. Under
 # docker this is a harmless no-op (the packages would have been installed
 # anyway). post-create.sh repairs /tmp's mode for the running container.
 # Pinned by digest, not just by tag: `bookworm` is a moving target, so a tag-only
 # reference means two builds of the same commit can start from different base
-# images. The tag is kept alongside it for readability — the digest is what
+# images. The tag is kept alongside it for readability - the digest is what
 # actually resolves. Dependabot's docker ecosystem watches this directory and
 # bumps the pair together; tests/devcontainer_test.go fails the build if the
 # digest is ever dropped.

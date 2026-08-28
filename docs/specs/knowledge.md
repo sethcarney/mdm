@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | Draft |
-| **Stability** | Experimental — gated behind `MDM_EXPERIMENTAL=knowledge` / `mdm experimental enable knowledge` |
+| **Stability** | Experimental - gated behind `MDM_EXPERIMENTAL=knowledge` / `mdm experimental enable knowledge` |
 | **Author** | Dakota Kim |
 | **Created** | 2026-07-06 |
 | **Tracking issue** | TBD |
@@ -12,7 +12,7 @@
 ## Summary
 
 Add an experimental `mdm knowledge` command group that installs, validates, and
-manages **Open Knowledge Format (OKF) bundles** — directories of markdown files
+manages **Open Knowledge Format (OKF) bundles** - directories of markdown files
 with YAML frontmatter that give AI agents durable reference context ("LLM-wiki"
 pattern). The feature reuses mdm's existing acquisition, locking, and security
 pipeline, ships behind a named experimental gate, and makes no stability
@@ -39,7 +39,7 @@ This maps almost one-to-one onto what mdm already does for skills:
 | Parse source (GitHub/GitLab/URL/local) | `internal/source` | As-is |
 | Shallow clone / API fetch | `internal/git`, `internal/blob` | As-is |
 | Discover markdown artifacts | `internal/skill` | New sibling: `internal/okf` |
-| Hidden-character / prompt-smuggling scan | `internal/security` | As-is (higher value here — see below) |
+| Hidden-character / prompt-smuggling scan | `internal/security` | As-is (higher value here - see below) |
 | Pin source+ref+hash in a lock file | `internal/lock` | New file: `knowledge-lock.json` |
 | Health checks | `commands/doctor.go` | Extend when gate is enabled |
 
@@ -66,18 +66,18 @@ gate itself.
 
 ## Non-goals (for the experimental phase)
 
-- **Authoring/enrichment pipelines** — generating OKF content from BigQuery,
+- **Authoring/enrichment pipelines** - generating OKF content from BigQuery,
   databases, or codebases is Google's reference-agent territory, not mdm's.
-- **A knowledge registry or search** — there is no skills.sh equivalent for
+- **A knowledge registry or search** - there is no skills.sh equivalent for
   OKF yet; `mdm knowledge find` is out of scope until an ecosystem exists.
-- **Rendering/visualization** — the OKF repo ships an HTML visualizer; we
+- **Rendering/visualization** - the OKF repo ships an HTML visualizer; we
   don't compete with it.
-- **Automatic agent wiring** — injecting bundle references into
+- **Automatic agent wiring** - injecting bundle references into
   CLAUDE.md/AGENTS.md is deferred to a later phase (see Future value); it
   needs its own design because it mutates user-owned files.
-- **Serving knowledge at runtime** (MCP server, HTTP) — out of scope entirely.
+- **Serving knowledge at runtime** (MCP server, HTTP) - out of scope entirely.
 
-## Value today — an honest assessment
+## Value today - an honest assessment
 
 Be clear-eyed about this: **the immediate practical value is modest.**
 
@@ -86,7 +86,7 @@ Be clear-eyed about this: **the immediate practical value is modest.**
   no discovery story, and no evidence yet of third-party producers.
 - Teams already doing the LLM-wiki pattern do it fine with `git clone` and a
   `docs/` directory. `mdm knowledge add` beats that only via pinning,
-  update-checking, and the security scan — real but incremental wins.
+  update-checking, and the security scan - real but incremental wins.
 - The `audit` verb has nothing external to query; it can only diff local
   hashes against the recorded ref until a registry exists.
 
@@ -94,7 +94,7 @@ What *is* real today:
 
 1. **The validator.** A fast, dependency-free `mdm knowledge validate` (Go
    binary vs. Google's Python tooling) that checks conformance and link
-   integrity fills a genuine gap — useful even to people who don't use mdm for
+   integrity fills a genuine gap - useful even to people who don't use mdm for
    installation, and cheap to build. This is the highest confidence-to-effort
    item in the whole spec.
 2. **The security scan.** Installing agent-bound markdown through a
@@ -102,12 +102,12 @@ What *is* real today:
    safety win the moment anyone installs a bundle they didn't author.
 3. **Positioning and learning.** Being early to skills worked for mdm. If
    knowledge-as-context keeps rising, the cheapest way to have an informed
-   opinion — and influence on the spec — is a working implementation we
+   opinion - and influence on the spec - is a working implementation we
    dogfood ourselves.
 
 If OKF stalls, the sunk cost is bounded (see Exit criteria).
 
-## Value later — if the pattern holds
+## Value later - if the pattern holds
 
 - **Registry integration**: when an OKF registry or `.well-known/knowledge`
   convention appears (mdm already speaks `.well-known/agent-skills` via
@@ -122,7 +122,7 @@ If OKF stalls, the sunk cost is bounded (see Exit criteria).
   acquisition/lock/scan pipeline is format-agnostic; only discovery/validation
   is OKF-specific (one module, not a rewrite).
 - **Doctor as knowledge CI**: link-rot and staleness checks (`timestamp` drift)
-  over a team's own bundle, run in CI — mdm becomes the lint step for the
+  over a team's own bundle, run in CI - mdm becomes the lint step for the
   knowledge itself, not just the installer.
 
 ## Design
@@ -147,12 +147,12 @@ func Enabled(f Feature) bool
 
 **Activation paths:**
 
-1. `MDM_EXPERIMENTAL=knowledge` — ephemeral, CI-friendly, no state.
-2. `mdm experimental enable knowledge` — persists to an
+1. `MDM_EXPERIMENTAL=knowledge` - ephemeral, CI-friendly, no state.
+2. `mdm experimental enable knowledge` - persists to an
    `Experimental []string` field on the existing global lock file
    (`SkillLockFile`), alongside the precedent set by `ConfiguredAgents` and
    `DismissedPrompts`. Losing this field to an older binary's rewrite is
-   acceptable — it's a toggle, not data.
+   acceptable - it's a toggle, not data.
 
 **`mdm experimental` command group** (always visible):
 
@@ -168,11 +168,11 @@ mdm experimental
 - The `knowledge` command is always registered.
 - **Disabled**: `Hidden: true` (absent from help and shell completion) plus a
   `PersistentPreRunE` that refuses with a pointer:
-  `knowledge is experimental — enable with 'mdm experimental enable knowledge' or MDM_EXPERIMENTAL=knowledge`.
+  `knowledge is experimental - enable with 'mdm experimental enable knowledge' or MDM_EXPERIMENTAL=knowledge`.
   Discoverable for people who heard about it; invisible to everyone else.
 - **Enabled**: visible with an `[experimental]` suffix in help text, and every
   invocation prints one dim banner line:
-  `⚠ experimental: OKF support tracks spec v0.1 — commands and file formats may change`.
+  `⚠ experimental: OKF support tracks spec v0.1 - commands and file formats may change`.
 
 **Stability contract**: README and release notes state that experimental
 features may change or be removed in any release, exempt from semver.
@@ -193,7 +193,7 @@ mdm knowledge
 └── install              # restore all bundles from knowledge-lock.json (CI/onboarding)
 ```
 
-Verbs, aliases, and flag conventions mirror `mdm skills` exactly — the group
+Verbs, aliases, and flag conventions mirror `mdm skills` exactly - the group
 should feel like the same tool, not a bolted-on subproject.
 
 **Install destination.** Unlike skills, no per-agent knowledge directory
@@ -208,7 +208,7 @@ Knowledge entries live in **`knowledge-lock.json`**, *not* in
 
 Rationale: `internal/lock` reads by unmarshaling into a fixed struct and
 **rewrites the file wholesale** on every change. Any older mdm binary (or a
-teammate on stable) touching skills would silently drop unknown keys — so
+teammate on stable) touching skills would silently drop unknown keys - so
 experimental data in the shared file would be corruptible by non-experimental
 usage. A separate file gives the experiment zero blast radius and makes
 eventual graduation an explicit, versioned migration instead of an accretion.
@@ -241,7 +241,7 @@ The only substantial new domain code:
 - **Discovery**: locate bundle roots in a fetched tree (heuristic: directories
   of `.md` files with OKF frontmatter; explicit path wins over heuristics).
 - **Parsing**: frontmatter (`type` required; `title`, `description`,
-  `resource`, `tags`, `timestamp` reserved) — extend or mirror
+  `resource`, `tags`, `timestamp` reserved) - extend or mirror
   `internal/skill`'s frontmatter handling rather than duplicating it.
 - **Validation**: per-document conformance, reserved-filename rules
   (`index.md`, `log.md`), cross-link resolution (every relative markdown link
@@ -267,13 +267,13 @@ stale `timestamp`s. When disabled, doctor's output is byte-identical to today.
 ## Build plan
 
 Each PR lands green on the full pre-PR checklist (`gofmt -s`, `go test ./...`,
-`govulncheck`, `gocyclo -over 16`) and leaves `main` shippable — the gate is
+`govulncheck`, `gocyclo -over 16`) and leaves `main` shippable - the gate is
 what makes incremental merging safe.
 
 | PR | Branch | Contents |
 |---|---|---|
 | 1 | `feat/experimental-gate` | `internal/experimental/`, `mdm experimental` group, `Experimental` field on `SkillLockFile`, hidden `knowledge` skeleton that refuses when disabled. Docs: `docs/experimental.md`. |
-| 2 | `feat/okf-validate` | `internal/okf/` parsing + validation, `mdm knowledge validate`, `init`. Pure-local, no network — the highest-value, lowest-risk slice ships first. |
+| 2 | `feat/okf-validate` | `internal/okf/` parsing + validation, `mdm knowledge validate`, `init`. Pure-local, no network - the highest-value, lowest-risk slice ships first. |
 | 3 | `feat/knowledge-add` | `add`/`list`/`remove` wired through `source`/`git`/`blob` + security scan + `knowledge-lock.json`. |
 | 4 | `feat/knowledge-update` | `update`, `install`, doctor integration. |
 
@@ -288,7 +288,7 @@ Follow the repo's existing two-tier pattern.
 
 - `internal/experimental`: env-var parsing (single, list, `all`, empty),
   persisted-toggle read, precedence.
-- `internal/okf`: table-driven over `testdata/` fixture bundles —
+- `internal/okf`: table-driven over `testdata/` fixture bundles -
   a conformant bundle, missing `type`, broken cross-link, orphaned doc,
   reserved-filename violation, non-OKF markdown dir (discovery must decline).
   Google's sample bundles (GA4 et al.) vendored as a conformance fixture so
@@ -296,7 +296,7 @@ Follow the repo's existing two-tier pattern.
 - `internal/lock`: knowledge lock round-trip; assert `skills-lock.json` is
   untouched by knowledge operations.
 
-**End-to-end tests** (`tests/`, same harness as `cli_test.go` — build the real
+**End-to-end tests** (`tests/`, same harness as `cli_test.go` - build the real
 binary, exec it):
 
 - **Gate off** (default): `knowledge` absent from `mdm --help` and completion
@@ -314,7 +314,7 @@ binary, exec it):
   and assert `knowledge-lock.json` survives byte-identical.
 
 **Not covered / accepted risk**: live GitHub/GitLab fetches (network) are
-exercised the same way skills' are today — via the shared `source`/`git` paths
+exercised the same way skills' are today - via the shared `source`/`git` paths
 already under test; e2e fixtures use local paths.
 
 ## Graduation criteria
@@ -336,7 +336,7 @@ If after ~2 quarters OKF shows no ecosystem traction, or a competing format
 clearly wins: delete `commands/knowledge.go`, `internal/okf/`, and the feature
 registry entry; keep `internal/experimental` (reusable rail) and the validator
 learnings. Because nothing was stable, removal is a minor release and a
-changelog line. Users' installed bundle *files* are never deleted by removal —
+changelog line. Users' installed bundle *files* are never deleted by removal -
 only the tooling goes.
 
 ## Risks
@@ -353,9 +353,9 @@ only the tooling goes.
 
 1. **Bundle naming/identity**: derive from repo name, top-level `index.md`
    title, or directory name? (Lean: directory name, sanitized, `--name`
-   override — matches skills.)
+   override - matches skills.)
 2. **Multiple bundles per repo**: support `--bundle` filtering like `--skill`,
-   or one-bundle-per-add for v1? (Lean: discover all, prompt — matches skills
+   or one-bundle-per-add for v1? (Lean: discover all, prompt - matches skills
    UX.)
 3. **Where validate's spec text lives**: vendor OKF's SPEC.md rules as code
    with a pinned upstream commit hash, or fetch at runtime? (Lean: vendor;

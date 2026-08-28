@@ -4,7 +4,7 @@
     "name": "mdm (markdown management CLI)",
     "documentationURL": "https://github.com/sethcarney/mdm/tree/main/src/mdm",
     "licenseURL": "https://github.com/sethcarney/mdm/blob/main/LICENSE",
-    "description": "Installs the mdm CLI — manage AI agent instruction files (AGENTS.md, CLAUDE.md, .cursorrules) and install skills from GitHub, GitLab, URLs, or the skills.sh registry.",
+    "description": "Installs the mdm CLI - manage AI agent instruction files (AGENTS.md, CLAUDE.md, .cursorrules) and install skills from GitHub, GitLab, URLs, or the skills.sh registry.",
     "options": {
         "version": {
             "type": "string",

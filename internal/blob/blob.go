@@ -62,7 +62,7 @@ type APIError struct {
 
 func (e *APIError) Error() string {
 	if e.RateLimited {
-		return "GitHub API rate limit exceeded — set GITHUB_TOKEN to raise the limit"
+		return "GitHub API rate limit exceeded - set GITHUB_TOKEN to raise the limit"
 	}
 	if e.Status != 0 {
 		return fmt.Sprintf("GitHub API request failed (status %d)", e.Status)
@@ -325,7 +325,7 @@ func (o InstallOptions) log(format string, a ...interface{}) {
 }
 
 // TryBlobInstall resolves skills from any public GitHub repo using the GitHub
-// API plus raw.githubusercontent.com — no git clone and no GitHub CLI required.
+// API plus raw.githubusercontent.com - no git clone and no GitHub CLI required.
 //
 // It returns:
 //   - (result, nil)            when skills were found,
@@ -351,7 +351,7 @@ func TryBlobInstall(ownerRepo string, opts InstallOptions) (*BlobInstallResult, 
 		return nil, err
 	}
 	if tree.Truncated {
-		opts.log("tree truncated at %d entries — repo too large for the API path", len(tree.Tree))
+		opts.log("tree truncated at %d entries - repo too large for the API path", len(tree.Tree))
 		return nil, ErrTreeTruncated
 	}
 

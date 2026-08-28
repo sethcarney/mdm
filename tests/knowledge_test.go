@@ -378,7 +378,7 @@ func TestDoctorKnowledgeSectionGated(t *testing.T) {
 		t.Errorf("expected knowledge section with missing-bundle error, got:\n%s", stdout)
 	}
 
-	// Gate off: same project, no knowledge section — stable doctor output is
+	// Gate off: same project, no knowledge section - stable doctor output is
 	// unaffected by experimental state on disk.
 	envOff := freshEnv(t)
 	stdout, _, code = runMdmInDir(t, project, envOff, "doctor", "-p")

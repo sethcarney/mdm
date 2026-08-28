@@ -42,7 +42,7 @@ install:
 
 The feature detects the container's architecture, downloads the matching release
 binary, verifies it against that release's `sha256sums.txt`, and installs it to
-`/usr/local/bin/mdm` — on `PATH` for every user, and no Go toolchain required in
+`/usr/local/bin/mdm` - on `PATH` for every user, and no Go toolchain required in
 the image.
 
 Pin a release when the container needs to be reproducible:
@@ -71,7 +71,7 @@ goes in a lifecycle command:
 ```
 
 That restores every skill recorded in the repo's `skills-lock.json` when the
-container is created — see [`mdm skills install`](skills/install.md). `mdm rules
+container is created - see [`mdm skills install`](skills/install.md). `mdm rules
 link` fits the same slot.
 
 !!! note "Supported platforms"
@@ -89,7 +89,7 @@ link` fits the same slot.
     ```
 
     This installs to `$GOPATH/bin`. The version reported by `mdm --version`
-    will be `dev` for `go install` builds — released binaries carry the real
+    will be `dev` for `go install` builds - released binaries carry the real
     tag.
 
 === "Download a release"

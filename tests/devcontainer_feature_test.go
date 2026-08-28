@@ -15,7 +15,7 @@ import (
 // The dev container feature in src/ installs a *release binary*, so it depends
 // on facts that live in .goreleaser.yaml: which repository the release is cut
 // from, what the linux assets are called, and the name of the checksum
-// manifest. Nothing at build time connects the two — a rename in the release
+// manifest. Nothing at build time connects the two - a rename in the release
 // config would leave install.sh downloading a URL that 404s, and the first
 // person to notice would be a consumer whose container stopped building.
 //
@@ -48,7 +48,7 @@ type featureMeta struct {
 }
 
 // featureIDs returns every feature directory under src/, keyed by its declared
-// id. The directory name and the id have to agree — the devcontainer CLI
+// id. The directory name and the id have to agree - the devcontainer CLI
 // addresses features by directory, the registry by id.
 func featureIDs(t *testing.T) map[string]featureMeta {
 	t.Helper()
@@ -102,7 +102,7 @@ func TestFeatureMetadata(t *testing.T) {
 
 		opt, ok := meta.Options["version"]
 		if !ok {
-			t.Fatalf("feature %s: no `version` option — consumers cannot pin a release", id)
+			t.Fatalf("feature %s: no `version` option - consumers cannot pin a release", id)
 		}
 		if opt.Type != "string" {
 			t.Errorf("feature %s: `version` option is %q, want string", id, opt.Type)
@@ -248,7 +248,7 @@ func TestFeatureInstallsToASharedPath(t *testing.T) {
 // binary straight into a root-owned /usr/local/bin and `mdm upgrade` fails for
 // the remoteUser with "permission denied", leaving an image rebuild as the only
 // route to a new release. Nothing in a container build fails when this
-// regresses — the feature installs fine and only upgrades break, months later
+// regresses - the feature installs fine and only upgrades break, months later
 // and in someone else's container.
 func TestFeatureBinaryIsOwnedByTheRemoteUser(t *testing.T) {
 	script := readRepoFile(t, featureInstallPath)
@@ -456,7 +456,7 @@ func pinnedCLIVersion(t *testing.T) string {
 		t.Fatalf("%s no longer pins %s", packageJSON, cliPackage)
 	}
 	if !semverPattern.MatchString(v) {
-		t.Errorf("%s pins %s as %q; it must be an exact major.minor.patch version — "+
+		t.Errorf("%s pins %s as %q; it must be an exact major.minor.patch version - "+
 			"a range (^, ~, *) lets a CLI release change what CI runs", packageJSON, cliPackage, v)
 	}
 	return v
@@ -467,7 +467,7 @@ func pinnedCLIVersion(t *testing.T) string {
 // artifact: a republish under the same version changes what CI executes, and
 // OpenSSF Scorecard reads any such command as an unpinned dependency. `npm ci`
 // against a lockfile carrying integrity hashes is the pinned form, and it only
-// stays pinned while the lock agrees with the manifest — `npm ci` hard-fails
+// stays pinned while the lock agrees with the manifest - `npm ci` hard-fails
 // otherwise, which is a red build for a reason nobody would guess from here.
 func TestDevcontainerCLIIsHashPinned(t *testing.T) {
 	want := pinnedCLIVersion(t)
@@ -488,7 +488,7 @@ func TestDevcontainerCLIIsHashPinned(t *testing.T) {
 		t.Fatalf("%s has no entry for %s; run `npm install --package-lock-only` and commit it",
 			packageLock, cliPackage)
 	case entry.Version != want:
-		t.Errorf("%s locks %s@%s but %s pins %s — run `npm install --package-lock-only`",
+		t.Errorf("%s locks %s@%s but %s pins %s - run `npm install --package-lock-only`",
 			packageLock, cliPackage, entry.Version, packageJSON, want)
 	case entry.Integrity == "":
 		t.Errorf("%s locks %s with no integrity hash, which is the whole point of the lock",
@@ -497,7 +497,7 @@ func TestDevcontainerCLIIsHashPinned(t *testing.T) {
 
 	// A global install would reintroduce the unpinned download the lock exists
 	// to replace, and would silently win over the locked copy on PATH. Comments
-	// are stripped first — the header of that workflow explains the rule by
+	// are stripped first - the header of that workflow explains the rule by
 	// quoting the command it forbids.
 	testWf := stripYAMLComments(readRepoFile(t, featureTestWfPath))
 	if strings.Contains(testWf, "npm install -g") {
@@ -571,8 +571,8 @@ func TestFeatureWorkflowsAgree(t *testing.T) {
 }
 
 // TestFeatureREADMEDocumentsOptions keeps the options table honest. The table
-// is the published documentation for the feature — consumers read it instead of
-// the JSON — so a renamed option or a changed default has to land in both.
+// is the published documentation for the feature - consumers read it instead of
+// the JSON - so a renamed option or a changed default has to land in both.
 func TestFeatureREADMEDocumentsOptions(t *testing.T) {
 	readme := readRepoFile(t, featureReadmePath)
 	meta := featureIDs(t)["mdm"]
