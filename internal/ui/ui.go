@@ -126,7 +126,13 @@ func (s *Spinner) run() {
 		case <-s.done:
 			return
 		default:
-			fmt.Printf("%s%s%s %s%s", ansiCR, Dim, frames[i%len(frames)], s.msg, Reset)
+			// Clip to the terminal width: a frame that wraps can no longer be
+			// overwritten by \r, so each redraw would scroll a new copy.
+			msg := s.msg
+			if width, _, err := term.GetSize(os.Stdout.Fd()); err == nil {
+				msg = clipToWidth(msg, width-3) // frame glyph, space, last column
+			}
+			fmt.Printf("%s%s%s%s %s%s", ansiCR, ansiClearLine, Dim, frames[i%len(frames)], msg, Reset)
 			i++
 			select {
 			case <-s.done:
@@ -135,6 +141,14 @@ func (s *Spinner) run() {
 			}
 		}
 	}
+}
+
+func clipToWidth(msg string, max int) string {
+	r := []rune(msg)
+	if max < 1 || len(r) <= max {
+		return msg
+	}
+	return string(r[:max-1]) + "…"
 }
 
 func (s *Spinner) Stop(msg string) {
