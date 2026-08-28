@@ -13,4 +13,4 @@ mkdocs-material==9.7.7
 # version that resolves by default has to stay ahead of GHSA-9xwg-3r6f-jcx2
 # (path traversal in the b64 extension, fixed in 11.0.0). mkdocs-material
 # 9.5.x capped this at ~=10.2, which no fixed release satisfies.
-pymdown-extensions==11.0.1
+pymdown-extensions==11.0.2
