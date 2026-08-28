@@ -45,7 +45,7 @@ func diagnoseInstalledPlugin(name string, entry lock.PluginLockEntry, cwd string
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		return []doctorIssue{{
 			Level:   "error",
-			Message: fmt.Sprintf("%s: plugin directory ./%s not found — run `mdm plugins install` to restore", name, entry.InstallDir),
+			Message: fmt.Sprintf("%s: plugin directory ./%s not found - run `mdm plugins install` to restore", name, entry.InstallDir),
 		}}
 	}
 
@@ -53,14 +53,14 @@ func diagnoseInstalledPlugin(name string, entry lock.PluginLockEntry, cwd string
 	if _, _, err := plugin.LoadManifest(dir); err != nil {
 		issues = append(issues, doctorIssue{
 			Level:   "error",
-			Message: fmt.Sprintf("%s: %v — run `mdm plugins validate ./%s`", name, err, entry.InstallDir),
+			Message: fmt.Sprintf("%s: %v - run `mdm plugins validate ./%s`", name, err, entry.InstallDir),
 		})
 	}
 	if entry.ContentHash != "" {
 		if hash, err := plugin.HashPluginDir(dir); err == nil && hash != entry.ContentHash {
 			issues = append(issues, doctorIssue{
 				Level:   "warn",
-				Message: fmt.Sprintf("%s: modified since install (content hash mismatch) — run `mdm plugins update %s` to re-fetch", name, name),
+				Message: fmt.Sprintf("%s: modified since install (content hash mismatch) - run `mdm plugins update %s` to re-fetch", name, name),
 			})
 		}
 	}
@@ -79,7 +79,7 @@ func diagnosePluginSkillLinks(name string, entry lock.PluginLockEntry, cwd strin
 		if _, err := os.Lstat(canonicalDir); os.IsNotExist(err) {
 			issues = append(issues, doctorIssue{
 				Level:   "warn",
-				Message: fmt.Sprintf("%s: skill link %s missing — run `mdm plugins update %s` to re-link", name, skillName, name),
+				Message: fmt.Sprintf("%s: skill link %s missing - run `mdm plugins update %s` to re-link", name, skillName, name),
 			})
 			continue
 		}
@@ -120,7 +120,7 @@ func diagnosePluginMCP(name string, entry lock.PluginLockEntry, cwd string) []do
 			if !managedSet[id] {
 				issues = append(issues, doctorIssue{
 					Level:   "warn",
-					Message: fmt.Sprintf("%s: server %s missing from %s — run `mdm plugins update %s` to re-wire", name, id, target.ConfigPath, name),
+					Message: fmt.Sprintf("%s: server %s missing from %s - run `mdm plugins update %s` to re-wire", name, id, target.ConfigPath, name),
 				})
 			}
 		}
@@ -128,7 +128,7 @@ func diagnosePluginMCP(name string, entry lock.PluginLockEntry, cwd string) []do
 			if !recorded[id] {
 				issues = append(issues, doctorIssue{
 					Level:   "warn",
-					Message: fmt.Sprintf("%s: orphaned server %s in %s — remove it or re-run `mdm plugins update %s`", name, id, target.ConfigPath, name),
+					Message: fmt.Sprintf("%s: orphaned server %s in %s - remove it or re-run `mdm plugins update %s`", name, id, target.ConfigPath, name),
 				})
 			}
 		}
@@ -154,7 +154,7 @@ func pluginsGitignoreHint(cwd string) *doctorIssue {
 	rel := filepath.ToSlash(filepath.Join(agent.AgentsDir, pluginsDataSubdir))
 	return &doctorIssue{
 		Level:   "warn",
-		Message: fmt.Sprintf("plugin data is machine-local state — add %s/ to .gitignore", rel),
+		Message: fmt.Sprintf("plugin data is machine-local state - add %s/ to .gitignore", rel),
 	}
 }
 

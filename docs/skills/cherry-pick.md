@@ -8,13 +8,13 @@ Fork third-party skills into your own project, so you can edit them and ship the
 mdm skills cherry-pick <source>
 ```
 
-`<source>` accepts the same forms as [`mdm skills add`](add.md) — GitHub shorthand, full GitHub/GitLab/Bitbucket URLs, any git URL with an optional `#ref`, and local paths — with one exception: well-known registry aliases serve files without a repository to fork from, so install those with `mdm skills add` first and cherry-pick the installed copy.
+`<source>` accepts the same forms as [`mdm skills add`](add.md) - GitHub shorthand, full GitHub/GitLab/Bitbucket URLs, any git URL with an optional `#ref`, and local paths - with one exception: well-known registry aliases serve files without a repository to fork from, so install those with `mdm skills add` first and cherry-pick the installed copy.
 
 ## How it differs from `skills add`
 
 |  | `mdm skills add` | `mdm skills cherry-pick` |
 | --- | --- | --- |
-| Where the skill lands | each agent's skills directory | `./skills/<name>` — your source tree |
+| Where the skill lands | each agent's skills directory | `./skills/<name>` - your source tree |
 | Who owns it afterwards | upstream | you |
 | `mdm skills update` | re-fetches and replaces it | leaves it alone |
 | Provenance | `skills-lock.json` entry | `.mdm-origin.json` + `ATTRIBUTION.md` inside the fork |
@@ -26,10 +26,10 @@ mdm skills cherry-pick <source>
 1. The source is fetched (shallow clone, or read in place for a local path).
 2. `SKILL.md` files are discovered; a picker lets you choose which ones to fork.
 3. Markdown files are scanned for hidden Unicode characters.
-4. Licensing is resolved — see [Licensing](#licensing) below — and you are asked to confirm if a source declares no terms at all.
+4. Licensing is resolved - see [Licensing](#licensing) below - and you are asked to confirm if a source declares no terms at all.
 5. Each skill directory is copied to `./skills/<name>`, renamed if `--as` was given.
 6. Provenance is written into the fork: `.mdm-origin.json`, `ATTRIBUTION.md`, and the upstream license file when the skill directory did not already carry one.
-7. With `--install`, the forks are installed into your agents from your copy — recorded in `skills-lock.json` as a local source, which `mdm skills update` skips.
+7. With `--install`, the forks are installed into your agents from your copy - recorded in `skills-lock.json` as a local source, which `mdm skills update` skips.
 
 ## Flags
 
@@ -76,7 +76,7 @@ mdm skills cherry-pick --status
 skills/our-code-review/
 ├── SKILL.md            # renamed by --as; otherwise byte-for-byte upstream
 ├── references/…        # everything else the skill shipped
-├── ATTRIBUTION.md      # human-readable notice — travels with the skill when installed
+├── ATTRIBUTION.md      # human-readable notice - travels with the skill when installed
 ├── LICENSE.upstream    # upstream license text, when the skill dir didn't carry its own
 └── .mdm-origin.json    # machine-readable provenance
 ```
@@ -103,7 +103,7 @@ skills/our-code-review/
 }
 ```
 
-The hash is what `--status` compares against to tell an untouched fork from one you have started building on. The dot prefix keeps the file out of installed copies — `copyDirectory` skips dotfiles — while `ATTRIBUTION.md` is not dot-prefixed on purpose, so the notice follows the material into every agent's skills directory.
+The hash is what `--status` compares against to tell an untouched fork from one you have started building on. The dot prefix keeps the file out of installed copies - `copyDirectory` skips dotfiles - while `ATTRIBUTION.md` is not dot-prefixed on purpose, so the notice follows the material into every agent's skills directory.
 
 When you fork a skill mdm installed earlier, the lock file still knows where it really came from, so the record credits the original repository and notes the local path it was copied through as `via`.
 
@@ -113,14 +113,14 @@ A fork redistributes someone else's work, and mdm cannot make that lawful for yo
 
 - **Terms are looked up** in the skill directory first, then the repository root, across the usual `LICENSE`/`LICENCE`/`COPYING`/`UNLICENSE` spellings. A `license:` field in the skill's frontmatter is taken at its word.
 - **The license text is copied into the fork** as `LICENSE.upstream` when the skill directory did not already ship one, because most permissive licenses require the notice to travel with the copy.
-- **A source with no license at all stops the command** and asks for confirmation. Absent a license the default is that no redistribution rights are granted — a fork of it may not be yours to publish, and `ATTRIBUTION.md` says so.
+- **A source with no license at all stops the command** and asks for confirmation. Absent a license the default is that no redistribution rights are granted - a fork of it may not be yours to publish, and `ATTRIBUTION.md` says so.
 
-Honouring the terms — attribution, share-alike, or simply asking first — remains yours to do. `--no-attribution` omits the generated notice; it does not omit the obligation.
+Honouring the terms - attribution, share-alike, or simply asking first - remains yours to do. `--no-attribution` omits the generated notice; it does not omit the obligation.
 
 ## The forks directory and OpenClaw
 
 `./skills` is also OpenClaw's project skills directory, which is what makes it a
-publishable location — but it means agent-level commands can reach your forks
+publishable location - but it means agent-level commands can reach your forks
 through it. mdm treats a directory carrying `.mdm-origin.json` as your source
 code rather than an install, so:
 
@@ -128,12 +128,12 @@ code rather than an install, so:
   in `./skills` alone.
 - `mdm agents remove openclaw` cleans the directory but keeps the forks in it,
   reporting how many it kept.
-- `--install` skips any agent that reads the forks directory directly — the fork
+- `--install` skips any agent that reads the forks directory directly - the fork
   is already where that agent looks, and installing would replace it with a
   symlink to a copy of itself.
 
 Hand-written skills in `./skills` that were never cherry-picked carry no origin
-file and are **not** covered by these guards — `mdm agents remove openclaw` still
+file and are **not** covered by these guards - `mdm agents remove openclaw` still
 deletes them (see [Troubleshooting](../troubleshooting.md)). Pass `--dir` to keep forks somewhere
 else if you would rather not share the directory at all.
 

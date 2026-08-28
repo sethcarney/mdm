@@ -11,7 +11,7 @@ import (
 
 // Toolchain and tool versions are written down in several places: go.mod, the
 // CI workflows, the Makefile, the dev container, and the Pre-PR checklist in
-// AGENTS.md. Dependabot cannot keep those in step — it never rewrites go.mod's
+// AGENTS.md. Dependabot cannot keep those in step - it never rewrites go.mod's
 // `go` directive, it does not parse GOTOOLCHAIN strings or `go install ...@v`
 // lines inside workflow steps, and a group never spans package ecosystems.
 //
@@ -113,8 +113,8 @@ func canonicalToolVersions(t *testing.T) map[string]string {
 
 // gotoolchainPin matches both the shell form (GOTOOLCHAIN=go1.26.5) and the
 // JSON form ("GOTOOLCHAIN": "go1.26.5"). It deliberately requires a digit after
-// "go" so post-create.sh's own GOTOOLCHAIN=go${GO_VERSION} — which derives the
-// value rather than hardcoding it — is not treated as a pin.
+// "go" so post-create.sh's own GOTOOLCHAIN=go${GO_VERSION} - which derives the
+// value rather than hardcoding it - is not treated as a pin.
 var gotoolchainPin = regexp.MustCompile(`GOTOOLCHAIN["']?\s*[:=]\s*["']?go(\d+\.\d+(?:\.\d+)?)`)
 
 func TestGoToolchainPinsMatchGoMod(t *testing.T) {
@@ -136,7 +136,7 @@ func TestGoToolchainPinsMatchGoMod(t *testing.T) {
 	}
 
 	if found == 0 {
-		t.Errorf("no GOTOOLCHAIN pins found — versionScanFiles is probably missing a file")
+		t.Errorf("no GOTOOLCHAIN pins found - versionScanFiles is probably missing a file")
 	}
 }
 
@@ -202,7 +202,7 @@ func TestPinnedVersionsInFixedLocations(t *testing.T) {
 	for _, s := range sites {
 		matches := s.pattern.FindAllStringSubmatch(readRepoFile(t, s.file), -1)
 		if len(matches) != 1 {
-			t.Errorf("%s: expected exactly one match in %s, found %d — the file moved or the pattern is stale",
+			t.Errorf("%s: expected exactly one match in %s, found %d - the file moved or the pattern is stale",
 				s.what, s.file, len(matches))
 			continue
 		}
@@ -238,8 +238,8 @@ var dockerfileFrom = regexp.MustCompile(`(?m)^FROM\s+(\S+?)(?::([^\s@]+))?(?:@(s
 // TestDevContainerBaseImageIsPinnedByDigest guards the base image pin. A tag
 // alone is not a pin: `bookworm` moves whenever upstream rebuilds it, so two
 // builds of the same commit can start from different images, and the second one
-// is the one that fails. Nothing here breaks when the digest is dropped — the
-// container still builds, just not reproducibly — so this test is the only
+// is the one that fails. Nothing here breaks when the digest is dropped - the
+// container still builds, just not reproducibly - so this test is the only
 // thing standing between a tag-only FROM and a silently unpinned base.
 func TestDevContainerBaseImageIsPinnedByDigest(t *testing.T) {
 	const dockerfile = ".devcontainer/Dockerfile"
@@ -274,7 +274,7 @@ func TestDevContainerBaseImageIsPinnedByDigest(t *testing.T) {
 var commentLine = regexp.MustCompile(`(?m)^\s*//.*$`)
 
 // TestClaudeCodeCredentialsPersist guards the volume that keeps Claude Code
-// signed in across rebuilds. The failure mode is silent — a mount target that
+// signed in across rebuilds. The failure mode is silent - a mount target that
 // no longer matches remoteUser's home just quietly stops persisting anything,
 // and the only symptom is being asked to log in again after every rebuild.
 func TestClaudeCodeCredentialsPersist(t *testing.T) {

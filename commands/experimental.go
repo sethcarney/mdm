@@ -91,7 +91,7 @@ func buildExperimentalEnableCmd() *cobra.Command {
 			if err := experimental.Enable(experimental.Feature(name)); err != nil {
 				return fmt.Errorf("could not persist experimental opt-in: %w", err)
 			}
-			ui.LogSuccess(fmt.Sprintf("%s enabled — this feature may change or be removed in any release", name))
+			ui.LogSuccess(fmt.Sprintf("%s enabled - this feature may change or be removed in any release", name))
 			return nil
 		},
 	}

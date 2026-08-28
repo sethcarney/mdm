@@ -37,7 +37,7 @@ func hasMarkdown(dir string) bool {
 // FindBundleRoots locates OKF bundle roots under root. A bundle root is a
 // directory containing an index.md whose ancestors contain none (nested
 // index.md files belong to the same bundle). When no index.md exists
-// anywhere, root itself is the bundle if it holds any markdown at all —
+// anywhere, root itself is the bundle if it holds any markdown at all -
 // index files are recommended by the spec but not required.
 func FindBundleRoots(root string) []string {
 	var roots []string

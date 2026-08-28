@@ -1,6 +1,6 @@
 # mdm (markdown management CLI)
 
-Installs the [mdm](https://github.com/sethcarney/mdm) CLI — manage AI agent
+Installs the [mdm](https://github.com/sethcarney/mdm) CLI - manage AI agent
 instruction files (`AGENTS.md`, `CLAUDE.md`, `.cursorrules`) and install skills
 from GitHub, GitLab, URLs, or the [skills.sh](https://skills.sh) registry.
 
@@ -36,7 +36,7 @@ installs it to `/usr/local/lib/mdm/mdm`, with a symlink at `/usr/local/bin/mdm`
 so it is on `PATH`.
 
 - **No Go toolchain required.** The release binary is statically linked, so the
-  base image needs nothing beyond `curl` and a CA bundle — which the feature
+  base image needs nothing beyond `curl` and a CA bundle - which the feature
   installs itself if the image is a slim one.
 - **Architecture is detected at build time**, so the same `devcontainer.json`
   works on an x86_64 host and on an Apple Silicon host running an arm64
@@ -44,14 +44,14 @@ so it is on `PATH`.
 - **`/usr/local/bin`, not `~/.local/bin`.** It is on `PATH` for every user, so
   the binary works whatever `remoteUser` the image ends up running as.
 - **The binary is owned by `remoteUser`**, so `mdm upgrade` works inside the
-  container — see below.
+  container - see below.
 
 ## Upgrading inside the container
 
 `/usr/local/bin/mdm` is a symlink; the binary behind it lives in
 `/usr/local/lib/mdm`, and that directory is chowned to the container's
 `remoteUser`. Replacing a running executable means unlinking and recreating it,
-which is a permission on the *directory* — so with the binary sitting directly
+which is a permission on the *directory* - so with the binary sitting directly
 in a root-owned `/usr/local/bin`, `mdm upgrade` fails with `permission denied`
 and rebuilding the image is the only way to take a new release.
 
@@ -79,7 +79,7 @@ exists:
     "ghcr.io/sethcarney/mdm/mdm:1": {}
 },
 // Restore the skills committed in skills-lock.json for whichever agents this
-// repo configures — the onboarding path mdm skills install exists for.
+// repo configures - the onboarding path mdm skills install exists for.
 "postCreateCommand": "mdm skills install"
 ```
 
@@ -96,7 +96,7 @@ inside a Linux container.
 
 Source lives in [`src/mdm`](.), tests in
 [`test/mdm`](../../test/mdm). The version in `devcontainer-feature.json` tracks
-changes to the feature itself, not to the mdm release it installs — bump it when
+changes to the feature itself, not to the mdm release it installs - bump it when
 `install.sh` or the options change, and
 [`devcontainer-feature-release.yml`](../../.github/workflows/devcontainer-feature-release.yml)
 publishes it on merge to `main`.
@@ -104,7 +104,7 @@ publishes it on merge to `main`.
 Run the tests locally with Docker and the devcontainer CLI:
 
 ```bash
-# Installs the CLI version pinned in the repo's package-lock.json — the same
+# Installs the CLI version pinned in the repo's package-lock.json - the same
 # one CI runs. No global install, so nothing on your machine changes.
 npm ci
 

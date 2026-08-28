@@ -304,7 +304,7 @@ func refuseIfPluginOwned(canonicalDir string, global bool) error {
 	}
 	cwd, _ := os.Getwd()
 	if owner, _ := skillDirOwner(canonicalDir, cwd); owner != "" {
-		return fmt.Errorf("skill is managed by plugin %q — use 'mdm plugins remove %s' first", owner, owner)
+		return fmt.Errorf("skill is managed by plugin %q - use 'mdm plugins remove %s' first", owner, owner)
 	}
 	return nil
 }
@@ -614,7 +614,7 @@ func mergeCanonicalSkillIntoMap(skillsMap map[string]*InstalledSkill, mapKey str
 
 // isSkillDirEntry reports whether a scope-dir entry can hold a skill. Plain
 // directories always qualify; symlinked directories only when the plugins
-// gate is on — plugin skills link the canonical dir into the plugin's own
+// gate is on - plugin skills link the canonical dir into the plugin's own
 // directory rather than copying.
 func isSkillDirEntry(base string, e os.DirEntry) bool {
 	if e.IsDir() {

@@ -1,4 +1,4 @@
-// Package okf parses and validates Open Knowledge Format bundles —
+// Package okf parses and validates Open Knowledge Format bundles -
 // directories of markdown documents with YAML frontmatter where each file is
 // one concept and documents cross-link with ordinary markdown links.
 //

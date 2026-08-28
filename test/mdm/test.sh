@@ -4,7 +4,7 @@
 # takes its default of "latest".
 #
 # The devcontainer CLI runs this one against every base image in the test
-# matrix, as whatever user that image defaults to — so it asserts only what
+# matrix, as whatever user that image defaults to - so it asserts only what
 # holds everywhere. User-specific and option-specific behaviour lives in
 # scenarios.json alongside this file.
 #
@@ -23,12 +23,12 @@ check "mdm --help works" bash -c "mdm --help"
 
 # The install location is the point of the feature: /usr/local/bin is on PATH
 # for every user, so the binary works no matter which remoteUser the image runs
-# as. ~/.local/bin — where the curl installer puts it — would not.
+# as. ~/.local/bin - where the curl installer puts it - would not.
 check "installed to /usr/local/bin" bash -c "test -x /usr/local/bin/mdm"
 check "resolves to /usr/local/bin/mdm" bash -c '[ "$(command -v mdm)" = /usr/local/bin/mdm ]'
 
 # What is on PATH is a symlink to a binary in its own directory, which the
-# remoteUser owns — that is what lets `mdm upgrade` replace it from inside the
+# remoteUser owns - that is what lets `mdm upgrade` replace it from inside the
 # container. See non_root_user.sh, which exercises the replacement.
 check "binary lives in /usr/local/lib/mdm" bash -c '[ "$(readlink -f /usr/local/bin/mdm)" = /usr/local/lib/mdm/mdm ]'
 

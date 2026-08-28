@@ -79,7 +79,7 @@ func TestBlobSkillNameMatches(t *testing.T) {
 }
 
 // Explicitly named skills must install without an interactive picker on the
-// blob fast path, matching the clone path — this is what keeps
+// blob fast path, matching the clone path - this is what keeps
 // `mdm skills install` and `mdm skills update` non-interactive.
 func TestSelectBlobSkillsExplicitNamesSkipPrompt(t *testing.T) {
 	skills := []*blob.BlobSkill{

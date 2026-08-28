@@ -680,7 +680,7 @@ func TestPluginsAddSkipsEscapingSymlinks(t *testing.T) {
 	src := writePluginSource(t, dir, "toolkit", "alpha")
 
 	// A secret outside the plugin root, reachable only through symlinks
-	// planted inside it — the package boundary says neither may be read.
+	// planted inside it - the package boundary says neither may be read.
 	secret := filepath.Join(t.TempDir(), "secret.txt")
 	if err := os.WriteFile(secret, []byte("private key material"), 0600); err != nil {
 		t.Fatal(err)

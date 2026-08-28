@@ -40,7 +40,7 @@ var All = []Info{
 	},
 	{
 		Feature:     Plugins,
-		Description: "Manage Agent Plugins — skills + MCP servers (mdm plugins)",
+		Description: "Manage Agent Plugins - skills + MCP servers (mdm plugins)",
 		SpecURL:     "https://agent-plugins.org",
 	},
 }

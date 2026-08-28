@@ -13,7 +13,7 @@ import (
 
 // ErrMCPDisabled is returned by LoadMCPConfig when mcp.json exists but its
 // top-level structure is invalid or targets an unsupported schema. Per the
-// spec this disables the MCP component only — the plugin's skills still
+// spec this disables the MCP component only - the plugin's skills still
 // load.
 var ErrMCPDisabled = errors.New("mcp configuration disabled")
 
@@ -52,7 +52,7 @@ type MCPConfig struct {
 func LoadMCPConfig(root string) (*MCPConfig, []Issue, error) {
 	mcpPath := filepath.Join(root, MCPFile)
 	if EscapesRoot(root, mcpPath) {
-		return nil, []Issue{mcpIssue(SeverityError, "escapes-root", MCPFile+" resolves outside the plugin root — MCP disabled")}, ErrMCPDisabled
+		return nil, []Issue{mcpIssue(SeverityError, "escapes-root", MCPFile+" resolves outside the plugin root - MCP disabled")}, ErrMCPDisabled
 	}
 	data, err := os.ReadFile(mcpPath)
 	if err != nil {
@@ -98,7 +98,7 @@ func parseMCPTopLevel(data []byte) (map[string]json.RawMessage, []Issue, error) 
 		return nil, []Issue{mcpIssue(SeverityError, "missing-schema", "$schema is missing or not a string")}, ErrMCPDisabled
 	}
 	if schema != MCPSchema {
-		return nil, []Issue{mcpIssue(SeverityError, "unsupported-schema", fmt.Sprintf("unsupported $schema %q — this build supports %s", schema, MCPSchema))}, ErrMCPDisabled
+		return nil, []Issue{mcpIssue(SeverityError, "unsupported-schema", fmt.Sprintf("unsupported $schema %q - this build supports %s", schema, MCPSchema))}, ErrMCPDisabled
 	}
 	var servers map[string]json.RawMessage
 	if raw["mcpServers"] == nil || json.Unmarshal(raw["mcpServers"], &servers) != nil {
@@ -108,7 +108,7 @@ func parseMCPTopLevel(data []byte) (map[string]json.RawMessage, []Issue, error) 
 }
 
 // parseServer validates one server entry against the closed transport
-// union. An invalid entry returns a nil server plus issues — the spec says
+// union. An invalid entry returns a nil server plus issues - the spec says
 // to skip it and continue loading the rest.
 func parseServer(id string, value json.RawMessage) (*Server, []Issue) {
 	invalid := func(format string, args ...interface{}) (*Server, []Issue) {
@@ -163,7 +163,7 @@ func parseStdioServer(server *Server, raw map[string]json.RawMessage) error {
 	}
 	for key := range server.Env {
 		if key == "PLUGIN_ROOT" || key == "PLUGIN_DATA" {
-			return fmt.Errorf("env must not contain %s — the client sets it", key)
+			return fmt.Errorf("env must not contain %s - the client sets it", key)
 		}
 	}
 	return ValidateCwd(server.Cwd)

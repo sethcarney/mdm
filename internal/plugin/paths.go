@@ -20,7 +20,7 @@ func escapes(rel string) bool {
 }
 
 // EscapesRoot reports whether an existing path inside the plugin directory
-// resolves outside the filesystem-resolved plugin root — the spec's package
+// resolves outside the filesystem-resolved plugin root - the spec's package
 // boundary for every file a client reads. Nonexistent paths report false:
 // there is nothing to read through them.
 func EscapesRoot(root, target string) bool {

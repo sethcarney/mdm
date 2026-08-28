@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	fileSizeWarnBytes  = 20 * 1024  // 20 KB — may strain context windows
-	fileSizeErrorBytes = 100 * 1024 // 100 KB — likely too large
+	fileSizeWarnBytes  = 20 * 1024  // 20 KB - may strain context windows
+	fileSizeErrorBytes = 100 * 1024 // 100 KB - likely too large
 
 	// Maximum filesystem entries walked before the project-wide markdown
 	// scan gives up, to avoid hangs on very large repositories.
@@ -197,7 +197,7 @@ func diagnoseSkill(r *doctorResult, global bool, cwd string) {
 	if _, err := os.Stat(r.Path); os.IsNotExist(err) {
 		r.Issues = append(r.Issues, doctorIssue{
 			Level:   "error",
-			Message: "skill directory not found on disk — run `mdm skills install` to restore",
+			Message: "skill directory not found on disk - run `mdm skills install` to restore",
 		})
 		return
 	}
@@ -300,12 +300,12 @@ func checkLargeMarkdown(r *doctorResult) {
 		case size >= fileSizeErrorBytes:
 			r.Issues = append(r.Issues, doctorIssue{
 				Level:   "error",
-				Message: fmt.Sprintf("%s is %s — likely too large for agent context windows", rel, formatFileSize(size)),
+				Message: fmt.Sprintf("%s is %s - likely too large for agent context windows", rel, formatFileSize(size)),
 			})
 		case size >= fileSizeWarnBytes:
 			r.Issues = append(r.Issues, doctorIssue{
 				Level:   "warn",
-				Message: fmt.Sprintf("%s is %s — may strain agent context windows", rel, formatFileSize(size)),
+				Message: fmt.Sprintf("%s is %s - may strain agent context windows", rel, formatFileSize(size)),
 			})
 		}
 		return nil
@@ -336,10 +336,10 @@ func checkUnlinkedRulesAgents(cwd string) []doctorIssue {
 		instrPath := filepath.Join(cwd, cfg.InstructionsFile)
 		info, err := os.Lstat(instrPath)
 		if err != nil {
-			// File doesn't exist at all — not yet linked.
+			// File doesn't exist at all - not yet linked.
 			issues = append(issues, doctorIssue{
 				Level:   "warn",
-				Message: fmt.Sprintf("%s (%s) is configured but %s is missing — run `mdm rules link` to create it", cfg.DisplayName, name, cfg.InstructionsFile),
+				Message: fmt.Sprintf("%s (%s) is configured but %s is missing - run `mdm rules link` to create it", cfg.DisplayName, name, cfg.InstructionsFile),
 			})
 			continue
 		}
@@ -347,7 +347,7 @@ func checkUnlinkedRulesAgents(cwd string) []doctorIssue {
 			// Real file, not a symlink to AGENTS.md.
 			issues = append(issues, doctorIssue{
 				Level:   "warn",
-				Message: fmt.Sprintf("%s (%s) is configured but %s is not linked to AGENTS.md — run `mdm rules link`", cfg.DisplayName, name, cfg.InstructionsFile),
+				Message: fmt.Sprintf("%s (%s) is configured but %s is not linked to AGENTS.md - run `mdm rules link`", cfg.DisplayName, name, cfg.InstructionsFile),
 			})
 		}
 		// If it is a symlink we assume it points to AGENTS.md (rules link created it).
@@ -378,13 +378,13 @@ func checkMissingAgentSkillLinks(cwd string) []doctorIssue {
 			continue
 		}
 		// Only flag agents whose rules file IS already linked (or they have no
-		// rules file — e.g. a pure-skills-dir agent). Agents whose rules file
+		// rules file - e.g. a pure-skills-dir agent). Agents whose rules file
 		// is missing are already reported by checkUnlinkedRulesAgents.
 		if !cfg.NativeInstructions {
 			instrPath := filepath.Join(cwd, cfg.InstructionsFile)
 			info, err := os.Lstat(instrPath)
 			if err != nil || info.Mode()&os.ModeSymlink == 0 {
-				continue // rules not linked yet — covered by the other check
+				continue // rules not linked yet - covered by the other check
 			}
 		}
 
@@ -406,7 +406,7 @@ func checkMissingAgentSkillLinks(cwd string) []doctorIssue {
 			for _, skillName := range missing {
 				issues = append(issues, doctorIssue{
 					Level:   "warn",
-					Message: fmt.Sprintf("%s (%s) is configured but skill %q is not installed for it — run `mdm skills add` to include it", cfg.DisplayName, name, skillName),
+					Message: fmt.Sprintf("%s (%s) is configured but skill %q is not installed for it - run `mdm skills add` to include it", cfg.DisplayName, name, skillName),
 				})
 			}
 		}
@@ -441,12 +441,12 @@ func checkInstructionFiles(cwd string) []doctorIssue {
 		case size >= fileSizeErrorBytes:
 			issues = append(issues, doctorIssue{
 				Level:   "error",
-				Message: fmt.Sprintf("%s is %s — likely too large for agent context windows", fname, formatFileSize(size)),
+				Message: fmt.Sprintf("%s is %s - likely too large for agent context windows", fname, formatFileSize(size)),
 			})
 		case size >= fileSizeWarnBytes:
 			issues = append(issues, doctorIssue{
 				Level:   "warn",
-				Message: fmt.Sprintf("%s is %s — may strain agent context windows", fname, formatFileSize(size)),
+				Message: fmt.Sprintf("%s is %s - may strain agent context windows", fname, formatFileSize(size)),
 			})
 		}
 	}
@@ -466,7 +466,7 @@ func checkProjectReadme(cwd string) *doctorIssue {
 	}
 	return &doctorIssue{
 		Level:   "warn",
-		Message: "no README found in project root — consider adding a README.md",
+		Message: "no README found in project root - consider adding a README.md",
 	}
 }
 
@@ -513,12 +513,12 @@ func checkProjectMarkdown(cwd string, skipDirs map[string]bool, skipFiles map[st
 		case size >= fileSizeErrorBytes:
 			issues = append(issues, doctorIssue{
 				Level:   "error",
-				Message: fmt.Sprintf("%s is %s — likely too large for agent context windows", rel, formatFileSize(size)),
+				Message: fmt.Sprintf("%s is %s - likely too large for agent context windows", rel, formatFileSize(size)),
 			})
 		case size >= fileSizeWarnBytes:
 			issues = append(issues, doctorIssue{
 				Level:   "warn",
-				Message: fmt.Sprintf("%s is %s — may strain agent context windows", rel, formatFileSize(size)),
+				Message: fmt.Sprintf("%s is %s - may strain agent context windows", rel, formatFileSize(size)),
 			})
 		}
 		return nil
@@ -660,7 +660,7 @@ func printDoctorMarkdownSection(readmeIssue *doctorIssue, mdIssues []doctorIssue
 	errs += e
 	warns += w
 	if mdTruncated {
-		fmt.Printf("  %s▲%s %sscan stopped after %d entries — run from a subdirectory to check further%s\n",
+		fmt.Printf("  %s▲%s %sscan stopped after %d entries - run from a subdirectory to check further%s\n",
 			ansiYellow, ansiReset, ansiDim, markdownWalkLimit, ansiReset)
 	}
 	fmt.Println()

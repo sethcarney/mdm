@@ -95,7 +95,7 @@ func isGitSourceType(st string) bool {
 
 // remoteTagCache memoizes `git ls-remote --tags` per repository URL for the
 // lifetime of a single update run. Without it, updating N skills that all live
-// in one repo means N identical round trips to the remote — and for a private
+// in one repo means N identical round trips to the remote - and for a private
 // repo, N credential handshakes.
 type remoteTagCache struct {
 	entries map[string]remoteTagResult
@@ -341,7 +341,7 @@ func runUpdateGroups(groups []updateGroup, global bool, opts UpdateOptions, stat
 }
 
 // hintPluginOwnedUpdateFilters points an explicit filter that names a
-// plugin-owned skill at mdm plugins update — plugin skills never appear in
+// plugin-owned skill at mdm plugins update - plugin skills never appear in
 // skills-lock.json, so the name would otherwise silently match nothing.
 func hintPluginOwnedUpdateFilters(skillFilter []string, cwd string) {
 	if !experimental.Enabled(experimental.Plugins) {
@@ -349,7 +349,7 @@ func hintPluginOwnedUpdateFilters(skillFilter []string, cwd string) {
 	}
 	for _, name := range skillFilter {
 		if owner := pluginOwningSkill(name, cwd); owner != "" {
-			ui.LogWarn(fmt.Sprintf("%s is managed by plugin %s — update it with 'mdm plugins update %s'", name, owner, owner))
+			ui.LogWarn(fmt.Sprintf("%s is managed by plugin %s - update it with 'mdm plugins update %s'", name, owner, owner))
 		}
 	}
 }

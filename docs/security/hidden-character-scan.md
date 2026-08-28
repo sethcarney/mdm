@@ -50,8 +50,8 @@ This scan does not attempt semantic prompt-injection detection, homoglyph scorin
 
 The repo includes intentionally unsafe fixtures for regression and manual smoke testing:
 
-- `internal/security/markdownscan/testdata/bad-hidden.md` — raw scanner unit-test input
-- `tests/testdata/hidden-skill/` — a full skill directory with hidden chars in `README.md`
+- `internal/security/markdownscan/testdata/bad-hidden.md` - raw scanner unit-test input
+- `tests/testdata/hidden-skill/` - a full skill directory with hidden chars in `README.md`
 
 Verify install blocking from the repo root:
 
