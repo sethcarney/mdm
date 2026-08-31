@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/term"
 )
 
 // ANSI color/format constants (exported)
@@ -99,12 +100,19 @@ func Note(content, title string) {
 // ─── Spinner ───────────────────────────────────────────────────────────────────
 
 type Spinner struct {
-	msg  string
-	done chan struct{}
+	msg      string
+	done     chan struct{}
+	animated bool
 }
 
 func NewSpinner(msg string) *Spinner {
-	s := &Spinner{msg: msg, done: make(chan struct{})}
+	s := &Spinner{msg: msg, done: make(chan struct{}), animated: term.IsTerminal(os.Stdout.Fd())}
+	if !s.animated {
+		// Without a terminal, \r never overwrites the line, so every 80ms
+		// frame would land in the log as its own copy of the message.
+		fmt.Printf("%s%s%s\n", Dim, msg, Reset)
+		return s
+	}
 	go s.run()
 	return s
 }
@@ -118,7 +126,13 @@ func (s *Spinner) run() {
 		case <-s.done:
 			return
 		default:
-			fmt.Printf("%s%s%s %s%s", ansiCR, Dim, frames[i%len(frames)], s.msg, Reset)
+			// Clip to the terminal width: a frame that wraps can no longer be
+			// overwritten by \r, so each redraw would scroll a new copy.
+			msg := s.msg
+			if width, _, err := term.GetSize(os.Stdout.Fd()); err == nil {
+				msg = clipToWidth(msg, width-3) // frame glyph, space, last column
+			}
+			fmt.Printf("%s%s%s%s %s%s", ansiCR, ansiClearLine, Dim, frames[i%len(frames)], msg, Reset)
 			i++
 			select {
 			case <-s.done:
@@ -129,10 +143,20 @@ func (s *Spinner) run() {
 	}
 }
 
+func clipToWidth(msg string, max int) string {
+	r := []rune(msg)
+	if max < 1 || len(r) <= max {
+		return msg
+	}
+	return string(r[:max-1]) + "…"
+}
+
 func (s *Spinner) Stop(msg string) {
-	close(s.done)
-	fmt.Print(ansiShowCursor)
-	fmt.Printf("%s%s%s %s\n", ansiCR, ansiClearLine, Dim, Reset)
+	if s.animated {
+		close(s.done)
+		fmt.Print(ansiShowCursor)
+		fmt.Printf("%s%s%s %s\n", ansiCR, ansiClearLine, Dim, Reset)
+	}
 	if msg != "" {
 		fmt.Printf("  %s%s%s\n", Dim, msg, Reset)
 	}
