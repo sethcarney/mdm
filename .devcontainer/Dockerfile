@@ -24,7 +24,7 @@
 # actually resolves. Dependabot's docker ecosystem watches this directory and
 # bumps the pair together; tests/devcontainer_test.go fails the build if the
 # digest is ever dropped.
-FROM mcr.microsoft.com/devcontainers/base:bookworm@sha256:73d85a96694a2cadca1ba3fcb5721f2312a64f1d571dd86f6c77e10a708931dc
+FROM mcr.microsoft.com/devcontainers/base:bookworm@sha256:86165cfc170e9b2aa8df90b847127eea97b08eb9987021e6e6ec6c3a96545d7c
 
 # The full check_packages list of ghcr.io/devcontainers/features/go. git is
 # already in the base image, but it is load-bearing twice: the go feature
