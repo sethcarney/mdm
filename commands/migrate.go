@@ -101,7 +101,7 @@ func runMigrate(dryRun, yes, noTombstone, force bool) error {
 			return nil
 		}
 	}
-	return executeMigration(cwd, plan.Needed(), gplan.Needed(), noTombstone)
+	return executeMigration(cwd, plan, gplan, noTombstone)
 }
 
 // promptTombstoneCleanup offers to delete skills-lock.json outright instead
@@ -148,8 +148,14 @@ func printProjectMigrationPlan(plan lock.ProjectMigration, noTombstone, force bo
 				fname, count, map[bool]string{true: "ies", false: "y"}[count != 1], lockName, fate)
 		}
 	}
-	if plan.TargetExists {
+	if plan.TargetExists && len(plan.Legacy) > 0 {
 		fmt.Printf("  %s%s already exists; the legacy files above are leftovers%s\n", ansiDim, lockName, ansiReset)
+	}
+	// Reported for a fresh migration too, not just a backfill onto an
+	// existing lock: a dry run must name every write it is about to make.
+	if plan.InstallModeBackfill != "" {
+		fmt.Printf("  %sinstall mode %q, inferred from what's on disk, will be recorded in %s%s\n",
+			ansiDim, plan.InstallModeBackfill, lockName, ansiReset)
 	}
 	return printOrphanWarning(plan.Orphaned, lockName, force)
 }
@@ -158,10 +164,17 @@ func printProjectMigrationPlan(plan lock.ProjectMigration, noTombstone, force bo
 // the --force requirement for discarding orphaned entries.
 func printGlobalMigrationPlan(gplan lock.GlobalMigration, force bool) error {
 	fmt.Printf("%sGlobal:%s\n", ansiText, ansiReset)
-	if gplan.TargetExists {
+	switch {
+	case gplan.LegacyPath == "":
+		// Nothing legacy left; the only pending change is the mode backfill.
+	case gplan.TargetExists:
 		fmt.Printf("  %s — superseded by %s, delete\n", gplan.LegacyPath, lock.GetGlobalStatePath())
-	} else {
+	default:
 		fmt.Printf("  %s → %s\n", gplan.LegacyPath, lock.GetGlobalStatePath())
+	}
+	if gplan.InstallModeBackfill != "" {
+		fmt.Printf("  %sinstall mode %q, inferred from what's on disk, will be recorded in %s%s\n",
+			ansiDim, gplan.InstallModeBackfill, lock.GetGlobalStatePath(), ansiReset)
 	}
 	return printOrphanWarning(gplan.Orphaned, "mdm-state.json", force)
 }
@@ -181,22 +194,30 @@ func printOrphanWarning(orphaned []string, target string, force bool) error {
 	return nil
 }
 
-func executeMigration(cwd string, projectNeeded, globalNeeded, noTombstone bool) error {
-	if projectNeeded {
+func executeMigration(cwd string, plan lock.ProjectMigration, gplan lock.GlobalMigration, noTombstone bool) error {
+	if plan.Needed() {
 		if err := lock.ExecuteProjectMigration(cwd, !noTombstone); err != nil {
 			return err
 		}
-		if _, err := os.Stat(lock.GetProjectLockPath(cwd)); err == nil {
+		_, statErr := os.Stat(lock.GetProjectLockPath(cwd))
+		switch {
+		case len(plan.Legacy) == 0:
+			fmt.Printf("%s✓%s Recorded install mode %q on %s, no legacy files to retire.\n", ansiGreen, ansiReset, plan.InstallModeBackfill, lockName)
+		case statErr == nil:
 			fmt.Printf("%s✓%s Project migrated to %s — commit it together with the removed files.\n", ansiGreen, ansiReset, lockName)
-		} else {
+		default:
 			fmt.Printf("%s✓%s Legacy lock files retired — they held no entries, so there is no %s to commit.\n", ansiGreen, ansiReset, lockName)
 		}
 	}
-	if globalNeeded {
+	if gplan.Needed() {
 		if err := lock.ExecuteGlobalMigration(); err != nil {
 			return err
 		}
-		fmt.Printf("%s✓%s Global state migrated to %s.\n", ansiGreen, ansiReset, lock.GetGlobalStatePath())
+		if gplan.LegacyPath == "" {
+			fmt.Printf("%s✓%s Recorded install mode %q in %s.\n", ansiGreen, ansiReset, gplan.InstallModeBackfill, lock.GetGlobalStatePath())
+		} else {
+			fmt.Printf("%s✓%s Global state migrated to %s.\n", ansiGreen, ansiReset, lock.GetGlobalStatePath())
+		}
 	}
 	clearGraduatedOptIns()
 	fmt.Println()

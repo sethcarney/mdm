@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+
+	"github.com/sethcarney/mdm/internal/agent"
 )
 
 // ──────────────────────────────────────────────────────────
@@ -48,13 +50,22 @@ type ProjectMigration struct {
 	// the existing mdm.lock and would be discarded by retiring the
 	// legacy files. Only populated when TargetExists.
 	Orphaned []string
+	// InstallModeBackfill is the install mode inferred from what is on
+	// disk, empty when there is nothing to record. It covers both shapes:
+	// an existing mdm.lock with no mode recorded yet (a project that
+	// migrated to v2 before this feature existed, so there are no legacy
+	// files left to trigger a migration), and the mode a fresh migration
+	// will stamp on the lock it is about to write. Planning it for both
+	// means --dry-run always names the write it is about to perform.
+	InstallModeBackfill string
 	// merged is the target lock assembled from the strictly parsed legacy
 	// files. Execution writes exactly this when the target does not exist.
 	merged ProjectLockFile
 }
 
-// Needed reports whether there is anything to migrate.
-func (m ProjectMigration) Needed() bool { return len(m.Legacy) > 0 }
+// Needed reports whether there is anything to migrate: legacy files to
+// absorb, or an install mode backfill pending on an existing lock.
+func (m ProjectMigration) Needed() bool { return len(m.Legacy) > 0 || m.InstallModeBackfill != "" }
 
 // legacyFileData is one legacy file, fully decoded into the typed entry
 // structs so nothing survives planning that execution could not carry over.
@@ -124,6 +135,9 @@ func PlanProjectMigration(cwd string) (ProjectMigration, error) {
 		if err != nil {
 			return plan, err
 		}
+		if target.InstallMode == "" {
+			plan.InstallModeBackfill = inferInstallMode(skillNames(target.Skills), target.ConfiguredAgents, false, cwd)
+		}
 	}
 
 	for _, fname := range LegacyProjectLockNames {
@@ -145,6 +159,16 @@ func PlanProjectMigration(cwd string) (ProjectMigration, error) {
 		plan.Legacy[fname] = d.count()
 	}
 	sort.Strings(plan.Orphaned)
+
+	// A fresh migration writes the merged lock, so the mode it will record
+	// has to be inferred here rather than inside execution: --dry-run must
+	// never hide a write it is about to perform. Only reachable with legacy
+	// files present, because the merged lock is otherwise empty and
+	// nothing gets written.
+	if !plan.TargetExists && len(plan.Legacy) > 0 {
+		plan.merged.InstallMode = inferInstallMode(skillNames(plan.merged.Skills), plan.merged.ConfiguredAgents, false, cwd)
+		plan.InstallModeBackfill = plan.merged.InstallMode
+	}
 	return plan, nil
 }
 
@@ -186,6 +210,104 @@ func (m *ProjectMigration) absorb(d legacyFileData) {
 	}
 }
 
+// scanAgents returns the agents whose install directories are worth
+// scanning for a scope. The recorded list wins when there is one.
+//
+// It falls back to every agent the scope supports when the list is empty,
+// which is a common shape rather than an edge case: configuredAgents only
+// records agents the user picked interactively, so `mdm skills add <src>
+// -a claude-code -y` installs skills and leaves the list empty. Inferring
+// from an empty list would find nothing for exactly the --copy user this
+// scan exists to serve. The fallback costs one Lstat per agent per skill
+// and only ever reports a mode when a real directory is sitting at an
+// agent's install path under a locked skill's name.
+func scanAgents(agents []string, global bool) []string {
+	if len(agents) > 0 {
+		return agents
+	}
+	var all []string
+	for name, cfg := range agent.AllAgents {
+		if global && cfg.GlobalSkillsDir == "" {
+			continue
+		}
+		all = append(all, name)
+	}
+	sort.Strings(all)
+	return all
+}
+
+// skillNames lists the keys of a skills section, so both scopes can feed
+// the same scanner despite holding different entry types.
+func skillNames[E any](skills map[string]E) []string {
+	names := make([]string, 0, len(skills))
+	for name := range skills {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// inferInstallMode reports the install mode a scope was using, by looking
+// at what is actually on disk at each configured agent's install path, or
+// at every agent the scope supports when no agents are recorded (see
+// scanAgents). A real directory holding a SKILL.md means the user installed
+// with --copy; a symlink means the default symlink mode. Absent, unreadable,
+// or a directory that is not a skill is no evidence.
+//
+// The scan deliberately never looks at .agents/skills/<name>. That is the
+// canonical directory, which a symlink install creates as a real directory
+// and then points the per-agent paths at, so it reads as "copy" for every
+// project regardless of mode. Only the per-agent install paths distinguish
+// the two, which is also what re-materialization walks.
+//
+// The contract is InstallModeCopy or empty, never the literal "symlink":
+// no evidence must leave the key absent so a later migration can still
+// find it.
+//
+// This runs at migration time only. Scanning on every lock read would be
+// both slow and surprising, and the recorded mode is authoritative once
+// it exists.
+func inferInstallMode(names, agents []string, global bool, cwd string) string {
+	agents = scanAgents(agents, global)
+	for _, name := range names {
+		for _, agentName := range agents {
+			// An agent that reads the shared .agents/skills directory has
+			// no install path of its own: it reads the canonical directory
+			// itself, which is a real directory in both modes. It is never
+			// evidence either way.
+			if agent.UsesSharedSkillsDir(agentName) {
+				continue
+			}
+			// agent.SkillsInstallDir is the same resolution the installer
+			// and the re-materializer use, so what this scan reads can never
+			// drift from where installs actually land.
+			installDir := agent.SkillsInstallDir(agentName, global, cwd)
+			if installDir == "" {
+				continue
+			}
+			// Lock keys are already stored in sanitized form, so the key
+			// is the directory name.
+			candidate := filepath.Join(installDir, name)
+			info, err := os.Lstat(candidate)
+			if err != nil {
+				continue
+			}
+			if info.Mode()&os.ModeSymlink == 0 && info.IsDir() {
+				// Every mdm-installed skill directory holds a SKILL.md, and
+				// `mdm doctor` reports one that does not. Requiring it keeps
+				// an unrelated directory that merely shares a locked skill's
+				// name from reading as a copy install, which the all-agents
+				// fallback above otherwise makes easy to hit.
+				if _, err := os.Stat(filepath.Join(candidate, "SKILL.md")); err != nil {
+					continue
+				}
+				return InstallModeCopy
+			}
+		}
+	}
+	return ""
+}
+
 // ExecuteProjectMigration performs the migration PlanProjectMigration
 // described: it writes the lock the plan assembled to mdm.lock (when
 // it does not exist yet), replaces skills-lock.json with a tombstone (or
@@ -204,8 +326,26 @@ func ExecuteProjectMigration(cwd string, tombstone bool) error {
 		return nil
 	}
 	if !plan.TargetExists {
+		// plan.merged.InstallMode was already inferred while planning, so
+		// what gets written here is exactly what --dry-run reported.
 		if err := WriteProjectLock(plan.merged, cwd); err != nil {
 			return err
+		}
+	}
+	// A project that already migrated to v2 has no legacy files left and
+	// TargetExists is true, so the branch above never runs, but its lock
+	// may still have no InstallMode recorded. Backfill that independent of
+	// whether any legacy file was absorbed above.
+	if plan.TargetExists && plan.InstallModeBackfill != "" {
+		target, err := readProjectLockE(cwd)
+		if err != nil {
+			return err
+		}
+		if target.InstallMode == "" {
+			target.InstallMode = plan.InstallModeBackfill
+			if err := WriteProjectLock(target, cwd); err != nil {
+				return err
+			}
 		}
 	}
 	for _, fname := range LegacyProjectLockNames {
@@ -244,12 +384,19 @@ type GlobalMigration struct {
 	// mdm-state.json that retiring the legacy file would discard. Only
 	// populated when TargetExists.
 	Orphaned []string
-	needed   bool
-	merged   GlobalState
+	// InstallModeBackfill is the install mode inferred from what is on
+	// disk for the global scope, empty when there is nothing to record.
+	// A user who ran `mdm skills add -g --copy` before the switch existed
+	// has no mode recorded; this is their recovery path, and it mirrors
+	// the project-scope backfill.
+	InstallModeBackfill string
+	needed              bool
+	merged              GlobalState
 }
 
-// Needed reports whether there is anything to migrate.
-func (m GlobalMigration) Needed() bool { return m.needed }
+// Needed reports whether there is anything to migrate: a legacy global
+// lock to absorb, or an install mode backfill pending.
+func (m GlobalMigration) Needed() bool { return m.needed || m.InstallModeBackfill != "" }
 
 // strictReadLegacyGlobal parses the v1 global lock with no empty-on-error
 // tolerance for broken JSON. A lock below the last v1 version migrates as
@@ -287,36 +434,50 @@ func strictReadLegacyGlobal(path string) (GlobalState, error) {
 // never be deleted on the strength of a read that fell back to empty.
 func PlanGlobalMigration() (GlobalMigration, error) {
 	var plan GlobalMigration
-	legacy, ok := LegacyGlobalLockExists()
-	if !ok {
-		return plan, nil
+	var parsed GlobalState
+	legacy, hasLegacy := LegacyGlobalLockExists()
+	if hasLegacy {
+		plan.needed = true
+		plan.LegacyPath = legacy
+		var err error
+		parsed, err = strictReadLegacyGlobal(legacy)
+		if err != nil {
+			return plan, err
+		}
 	}
-	plan.needed = true
-	plan.LegacyPath = legacy
-	parsed, err := strictReadLegacyGlobal(legacy)
-	if err != nil {
-		return plan, err
-	}
+
 	if _, err := os.Stat(GetGlobalStatePath()); err == nil {
 		plan.TargetExists = true
 		target, err := readGlobalStateE()
 		if err != nil {
 			return plan, err
 		}
-		for name := range parsed.Skills {
-			if _, ok := target.Skills[name]; !ok {
-				plan.Orphaned = append(plan.Orphaned, name)
+		if hasLegacy {
+			for name := range parsed.Skills {
+				if _, ok := target.Skills[name]; !ok {
+					plan.Orphaned = append(plan.Orphaned, name)
+				}
 			}
+			sort.Strings(plan.Orphaned)
 		}
-		sort.Strings(plan.Orphaned)
+		if target.InstallMode == "" {
+			plan.InstallModeBackfill = inferInstallMode(skillNames(target.Skills), target.ConfiguredAgents, true, "")
+		}
+		return plan, nil
+	}
+
+	if !hasLegacy {
 		return plan, nil
 	}
 	plan.merged = parsed
+	plan.merged.InstallMode = inferInstallMode(skillNames(parsed.Skills), parsed.ConfiguredAgents, true, "")
+	plan.InstallModeBackfill = plan.merged.InstallMode
 	return plan, nil
 }
 
 // ExecuteGlobalMigration writes the state PlanGlobalMigration assembled to
-// mdm-state.json (when it does not exist yet) and deletes the v1 global
+// mdm-state.json (when it does not exist yet), backfills the install mode
+// on an existing mdm-state.json that has none, and deletes the v1 global
 // skills-lock.json. The global file is per-machine state, so no tombstone
 // is left behind. A plan with orphaned entries discards them, so the
 // caller must confirm that explicitly.
@@ -325,13 +486,31 @@ func ExecuteGlobalMigration() error {
 	if err != nil {
 		return err
 	}
-	if !plan.needed {
+	if !plan.Needed() {
 		return nil
 	}
-	if !plan.TargetExists {
+	if !plan.TargetExists && plan.LegacyPath != "" {
 		if err := WriteGlobalState(plan.merged); err != nil {
 			return err
 		}
+	}
+	// An mdm-state.json that predates the install-mode switch has no mode
+	// recorded even though there is no legacy file left to absorb. Backfill
+	// it independently, the same way the project scope does.
+	if plan.TargetExists && plan.InstallModeBackfill != "" {
+		state, err := readGlobalStateE()
+		if err != nil {
+			return err
+		}
+		if state.InstallMode == "" {
+			state.InstallMode = plan.InstallModeBackfill
+			if err := WriteGlobalState(state); err != nil {
+				return err
+			}
+		}
+	}
+	if plan.LegacyPath == "" {
+		return nil
 	}
 	return os.Remove(plan.LegacyPath)
 }
