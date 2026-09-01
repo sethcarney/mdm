@@ -145,7 +145,13 @@ func runSync(opts SyncOptions) {
 		os.Exit(1)
 	}
 
-	global, mode, agents, ok := promptScopeAndAgents(AddOptions{Yes: opts.Yes}, cwd)
+	addOpts := AddOptions{Yes: opts.Yes}
+	global, agents, ok := promptScopeAndAgents(addOpts, cwd)
+	if !ok {
+		return
+	}
+
+	mode, ok := commitScopeInstallMode(addOpts, global, cwd)
 	if !ok {
 		return
 	}

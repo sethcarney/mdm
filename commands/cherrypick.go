@@ -546,13 +546,14 @@ func installForks(forked []string, opts CherryPickOptions, cwd string) {
 		return
 	}
 
-	global, mode, agents, ok := promptScopeAndAgents(AddOptions{
+	addOpts := AddOptions{
 		Global:  opts.Global,
 		Project: opts.Project,
 		Agents:  opts.Agents,
 		Yes:     opts.Yes,
 		Copy:    opts.Copy,
-	}, cwd)
+	}
+	global, agents, ok := promptScopeAndAgents(addOpts, cwd)
 	if !ok {
 		return
 	}
@@ -562,6 +563,14 @@ func installForks(forked []string, opts CherryPickOptions, cwd string) {
 	// local sources entirely, so nothing upstream can overwrite your edits.
 	forksRoot := filepath.Join(cwd, opts.Dir)
 	if agents = dropClobberingAgents(agents, global, cwd, forksRoot); len(agents) == 0 {
+		return
+	}
+
+	// After the clobber filter: an agent list it empties means nothing gets
+	// installed, and a scope converted for an install that never happens is
+	// exactly the mix this switch exists to avoid.
+	mode, ok := commitScopeInstallMode(addOpts, global, cwd)
+	if !ok {
 		return
 	}
 

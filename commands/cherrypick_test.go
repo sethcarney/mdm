@@ -125,7 +125,7 @@ func TestUpstreamRecordUsesTheSourceAsTyped(t *testing.T) {
 // Forking a skill that mdm installed earlier must credit the repository it came
 // from, not the local directory the files were copied out of.
 func TestUpstreamRecordCreditsTheOriginalUpstream(t *testing.T) {
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	isolateHome(t)
 	cwd := t.TempDir()
 	installed := filepath.Join(cwd, ".agents", "skills")
 	s := newTestSkill(t, installed, "code-review", "---\nname: code-review\ndescription: b\n---\n")
@@ -158,7 +158,7 @@ func TestUpstreamRecordCreditsTheOriginalUpstream(t *testing.T) {
 }
 
 func TestUpstreamRecordKeepsLocalSourcesLocal(t *testing.T) {
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	isolateHome(t)
 	cwd := t.TempDir()
 	s := newTestSkill(t, cwd, "vendor/a", "---\nname: a\ndescription: b\n---\n")
 

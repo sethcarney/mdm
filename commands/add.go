@@ -279,7 +279,12 @@ func runAddWellKnown(parsed source.ParsedSource, opts AddOptions, cwd string) {
 		os.Exit(1)
 	}
 
-	global, mode, agents, ok := promptScopeAndAgents(opts, cwd)
+	global, agents, ok := promptScopeAndAgents(opts, cwd)
+	if !ok {
+		return
+	}
+
+	mode, ok := commitScopeInstallMode(opts, global, cwd)
 	if !ok {
 		return
 	}
@@ -328,7 +333,12 @@ func runAddLocal(parsed source.ParsedSource, opts AddOptions, cwd string) {
 		os.Exit(1)
 	}
 
-	global, mode, agents, ok := promptScopeAndAgents(opts, cwd)
+	global, agents, ok := promptScopeAndAgents(opts, cwd)
+	if !ok {
+		return
+	}
+
+	mode, ok := commitScopeInstallMode(opts, global, cwd)
 	if !ok {
 		return
 	}
@@ -471,12 +481,19 @@ func runAddGitOrHub(parsed source.ParsedSource, opts AddOptions, cwd, sourceInpu
 	// Start audit concurrently while scope/agent prompts run
 	auditCh := startInstallAudit(ownerRepo, parsed.Type, opts.SkipAudit, selectedSkills)
 
-	global, mode, agents, ok := promptScopeAndAgents(opts, cwd)
+	global, agents, ok := promptScopeAndAgents(opts, cwd)
 	if !ok {
 		return
 	}
 
 	if !confirmInstallAfterAudit(<-auditCh, opts.Yes, opts.FailOnAudit) {
+		return
+	}
+
+	// After the audit gate: declining there must not leave a converted scope
+	// with nothing installed.
+	mode, ok := commitScopeInstallMode(opts, global, cwd)
+	if !ok {
 		return
 	}
 
@@ -647,11 +664,18 @@ func runAddBlob(result *blob.BlobInstallResult, parsed source.ParsedSource, opts
 	}
 
 	auditCh := startBlobInstallAudit(ownerRepo, opts.SkipAudit, selectedBlob)
-	global, mode, agents, ok := promptScopeAndAgents(opts, cwd)
+	global, agents, ok := promptScopeAndAgents(opts, cwd)
 	if !ok {
 		return
 	}
 	if !confirmInstallAfterAudit(<-auditCh, opts.Yes, opts.FailOnAudit) {
+		return
+	}
+
+	// After the audit gate: declining there must not leave a converted scope
+	// with nothing installed.
+	mode, ok := commitScopeInstallMode(opts, global, cwd)
+	if !ok {
 		return
 	}
 
@@ -851,8 +875,13 @@ func selectSkillsWithPrompt(skills []*skill.Skill, opts AddOptions, message stri
 }
 
 // promptScopeAndAgents asks for global/project scope and agent selection.
-// Returns (global bool, mode InstallMode, agents []string, ok bool).
-func promptScopeAndAgents(opts AddOptions, cwd string) (bool, InstallMode, []string, bool) {
+// Returns (global bool, agents []string, ok bool).
+//
+// It deliberately does not settle the install mode. Callers must call
+// commitScopeInstallMode themselves, as the last thing before installing:
+// committing the mode writes to the user's disk, so anything that can still
+// abort the install has to run first.
+func promptScopeAndAgents(opts AddOptions, cwd string) (bool, []string, bool) {
 	// Determine scope
 	global := opts.Global
 	if !global && !opts.Project && !opts.Yes {
@@ -861,26 +890,51 @@ func promptScopeAndAgents(opts AddOptions, cwd string) (bool, InstallMode, []str
 			{Label: "Global", Hint: "installs for your user account"},
 		})
 		if !ok {
-			return false, "", nil, false
+			return false, nil, false
 		}
 		global = idx == 1
-	}
-
-	// Determine install mode
-	mode := InstallModeSymlink
-	if opts.Copy {
-		mode = InstallModeCopy
 	}
 
 	// Determine agents
 	agents, ok := promptAgents(opts, global, cwd)
 	if !ok {
-		return false, "", nil, false
+		return false, nil, false
 	}
 
-	return global, mode, agents, true
+	return global, agents, true
 }
 
+// commitScopeInstallMode settles the scope's install mode and returns the mode
+// to install with. The scope's recorded mode is a single top-level switch, so
+// an install that does not ask for a mode inherits it.
+//
+// Call this immediately before installing, and never earlier. Committing the
+// mode records it and re-materializes every install in the scope, which is a
+// real change to the user's disk: running it while the user can still back out
+// (the agent picker, the post-audit confirmation, or an agent list that some
+// later filter empties) leaves a converted scope behind with nothing
+// installed. That is why it is a separate step from promptScopeAndAgents
+// rather than its last few lines.
+func commitScopeInstallMode(opts AddOptions, global bool, cwd string) (InstallMode, bool) {
+	requested := InstallModeSymlink
+	if opts.Copy || lock.GetInstallMode(global, cwd) == lock.InstallModeCopy {
+		requested = InstallModeCopy
+	}
+	return applyScopeInstallMode(requested, global, cwd, opts.Yes)
+}
+
+// allAgentsForScope lists every agent the given scope can install to: all of
+// them in project scope, and in global scope only those with a user-level
+// skills directory, since the others have nowhere to install globally.
+//
+// It backs both `-a *` and scopeInstallPaths, but it is not the only door an
+// agent list reaches an install through: validateNamedAgents (an explicit
+// `-a agent1,agent2` list) and promptAgentsYes (a saved configuredAgents list
+// under --yes) apply no such filter. Every registry entry today sets
+// GlobalSkillsDir, so the gap cannot currently trigger; if a future entry
+// ever leaves it empty, those two would also need to check it before the set
+// an install can write to and the set a mode switch sweeps could be trusted
+// to match.
 func allAgentsForScope(global bool) []string {
 	var all []string
 	for name := range agent.AllAgents {
