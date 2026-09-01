@@ -74,6 +74,30 @@ an install: `mdm agents remove` cleans around it and reports how many it kept,
 and `mdm skills remove` leaves it alone. Hand-written skills have no such marker,
 which is why they are still at risk.
 
+## My copied skills came back as symlinks
+
+**Symptom.** You installed with `--copy` expecting real directories, but
+after `mdm install` (or `mdm skills update`) they come back as symlinks.
+
+**Cause.** Versions before the install-mode switch did not record how a
+project was installed, so restores and updates always defaulted to
+symlinks, regardless of how the skill first arrived.
+
+**Recovery.** Run `mdm migrate`. It inspects each configured agent's
+install directory, or every agent the scope supports when the lock records
+no agents, and records `installMode: copy` when it finds real skill
+directories there instead of symlinks: in `mdm.lock` for the project, and
+in `mdm-state.json` for skills you installed with `-g`. A directory only
+counts as a copied skill when it holds a `SKILL.md`, so an unrelated
+directory that happens to share a skill's name is ignored. Later installs
+and updates copy from then on. Use `mdm migrate --dry-run` first to see the
+mode it would record.
+
+`mdm doctor` tells you when this is pending: it reports a scope whose
+skills are copied but whose lock does not record it, and points at
+`mdm migrate`. Run it afterward too, to confirm the skills are otherwise
+healthy.
+
 ## A forked skill vanished after installing it to OpenClaw
 
 Installing a skill replaces the agent's `<skills dir>/<name>`, and for OpenClaw
