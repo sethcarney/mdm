@@ -152,6 +152,30 @@ func SetConfiguredAgents(agents []string, global bool, cwd string) error {
 	return WriteLocalLock(lk, cwd)
 }
 
+// GetInstallMode returns the scope's recorded install mode. An empty
+// string means symlink, which is the default for a scope that has never
+// had the switch set.
+func GetInstallMode(global bool, cwd string) string {
+	if global {
+		return ReadGlobalState().InstallMode
+	}
+	return ReadProjectLock(cwd).InstallMode
+}
+
+// SetInstallMode records the scope's install mode. It goes through the
+// project lock directly rather than the LocalSkillLockFile view, which
+// carries only the skills and configuredAgents sections across a write.
+func SetInstallMode(mode string, global bool, cwd string) error {
+	if global {
+		s := ReadGlobalState()
+		s.InstallMode = mode
+		return WriteGlobalState(s)
+	}
+	lk := ReadProjectLock(cwd)
+	lk.InstallMode = mode
+	return WriteProjectLock(lk, cwd)
+}
+
 // AddToConfiguredAgents appends agents that aren't already in the list.
 func AddToConfiguredAgents(toAdd []string, global bool, cwd string) error {
 	current := GetConfiguredAgents(global, cwd)

@@ -25,7 +25,7 @@ import (
 // v1 file.
 // ──────────────────────────────────────────────────────────
 
-const globalStateVersion = 1
+const globalStateVersion = 2
 
 // legacyGlobalLockVersion is the version the v1 global skills-lock.json
 // had to carry to be readable.
@@ -51,6 +51,7 @@ type DismissedPrompts struct {
 // keys inside each skill entry (see ProjectLockFile).
 type GlobalState struct {
 	Version          int
+	InstallMode      string
 	Skills           map[string]SkillLockEntry
 	Dismissed        DismissedPrompts
 	ConfiguredAgents []string
@@ -82,6 +83,11 @@ func (s GlobalState) MarshalJSON() ([]byte, error) {
 	}
 	if err := writeKey("version", s.Version); err != nil {
 		return nil, err
+	}
+	if s.InstallMode != "" {
+		if err := writeKey("installMode", s.InstallMode); err != nil {
+			return nil, err
+		}
 	}
 	if len(s.ConfiguredAgents) > 0 {
 		if err := writeKey("configuredAgents", s.ConfiguredAgents); err != nil {
@@ -136,6 +142,9 @@ func (s *GlobalState) UnmarshalJSON(data []byte) error {
 		return json.Unmarshal(v, dst)
 	}
 	if err := decode("version", &s.Version); err != nil {
+		return err
+	}
+	if err := decode("installMode", &s.InstallMode); err != nil {
 		return err
 	}
 	if err := decode("configuredAgents", &s.ConfiguredAgents); err != nil {
@@ -204,6 +213,17 @@ func readGlobalStateE() (GlobalState, error) {
 	}
 	if s.Version > globalStateVersion {
 		return EmptyGlobalState(), errNewerLock(path, s.Version, globalStateVersion)
+	}
+	// A version 1 mdm-state.json predates the install-mode switch. Accept
+	// it, upgrade in memory, and let the next write persist the current
+	// version. The mode stays empty (meaning symlink); `mdm migrate` is
+	// what infers a mode from disk, because scanning on every read would
+	// be both slow and surprising.
+	//
+	// Written as a range rather than `== 1` so the next version bump does
+	// not silently reintroduce the read-as-empty bug for version 2 files.
+	if s.Version >= 1 && s.Version < globalStateVersion {
+		s.Version = globalStateVersion
 	}
 	if s.Version < globalStateVersion {
 		return EmptyGlobalState(), nil

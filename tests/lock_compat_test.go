@@ -1,6 +1,7 @@
 package tests_test
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -77,5 +78,51 @@ func TestTombstoneDoesNotAbortV2(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "No "+lockName+" found") {
 		t.Errorf("tombstone-only project should read as empty, got: %q", stdout)
+	}
+}
+
+// A version 1 mdm.lock predates the install-mode switch. It must still
+// restore its skills, and the file must be at the current version
+// afterwards. The v1 line's read-as-empty handling of an unrecognized
+// version is exactly the bug this upgrade path exists to avoid.
+func TestVersion1LockUpgradesOnInstall(t *testing.T) {
+	dir := t.TempDir()
+
+	skillDir := filepath.Join(dir, "my-skill")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: my-skill\ndescription: d\n---\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	v1 := `{"version":1,"skills":{"my-skill":{"source":"./my-skill","sourceType":"local"}},"configuredAgents":["claude-code"]}`
+	if err := os.WriteFile(filepath.Join(dir, lockName), []byte(v1), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, stderr, code := runMdmInDir(t, dir, freshEnv(t), "skills", "install", "-y")
+	if code != 0 {
+		t.Fatalf("skills install against a version 1 lock exited %d:\n%s%s", code, stdout, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".claude", "skills", "my-skill", "SKILL.md")); err != nil {
+		t.Errorf("skill not restored from the version 1 lock: %v\n%s", err, stdout)
+	}
+
+	after, err := os.ReadFile(filepath.Join(dir, lockName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parsed struct {
+		Version int                        `json:"version"`
+		Skills  map[string]json.RawMessage `json:"skills"`
+	}
+	if err := json.Unmarshal(after, &parsed); err != nil {
+		t.Fatalf("lock is not valid JSON after the upgrade: %v\n%s", err, after)
+	}
+	if parsed.Version != 2 {
+		t.Errorf("lock version = %d, want 2 after the upgrade:\n%s", parsed.Version, after)
+	}
+	if _, ok := parsed.Skills["my-skill"]; !ok {
+		t.Errorf("skill entry lost by the upgrade:\n%s", after)
 	}
 }

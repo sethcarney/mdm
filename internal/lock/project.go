@@ -83,10 +83,18 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 // retiring them.
 // ──────────────────────────────────────────────────────────
 
+// Install mode is a single top-level switch per scope, not a per-asset
+// value. It governs every install, update, and restore in that scope.
+// An empty value means symlink.
+const (
+	InstallModeSymlink = "symlink"
+	InstallModeCopy    = "copy"
+)
+
 // ProjectLockName is the unified project lock file at the project root.
 const ProjectLockName = "mdm.lock"
 
-const projectLockVersion = 1
+const projectLockVersion = 2
 
 // ProjectLockFile is the in-memory form of mdm.lock. Unknown
 // top-level keys are captured on read and re-emitted on write, and so are
@@ -94,6 +102,7 @@ const projectLockVersion = 1
 // survives this binary rewriting the entry's known fields.
 type ProjectLockFile struct {
 	Version          int
+	InstallMode      string
 	ConfiguredAgents []string
 	Skills           map[string]LocalSkillLockEntry
 	Knowledge        map[string]KnowledgeLockEntry
@@ -225,7 +234,7 @@ func captureRawEntries(section json.RawMessage) map[string]json.RawMessage {
 
 func (l ProjectLockFile) isEmpty() bool {
 	return len(l.Skills) == 0 && len(l.Knowledge) == 0 && len(l.Plugins) == 0 &&
-		len(l.ConfiguredAgents) == 0 && len(l.extra) == 0
+		len(l.ConfiguredAgents) == 0 && len(l.extra) == 0 && l.InstallMode == ""
 }
 
 // MarshalJSON emits known keys in a fixed order, then unknown keys sorted.
@@ -251,6 +260,11 @@ func (l ProjectLockFile) MarshalJSON() ([]byte, error) {
 	}
 	if err := writeKey("version", l.Version); err != nil {
 		return nil, err
+	}
+	if l.InstallMode != "" {
+		if err := writeKey("installMode", l.InstallMode); err != nil {
+			return nil, err
+		}
 	}
 	if len(l.ConfiguredAgents) > 0 {
 		if err := writeKey("configuredAgents", l.ConfiguredAgents); err != nil {
@@ -297,6 +311,9 @@ func (l *ProjectLockFile) UnmarshalJSON(data []byte) error {
 		return json.Unmarshal(v, dst)
 	}
 	if err := decode("version", &l.Version); err != nil {
+		return err
+	}
+	if err := decode("installMode", &l.InstallMode); err != nil {
 		return err
 	}
 	if err := decode("configuredAgents", &l.ConfiguredAgents); err != nil {
@@ -358,6 +375,17 @@ func readProjectLockE(cwd string) (ProjectLockFile, error) {
 	}
 	if lk.Version > projectLockVersion {
 		return EmptyProjectLock(), errNewerLock(path, lk.Version, projectLockVersion)
+	}
+	// A version 1 mdm.lock predates the install-mode switch. Accept it,
+	// upgrade in memory, and let the next write persist the current
+	// version. The mode stays empty (meaning symlink); `mdm migrate` is
+	// what infers a mode from disk, because scanning on every read would
+	// be both slow and surprising.
+	//
+	// Written as a range rather than `== 1` so the next version bump does
+	// not silently reintroduce the read-as-empty bug for version 2 files.
+	if lk.Version >= 1 && lk.Version < projectLockVersion {
+		lk.Version = projectLockVersion
 	}
 	if lk.Version < projectLockVersion {
 		return EmptyProjectLock(), nil

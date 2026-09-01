@@ -3,8 +3,11 @@ package lock
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
+
+	"github.com/sethcarney/mdm/internal/agent"
 )
 
 func writeLegacyProjectLocks(t *testing.T, cwd string) {
@@ -253,4 +256,53 @@ func TestProjectMigrationPreservesEntryFields(t *testing.T) {
 	if p := lk.Plugins["p1"]; p.DataDir != ".agents/plugins-data/p1" || p.SpecVersion != "1.0.0" || p.UpdatedAt != "t" {
 		t.Errorf("plugin fields not preserved: %+v", p)
 	}
+}
+
+// injectedTestAgents holds the agents registerTestAgent has put into the
+// registry and not yet cleaned up. isolateGlobal reads it so that reloading
+// the registry on top of an injected agent fails loudly instead of silently
+// dropping it. AllAgents is shared mutable state and so is this, so no test
+// that touches either may run in parallel.
+var injectedTestAgents = map[string]*agent.AgentConfig{}
+
+// injectedTestAgentNames lists them sorted, so the failure message is stable.
+func injectedTestAgentNames() []string {
+	names := make([]string, 0, len(injectedTestAgents))
+	for name := range injectedTestAgents {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// registerTestAgent injects a throwaway agent whose install directories sit
+// under temp dirs, so global-scope inference can be exercised without
+// touching the real per-user agent directories. AllAgents is shared mutable
+// state, so no test that calls this may run in parallel.
+//
+// Call isolateGlobal BEFORE this, never after: agent.Reload rebuilds AllAgents
+// from scratch and would discard the injected agent, leaving the test to
+// assert against the real registry and quite possibly still pass, for the
+// wrong reason. Both this and isolateGlobal fail the test rather than let that
+// happen silently.
+func registerTestAgent(t *testing.T, name, projectDir, globalDir string) {
+	t.Helper()
+	cfg := &agent.AgentConfig{
+		Name:            name,
+		DisplayName:     name,
+		SkillsDir:       projectDir,
+		GlobalSkillsDir: globalDir,
+	}
+	agent.AllAgents[name] = cfg
+	injectedTestAgents[name] = cfg
+	t.Cleanup(func() {
+		// Catches every way the injection can be lost, not only a mis-ordered
+		// isolateGlobal: anything that rebuilds or overwrites the registry
+		// mid-test leaves a different pointer, or none, behind.
+		if agent.AllAgents[name] != cfg {
+			t.Errorf("test agent %q was dropped from the registry during the test: something rebuilt agent.AllAgents (agent.Reload, most likely via isolateGlobal) after registerTestAgent ran, so the test asserted against the real registry", name)
+		}
+		delete(injectedTestAgents, name)
+		delete(agent.AllAgents, name)
+	})
 }
