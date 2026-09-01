@@ -168,6 +168,38 @@ func TestDoctorHelp(t *testing.T) {
 	}
 }
 
+// A project-scoped doctor run is a CI gate: it must not exit 1 because the
+// machine's global state file is unreadable. The global migration check still
+// runs and still reports the problem, but at warn level outside global scope.
+func TestDoctorProjectScopeDoesNotFailOnUnreadableGlobalState(t *testing.T) {
+	projectDir := t.TempDir()
+	stateDir := t.TempDir()
+
+	// A truncated write, which is how this file actually ends up unreadable.
+	statePath := filepath.Join(stateDir, "mdm", "state.json")
+	if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(statePath, []byte(`{"version": 2, "skills": {`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	env := isolatedEnv(projectDir, stateDir)
+	stdout, stderr, code := runMdmInDir(t, projectDir, env, "doctor", "-p")
+	combined := stdout + stderr
+	if code != 0 {
+		t.Fatalf("mdm doctor -p exited %d over a global-state problem:\n%s", code, combined)
+	}
+	if !strings.Contains(combined, "global state could not be read") {
+		t.Errorf("expected the problem to still be reported, got:\n%s", combined)
+	}
+
+	// The same problem in a global-scoped run is still a hard failure.
+	if _, _, code := runMdmInDir(t, projectDir, env, "doctor", "-g"); code == 0 {
+		t.Error("mdm doctor -g exited 0 despite an unreadable global state file")
+	}
+}
+
 func runMdmInDir(t *testing.T, dir string, env []string, args ...string) (stdout string, stderr string, exitCode int) {
 	t.Helper()
 	cmd := exec.Command(mdmBin, args...)

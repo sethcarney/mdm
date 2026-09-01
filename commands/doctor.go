@@ -70,6 +70,7 @@ Checks performed:
   • Configured agents whose instruction file is not yet linked to AGENTS.md
   • Configured agents with linked rules but missing skill symlinks
   • Missing README in the project root
+  • Legacy v1 lock files, and an install mode a scope uses but has not recorded
   • All other .md files in the project that may strain agent context windows
 
 Exits 1 when any error-level issue is found (warnings alone exit 0), so
@@ -154,7 +155,7 @@ func runDoctor(opts DoctorOptions) {
 		missingSkillLinkIssues = checkMissingAgentSkillLinks(cwd)
 		knowledgeIssues = checkKnowledgeBundles(cwd)
 		pluginIssues = checkInstalledPlugins(cwd)
-		migrationIssues = checkLegacyLockFiles(cwd)
+		migrationIssues = checkProjectMigration(cwd)
 		mdIssues, mdTruncated = checkProjectMarkdown(cwd, skipDirs, skipFiles)
 		if mdTruncated {
 			vlog(verboseFlag, "project markdown walk hit the %d-entry limit; results truncated", markdownWalkLimit)
@@ -169,7 +170,7 @@ func runDoctor(opts DoctorOptions) {
 		return results[i].Name < results[j].Name
 	})
 
-	migrationIssues = append(migrationIssues, checkLegacyGlobalLock()...)
+	migrationIssues = append(migrationIssues, checkGlobalMigration(checkGlobal)...)
 
 	errs := printDoctorResults(results, instrIssues, unlinkedRulesIssues, missingSkillLinkIssues, knowledgeIssues, pluginIssues, migrationIssues, mdIssues, mdTruncated, readmeIssue, checkProject, cwd)
 	if errs > 0 {
@@ -177,9 +178,10 @@ func runDoctor(opts DoctorOptions) {
 	}
 }
 
-// checkLegacyLockFiles flags v1 project lock files that mdm migrate should
-// fold into mdm.lock.
-func checkLegacyLockFiles(cwd string) []doctorIssue {
+// checkProjectMigration flags v1 project lock files that mdm migrate should
+// fold into mdm.lock, and an install mode the project is using but has not
+// recorded.
+func checkProjectMigration(cwd string) []doctorIssue {
 	plan, err := lock.PlanProjectMigration(cwd)
 	if err != nil {
 		return []doctorIssue{{
@@ -196,19 +198,68 @@ func checkLegacyLockFiles(cwd string) []doctorIssue {
 			})
 		}
 	}
+	// A project installed with --copy before the install mode was recorded
+	// has copies on disk and no mode in its lock, so the next restore
+	// re-symlinks them. `mdm migrate` is the documented recovery.
+	//
+	// Both lock shapes need the warning. An existing mdm.lock with no mode
+	// has no legacy files left, so nothing else tells the user to migrate.
+	// A v1 lock does get the legacy warning above, but that warning names
+	// the file to fold in and not the copies it is about to cost, and a v1
+	// lock is the shape most exposed: the mode is inferred at migration
+	// time only, so an install that runs first still re-symlinks.
+	if plan.InstallModeBackfill != "" {
+		msg := fmt.Sprintf("skills here are installed in %s mode but %s does not record it: run `mdm migrate` so installs and updates keep it", plan.InstallModeBackfill, lockName)
+		if !plan.TargetExists {
+			msg = fmt.Sprintf("skills here are installed in %s mode and no lock records it: run `mdm migrate` first, or the next install replaces them with symlinks", plan.InstallModeBackfill)
+		}
+		issues = append(issues, doctorIssue{Level: "warn", Message: msg})
+	}
 	return issues
 }
 
-// checkLegacyGlobalLock flags the v1 global skills-lock.json.
-func checkLegacyGlobalLock() []doctorIssue {
-	path, ok := lock.LegacyGlobalLockExists()
-	if !ok {
-		return nil
+// checkGlobalMigration flags the v1 global skills-lock.json, and an install
+// mode the global scope is using but has not recorded. It always runs, in
+// every scope, the way its v1-only predecessor always did.
+//
+// checkGlobal says whether this run is actually about global scope, and
+// decides only the level of the unreadable-state issue. An unreadable
+// mdm-state.json is an error when you asked about global scope, and the
+// project check's own unreadable-lock issue is an error for the same reason.
+// But printDoctorResults folds every issue here into the error count and
+// runDoctor exits 1 on any of them, so leaving it an error would fail
+// `mdm doctor -p` as a project CI gate over a machine-global file the project
+// does not own. Warning keeps the finding visible without failing the gate.
+func checkGlobalMigration(checkGlobal bool) []doctorIssue {
+	var issues []doctorIssue
+	if path, ok := lock.LegacyGlobalLockExists(); ok {
+		issues = append(issues, doctorIssue{
+			Level:   "warn",
+			Message: fmt.Sprintf("%s is the v1 global state file — move it to %s with `mdm migrate`", path, lock.GetGlobalStatePath()),
+		})
 	}
-	return []doctorIssue{{
-		Level:   "warn",
-		Message: fmt.Sprintf("%s is the v1 global state file — move it to %s with `mdm migrate`", path, lock.GetGlobalStatePath()),
-	}}
+	plan, err := lock.PlanGlobalMigration()
+	if err != nil {
+		level := "warn"
+		if checkGlobal {
+			level = "error"
+		}
+		return append(issues, doctorIssue{
+			Level:   level,
+			Message: fmt.Sprintf("global state could not be read: %v", err),
+		})
+	}
+	// Both state shapes need the warning, for the reason checkProjectMigration
+	// gives: a v1 global state file is the shape most exposed, and its legacy
+	// warning above names the file to move and not the copies it costs.
+	if plan.InstallModeBackfill != "" {
+		msg := fmt.Sprintf("global skills are installed in %s mode but %s does not record it: run `mdm migrate` so installs and updates keep it", plan.InstallModeBackfill, lock.GetGlobalStatePath())
+		if !plan.TargetExists {
+			msg = fmt.Sprintf("global skills are installed in %s mode and no state file records it: run `mdm migrate` first, or the next install replaces them with symlinks", plan.InstallModeBackfill)
+		}
+		issues = append(issues, doctorIssue{Level: "warn", Message: msg})
+	}
+	return issues
 }
 
 func buildProjectSkipPaths(cwd, canonicalBase string, skipDirs, skipFiles map[string]bool) {
