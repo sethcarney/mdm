@@ -71,37 +71,14 @@ func isInsideOrEqual(target, root string) bool {
 }
 
 func getCanonicalSkillsDir(global bool, cwd string) string {
-	if cwd == "" {
-		cwd, _ = os.Getwd()
-	}
-	var baseDir string
-	if global {
-		baseDir, _ = os.UserHomeDir()
-	} else {
-		baseDir = cwd
-	}
-	return filepath.Join(baseDir, agent.AgentsDir, agent.SkillsSubdir)
+	return agent.CanonicalSkillsDir(global, cwd)
 }
 
+// getAgentBaseDir resolves where an agent's skills live for a scope. The
+// resolution itself lives in the agent package so that install-mode inference
+// in internal/lock computes exactly the same paths; see agent.SkillsInstallDir.
 func getAgentBaseDir(agentName string, global bool, cwd string) string {
-	if cwd == "" {
-		cwd, _ = os.Getwd()
-	}
-	a := agent.AllAgents[agentName]
-	if a == nil {
-		return ""
-	}
-	if agent.UsesSharedSkillsDir(agentName) {
-		return getCanonicalSkillsDir(global, cwd)
-	}
-	if global {
-		if a.GlobalSkillsDir == "" {
-			home, _ := os.UserHomeDir()
-			return filepath.Join(home, a.SkillsDir)
-		}
-		return a.GlobalSkillsDir
-	}
-	return filepath.Join(cwd, a.SkillsDir)
+	return agent.SkillsInstallDir(agentName, global, cwd)
 }
 
 func cleanAndCreateDir(path string) error {
