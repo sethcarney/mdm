@@ -198,11 +198,7 @@ func TestInstallNoLockFile(t *testing.T) {
 	stateDir := t.TempDir()
 
 	// Build a minimal environment (inherit PATH so the binary can run).
-	env := []string{
-		"PATH=" + os.Getenv("PATH"),
-		"HOME=" + tmpDir,
-		"XDG_STATE_HOME=" + stateDir,
-	}
+	env := isolatedEnv(tmpDir, stateDir)
 
 	stdout, stderr, _ := runMdmInDir(t, tmpDir, env, "skills", "install", "-y")
 	combined := stdout + stderr
@@ -381,7 +377,11 @@ func TestSkillsInstallBlocksHiddenMarkdownCharactersFromLock(t *testing.T) {
 func isolatedEnv(home, stateDir string) []string {
 	return []string{
 		"PATH=" + os.Getenv("PATH"),
+		// os.UserHomeDir reads USERPROFILE on Windows and HOME elsewhere, and
+		// the binary resolves every global install path from it. Set both, or
+		// the isolation silently does nothing on one of the two platforms.
 		"HOME=" + home,
+		"USERPROFILE=" + home,
 		"XDG_STATE_HOME=" + stateDir,
 	}
 }
@@ -452,11 +452,7 @@ func setupCherryPick(t *testing.T) cherryPickFixture {
 	return cherryPickFixture{
 		project:  projectDir,
 		upstream: writeUpstreamFixture(t, filepath.Join(parentDir, "upstream")),
-		env: []string{
-			"PATH=" + os.Getenv("PATH"),
-			"HOME=" + parentDir,
-			"XDG_STATE_HOME=" + filepath.Join(parentDir, "state"),
-		},
+		env:      isolatedEnv(parentDir, filepath.Join(parentDir, "state")),
 	}
 }
 
