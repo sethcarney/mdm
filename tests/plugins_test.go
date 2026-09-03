@@ -394,7 +394,7 @@ func assertWiredStdioServer(t *testing.T, servers map[string]json.RawMessage) {
 	}
 }
 
-// assertWiredLockMCP checks the lock records the wired ids per agent.
+// assertWiredLockMCP checks the lock records the wired ids per harness.
 func assertWiredLockMCP(t *testing.T, dir string) {
 	t.Helper()
 	var lockData struct {

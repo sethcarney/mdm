@@ -69,8 +69,8 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 // ──────────────────────────────────────────────────────────
 // Unified project lock (mdm.lock)
 //
-// v2 stores every project-scoped section - skills, knowledge bundles,
-// plugins, configured agents - in a single mdm.lock at the project
+// v2 stores every project-scoped section — skills, knowledge bundles,
+// plugins, configured harnesses — in a single mdm.lock at the project
 // root. The v1 binaries' hazard (locks read into fixed structs and
 // rewritten wholesale, silently dropping keys they don't know) is closed
 // here rather than by splitting files: unknown top-level keys survive a

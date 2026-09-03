@@ -6,33 +6,33 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/sethcarney/mdm/internal/agent"
+	"github.com/sethcarney/mdm/internal/harness"
 )
 
 // isolateGlobal points the global state AND every user-level directory the
-// agent registry resolves at a fresh temp home, so a test that touches
+// harness registry resolves at a fresh temp home, so a test that touches
 // global scope can never read or write the developer's real files.
 //
 // The state file alone is not enough: global install paths are built from
-// the user's home directory, so install-mode inference walking every agent
+// the user's home directory, so install-mode inference walking every harness
 // the scope supports would otherwise Lstat (and a conversion would rewrite)
 // real directories under the developer's home. That has already happened
 // once during development, which is why this is not left to each test.
 //
-// agent.Reload is what makes the redirect stick: the registry resolves every
+// harness.Reload is what makes the redirect stick: the registry resolves every
 // global path once, at package init. Its cleanup is registered before the
 // t.Setenv calls so it runs after them, rebuilding the registry from the
 // restored environment. Tests using this must not run in parallel.
 func isolateGlobal(t *testing.T) string {
 	t.Helper()
-	// agent.Reload below replaces AllAgents wholesale, so calling this after
-	// registerTestAgent would discard the injected agent and leave the test
+	// harness.Reload below replaces AllHarnesses wholesale, so calling this after
+	// registerTestHarness would discard the injected harness and leave the test
 	// asserting against the real registry. Say so here rather than let the
 	// test pass for the wrong reason.
-	if len(injectedTestAgents) > 0 {
-		t.Fatalf("isolateGlobal called after registerTestAgent registered %v: reloading the registry would discard them, so isolate the home first", injectedTestAgentNames())
+	if len(injectedTestHarnesses) > 0 {
+		t.Fatalf("isolateGlobal called after registerTestHarness registered %v: reloading the registry would discard them, so isolate the home first", injectedTestHarnessNames())
 	}
-	t.Cleanup(agent.Reload)
+	t.Cleanup(harness.Reload)
 
 	dir := t.TempDir()
 	home := t.TempDir()
@@ -44,7 +44,7 @@ func isolateGlobal(t *testing.T) string {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude"))
-	agent.Reload()
+	harness.Reload()
 
 	return dir
 }

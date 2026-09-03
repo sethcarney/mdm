@@ -66,7 +66,7 @@ func reinstallPlugin(name string, entry lock.PluginLockEntry, allowHiddenChars, 
 	}
 	runPluginsAdd(src, PluginsAddOptions{
 		Plugins:          []string{name},
-		Agents:           entry.SkillAgents,
+		Harnesses:        entry.SkillAgents,
 		Yes:              true,
 		AllowHiddenChars: allowHiddenChars,
 		SkipMCP:          skipMCP,

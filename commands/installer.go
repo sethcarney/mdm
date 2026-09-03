@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/sethcarney/mdm/internal/agent"
+	"github.com/sethcarney/mdm/internal/harness"
 	"github.com/sethcarney/mdm/internal/lock"
 	"github.com/sethcarney/mdm/internal/registry"
 	"github.com/sethcarney/mdm/internal/skill"
@@ -71,14 +71,14 @@ func isInsideOrEqual(target, root string) bool {
 }
 
 func getCanonicalSkillsDir(global bool, cwd string) string {
-	return agent.CanonicalSkillsDir(global, cwd)
+	return harness.CanonicalSkillsDir(global, cwd)
 }
 
-// getAgentBaseDir resolves where an agent's skills live for a scope. The
-// resolution itself lives in the agent package so that install-mode inference
-// in internal/lock computes exactly the same paths; see agent.SkillsInstallDir.
-func getAgentBaseDir(agentName string, global bool, cwd string) string {
-	return agent.SkillsInstallDir(agentName, global, cwd)
+// getHarnessBaseDir resolves where a harness's skills live for a scope. The
+// resolution itself lives in the harness package so that install-mode inference
+// in internal/lock computes exactly the same paths; see harness.SkillsInstallDir.
+func getHarnessBaseDir(harnessName string, global bool, cwd string) string {
+	return harness.SkillsInstallDir(harnessName, global, cwd)
 }
 
 func cleanAndCreateDir(path string) error {
@@ -252,29 +252,29 @@ func writeSkillFiles(targetDir string, files []struct{ Path, Contents string }) 
 	return nil
 }
 
-func performSymlinkInstall(canonicalDir, agentDir, agentName string, global bool, mode InstallMode, cp copyFunc) InstallResult {
+func performSymlinkInstall(canonicalDir, harnessDir, harnessName string, global bool, mode InstallMode, cp copyFunc) InstallResult {
 	if err := refuseIfPluginOwned(canonicalDir, global); err != nil {
-		return InstallResult{Success: false, Path: agentDir, Mode: mode, Error: err.Error()}
+		return InstallResult{Success: false, Path: harnessDir, Mode: mode, Error: err.Error()}
 	}
 	if err := cleanAndCreateDir(canonicalDir); err != nil {
-		return InstallResult{Success: false, Path: agentDir, Mode: mode, Error: err.Error()}
+		return InstallResult{Success: false, Path: harnessDir, Mode: mode, Error: err.Error()}
 	}
 	if err := cp(canonicalDir); err != nil {
-		return InstallResult{Success: false, Path: agentDir, Mode: mode, Error: err.Error()}
+		return InstallResult{Success: false, Path: harnessDir, Mode: mode, Error: err.Error()}
 	}
-	if global && agent.UsesSharedSkillsDir(agentName) {
+	if global && harness.UsesSharedSkillsDir(harnessName) {
 		return InstallResult{Success: true, Path: canonicalDir, CanonicalPath: canonicalDir, Mode: InstallModeSymlink}
 	}
-	if createSymlink(canonicalDir, agentDir) {
-		return InstallResult{Success: true, Path: agentDir, CanonicalPath: canonicalDir, Mode: InstallModeSymlink}
+	if createSymlink(canonicalDir, harnessDir) {
+		return InstallResult{Success: true, Path: harnessDir, CanonicalPath: canonicalDir, Mode: InstallModeSymlink}
 	}
-	if err := cleanAndCreateDir(agentDir); err != nil {
-		return InstallResult{Success: false, Path: agentDir, Mode: mode, Error: err.Error()}
+	if err := cleanAndCreateDir(harnessDir); err != nil {
+		return InstallResult{Success: false, Path: harnessDir, Mode: mode, Error: err.Error()}
 	}
-	if err := cp(agentDir); err != nil {
-		return InstallResult{Success: false, Path: agentDir, Mode: mode, Error: err.Error()}
+	if err := cp(harnessDir); err != nil {
+		return InstallResult{Success: false, Path: harnessDir, Mode: mode, Error: err.Error()}
 	}
-	return InstallResult{Success: true, Path: agentDir, CanonicalPath: canonicalDir, Mode: InstallModeSymlink, SymlinkFailed: true}
+	return InstallResult{Success: true, Path: harnessDir, CanonicalPath: canonicalDir, Mode: InstallModeSymlink, SymlinkFailed: true}
 }
 
 // refuseIfPluginOwned blocks a standalone skill install from clobbering a
@@ -291,10 +291,10 @@ func refuseIfPluginOwned(canonicalDir string, global bool) error {
 	return nil
 }
 
-func validateAgentInstall(agentName string, global bool, mode InstallMode) (*agent.AgentConfig, *InstallResult) {
-	a := agent.AllAgents[agentName]
+func validateHarnessInstall(harnessName string, global bool, mode InstallMode) (*harness.HarnessConfig, *InstallResult) {
+	a := harness.AllHarnesses[harnessName]
 	if a == nil {
-		r := InstallResult{Success: false, Path: "", Mode: mode, Error: "unknown agent: " + agentName}
+		r := InstallResult{Success: false, Path: "", Mode: mode, Error: "unknown agent: " + harnessName}
 		return nil, &r
 	}
 	if global && a.GlobalSkillsDir == "" {
@@ -304,9 +304,9 @@ func validateAgentInstall(agentName string, global bool, mode InstallMode) (*age
 	return a, nil
 }
 
-func installSkillForAgent(s *skill.Skill, agentName string, global bool, mode InstallMode) InstallResult {
+func installSkillForHarness(s *skill.Skill, harnessName string, global bool, mode InstallMode) InstallResult {
 	cwd, _ := os.Getwd()
-	if _, errResult := validateAgentInstall(agentName, global, mode); errResult != nil {
+	if _, errResult := validateHarnessInstall(harnessName, global, mode); errResult != nil {
 		return *errResult
 	}
 
@@ -318,60 +318,60 @@ func installSkillForAgent(s *skill.Skill, agentName string, global bool, mode In
 
 	canonicalBase := getCanonicalSkillsDir(global, cwd)
 	canonicalDir := filepath.Join(canonicalBase, skillName)
-	agentBase := getAgentBaseDir(agentName, global, cwd)
-	agentDir := filepath.Join(agentBase, skillName)
+	harnessBase := getHarnessBaseDir(harnessName, global, cwd)
+	harnessDir := filepath.Join(harnessBase, skillName)
 
-	if !isPathSafe(canonicalBase, canonicalDir) || !isPathSafe(agentBase, agentDir) {
-		return InstallResult{Success: false, Path: agentDir, Mode: mode, Error: "potential path traversal detected"}
+	if !isPathSafe(canonicalBase, canonicalDir) || !isPathSafe(harnessBase, harnessDir) {
+		return InstallResult{Success: false, Path: harnessDir, Mode: mode, Error: "potential path traversal detected"}
 	}
 
 	if mode == InstallModeCopy {
-		if err := cleanAndCreateDir(agentDir); err != nil {
-			return InstallResult{Success: false, Path: agentDir, Mode: mode, Error: err.Error()}
+		if err := cleanAndCreateDir(harnessDir); err != nil {
+			return InstallResult{Success: false, Path: harnessDir, Mode: mode, Error: err.Error()}
 		}
-		if err := copyDirectory(s.Path, agentDir); err != nil {
-			return InstallResult{Success: false, Path: agentDir, Mode: mode, Error: err.Error()}
+		if err := copyDirectory(s.Path, harnessDir); err != nil {
+			return InstallResult{Success: false, Path: harnessDir, Mode: mode, Error: err.Error()}
 		}
-		return InstallResult{Success: true, Path: agentDir, Mode: InstallModeCopy}
+		return InstallResult{Success: true, Path: harnessDir, Mode: InstallModeCopy}
 	}
 
-	return performSymlinkInstall(canonicalDir, agentDir, agentName, global, mode,
+	return performSymlinkInstall(canonicalDir, harnessDir, harnessName, global, mode,
 		func(dst string) error { return copyDirectory(s.Path, dst) })
 }
 
-func installSkillFilesForAgent(skillName string, files []struct{ Path, Contents string }, agentName string, global bool, mode InstallMode) InstallResult {
+func installSkillFilesForHarness(skillName string, files []struct{ Path, Contents string }, harnessName string, global bool, mode InstallMode) InstallResult {
 	cwd, _ := os.Getwd()
-	if _, errResult := validateAgentInstall(agentName, global, mode); errResult != nil {
+	if _, errResult := validateHarnessInstall(harnessName, global, mode); errResult != nil {
 		return *errResult
 	}
 
 	sName := sanitizeName(skillName)
 	canonicalBase := getCanonicalSkillsDir(global, cwd)
 	canonicalDir := filepath.Join(canonicalBase, sName)
-	agentBase := getAgentBaseDir(agentName, global, cwd)
-	agentDir := filepath.Join(agentBase, sName)
+	harnessBase := getHarnessBaseDir(harnessName, global, cwd)
+	harnessDir := filepath.Join(harnessBase, sName)
 
-	if !isPathSafe(canonicalBase, canonicalDir) || !isPathSafe(agentBase, agentDir) {
-		return InstallResult{Success: false, Path: agentDir, Mode: mode, Error: "potential path traversal detected"}
+	if !isPathSafe(canonicalBase, canonicalDir) || !isPathSafe(harnessBase, harnessDir) {
+		return InstallResult{Success: false, Path: harnessDir, Mode: mode, Error: "potential path traversal detected"}
 	}
 
 	cp := func(dst string) error { return writeSkillFiles(dst, files) }
 
 	if mode == InstallModeCopy {
-		if err := cleanAndCreateDir(agentDir); err != nil {
-			return InstallResult{Success: false, Path: agentDir, Mode: mode, Error: err.Error()}
+		if err := cleanAndCreateDir(harnessDir); err != nil {
+			return InstallResult{Success: false, Path: harnessDir, Mode: mode, Error: err.Error()}
 		}
-		if err := cp(agentDir); err != nil {
-			return InstallResult{Success: false, Path: agentDir, Mode: mode, Error: err.Error()}
+		if err := cp(harnessDir); err != nil {
+			return InstallResult{Success: false, Path: harnessDir, Mode: mode, Error: err.Error()}
 		}
-		return InstallResult{Success: true, Path: agentDir, Mode: InstallModeCopy}
+		return InstallResult{Success: true, Path: harnessDir, Mode: InstallModeCopy}
 	}
 
-	return performSymlinkInstall(canonicalDir, agentDir, agentName, global, mode, cp)
+	return performSymlinkInstall(canonicalDir, harnessDir, harnessName, global, mode, cp)
 }
 
-func isSkillInstalled(skillName, agentName string, global bool) bool {
-	a := agent.AllAgents[agentName]
+func isSkillInstalled(skillName, harnessName string, global bool) bool {
+	a := harness.AllHarnesses[harnessName]
 	if a == nil {
 		return false
 	}
@@ -411,22 +411,24 @@ type InstalledSkill struct {
 	Path          string
 	CanonicalPath string
 	Scope         string // "project" or "global"
-	Agents        []string
+	// Harnesses keeps the JSON key "Agents": `mdm skills list --json` output
+	// is a stable external contract this commit does not change.
+	Harnesses []string `json:"Agents"`
 }
 
 type scopeEntry struct {
-	isGlobal  bool
-	path      string
-	agentType string
+	isGlobal    bool
+	path        string
+	harnessType string
 }
 
-func filterAgentsToCheck(detected []string, agentFilter []string) []string {
-	if len(agentFilter) == 0 {
+func filterHarnessesToCheck(detected []string, harnessFilter []string) []string {
+	if len(harnessFilter) == 0 {
 		return detected
 	}
 	var filtered []string
 	for _, a := range detected {
-		for _, f := range agentFilter {
+		for _, f := range harnessFilter {
 			if a == f {
 				filtered = append(filtered, a)
 				break
@@ -436,8 +438,8 @@ func filterAgentsToCheck(detected []string, agentFilter []string) []string {
 	return filtered
 }
 
-func agentDirForScope(agentName string, isGlobal bool, cwd string) string {
-	a := agent.AllAgents[agentName]
+func harnessDirForScope(harnessName string, isGlobal bool, cwd string) string {
+	a := harness.AllHarnesses[harnessName]
 	if a == nil {
 		return ""
 	}
@@ -456,53 +458,53 @@ func scopeEntryExists(scopes []scopeEntry, path string, isGlobal bool) bool {
 	return false
 }
 
-func appendDetectedAgentScopes(scopes []scopeEntry, agentsToCheck []string, isGlobal bool, cwd string) []scopeEntry {
-	for _, agentName := range agentsToCheck {
-		a := agent.AllAgents[agentName]
+func appendDetectedHarnessScopes(scopes []scopeEntry, harnessesToCheck []string, isGlobal bool, cwd string) []scopeEntry {
+	for _, harnessName := range harnessesToCheck {
+		a := harness.AllHarnesses[harnessName]
 		if a == nil || (isGlobal && a.GlobalSkillsDir == "") {
 			continue
 		}
-		agentDir := agentDirForScope(agentName, isGlobal, cwd)
-		if !scopeEntryExists(scopes, agentDir, isGlobal) {
-			scopes = append(scopes, scopeEntry{isGlobal: isGlobal, path: agentDir, agentType: agentName})
+		harnessDir := harnessDirForScope(harnessName, isGlobal, cwd)
+		if !scopeEntryExists(scopes, harnessDir, isGlobal) {
+			scopes = append(scopes, scopeEntry{isGlobal: isGlobal, path: harnessDir, harnessType: harnessName})
 		}
 	}
 	return scopes
 }
 
-func appendUndetectedAgentScopes(scopes []scopeEntry, agentsToCheck []string, configured []string, isGlobal bool, cwd string) []scopeEntry {
-	for agentName, a := range agent.AllAgents {
-		if contains(agentsToCheck, agentName) {
+func appendUndetectedHarnessScopes(scopes []scopeEntry, harnessesToCheck []string, configured []string, isGlobal bool, cwd string) []scopeEntry {
+	for harnessName, a := range harness.AllHarnesses {
+		if contains(harnessesToCheck, harnessName) {
 			continue
 		}
-		// Only consider agents that were explicitly configured (saved in the
-		// lock file). Without this guard, any agent whose SkillsDir coincides
+		// Only consider harnesses that were explicitly configured (saved in the
+		// lock file). Without this guard, any harness whose SkillsDir coincides
 		// with a directory that happens to exist on disk (e.g. openclaw →
 		// "./skills") would be mistakenly treated as an install target.
-		if !contains(configured, agentName) {
+		if !contains(configured, harnessName) {
 			continue
 		}
 		if isGlobal && a.GlobalSkillsDir == "" {
 			continue
 		}
-		agentDir := agentDirForScope(agentName, isGlobal, cwd)
-		if scopeEntryExists(scopes, agentDir, isGlobal) {
+		harnessDir := harnessDirForScope(harnessName, isGlobal, cwd)
+		if scopeEntryExists(scopes, harnessDir, isGlobal) {
 			continue
 		}
-		if _, statErr := os.Stat(agentDir); statErr == nil {
-			scopes = append(scopes, scopeEntry{isGlobal: isGlobal, path: agentDir, agentType: agentName})
+		if _, statErr := os.Stat(harnessDir); statErr == nil {
+			scopes = append(scopes, scopeEntry{isGlobal: isGlobal, path: harnessDir, harnessType: harnessName})
 		}
 	}
 	return scopes
 }
 
-func buildScopeEntries(agentsToCheck []string, scopeTypes []bool, cwd string) []scopeEntry {
+func buildScopeEntries(harnessesToCheck []string, scopeTypes []bool, cwd string) []scopeEntry {
 	var scopes []scopeEntry
 	for _, isGlobal := range scopeTypes {
 		configured := lock.GetConfiguredAgents(isGlobal, cwd)
 		scopes = append(scopes, scopeEntry{isGlobal: isGlobal, path: getCanonicalSkillsDir(isGlobal, cwd)})
-		scopes = appendDetectedAgentScopes(scopes, agentsToCheck, isGlobal, cwd)
-		scopes = appendUndetectedAgentScopes(scopes, agentsToCheck, configured, isGlobal, cwd)
+		scopes = appendDetectedHarnessScopes(scopes, harnessesToCheck, isGlobal, cwd)
+		scopes = appendUndetectedHarnessScopes(scopes, harnessesToCheck, configured, isGlobal, cwd)
 	}
 	return scopes
 }
@@ -519,40 +521,40 @@ func parseSkillInDir(skillDir string) *skill.Skill {
 	return s
 }
 
-func mergeAgentSkillIntoMap(skillsMap map[string]*InstalledSkill, mapKey, agentType string, s *skill.Skill, skillDir, scopeKey string) {
+func mergeHarnessSkillIntoMap(skillsMap map[string]*InstalledSkill, mapKey, harnessType string, s *skill.Skill, skillDir, scopeKey string) {
 	if existing, ok := skillsMap[mapKey]; ok {
-		if !contains(existing.Agents, agentType) {
-			existing.Agents = append(existing.Agents, agentType)
+		if !contains(existing.Harnesses, harnessType) {
+			existing.Harnesses = append(existing.Harnesses, harnessType)
 		}
 	} else {
 		skillsMap[mapKey] = &InstalledSkill{
 			Name: s.Name, Description: s.Description,
 			License: s.License, Compatibility: s.Compatibility,
 			Path: skillDir, CanonicalPath: skillDir,
-			Scope: scopeKey, Agents: []string{agentType},
+			Scope: scopeKey, Harnesses: []string{harnessType},
 		}
 	}
 }
 
-func agentHasSkill(agentBase, dirName, sName, skillName string) bool {
+func harnessHasSkill(harnessBase, dirName, sName, skillName string) bool {
 	for _, name := range []string{dirName, sName} {
-		agentSkillDir := filepath.Join(agentBase, name)
-		if !isPathSafe(agentBase, agentSkillDir) {
+		harnessSkillDir := filepath.Join(harnessBase, name)
+		if !isPathSafe(harnessBase, harnessSkillDir) {
 			continue
 		}
-		if _, err := os.Stat(agentSkillDir); err == nil {
+		if _, err := os.Stat(harnessSkillDir); err == nil {
 			return true
 		}
 	}
-	agentEntries, err := os.ReadDir(agentBase)
+	harnessEntries, err := os.ReadDir(harnessBase)
 	if err != nil {
 		return false
 	}
-	for _, ae := range agentEntries {
+	for _, ae := range harnessEntries {
 		if !ae.IsDir() {
 			continue
 		}
-		candidateDir := filepath.Join(agentBase, ae.Name())
+		candidateDir := filepath.Join(harnessBase, ae.Name())
 		candidateSkill, err := skill.ParseSkillMd(filepath.Join(candidateDir, "SKILL.md"), true)
 		if err == nil && candidateSkill != nil && candidateSkill.Name == skillName {
 			return true
@@ -561,27 +563,27 @@ func agentHasSkill(agentBase, dirName, sName, skillName string) bool {
 	return false
 }
 
-func findAgentsForSkill(s *skill.Skill, dirName string, agentsToCheck []string, isGlobal bool, cwd string) []string {
+func findHarnessesForSkill(s *skill.Skill, dirName string, harnessesToCheck []string, isGlobal bool, cwd string) []string {
 	sName := sanitizeName(s.Name)
 	var result []string
-	for _, agentName := range agentsToCheck {
-		a := agent.AllAgents[agentName]
+	for _, harnessName := range harnessesToCheck {
+		a := harness.AllHarnesses[harnessName]
 		if a == nil || (isGlobal && a.GlobalSkillsDir == "") {
 			continue
 		}
-		agentBase := agentDirForScope(agentName, isGlobal, cwd)
-		if agentHasSkill(agentBase, dirName, sName, s.Name) {
-			result = append(result, agentName)
+		harnessBase := harnessDirForScope(harnessName, isGlobal, cwd)
+		if harnessHasSkill(harnessBase, dirName, sName, s.Name) {
+			result = append(result, harnessName)
 		}
 	}
 	return result
 }
 
-func mergeCanonicalSkillIntoMap(skillsMap map[string]*InstalledSkill, mapKey string, agents []string, s *skill.Skill, skillDir, scopeKey string) {
+func mergeCanonicalSkillIntoMap(skillsMap map[string]*InstalledSkill, mapKey string, harnesses []string, s *skill.Skill, skillDir, scopeKey string) {
 	if existing, ok := skillsMap[mapKey]; ok {
-		for _, ag := range agents {
-			if !contains(existing.Agents, ag) {
-				existing.Agents = append(existing.Agents, ag)
+		for _, ag := range harnesses {
+			if !contains(existing.Harnesses, ag) {
+				existing.Harnesses = append(existing.Harnesses, ag)
 			}
 		}
 	} else {
@@ -589,7 +591,7 @@ func mergeCanonicalSkillIntoMap(skillsMap map[string]*InstalledSkill, mapKey str
 			Name: s.Name, Description: s.Description,
 			License: s.License, Compatibility: s.Compatibility,
 			Path: skillDir, CanonicalPath: skillDir,
-			Scope: scopeKey, Agents: agents,
+			Scope: scopeKey, Harnesses: harnesses,
 		}
 	}
 }
@@ -608,7 +610,7 @@ func isSkillDirEntry(base string, e os.DirEntry) bool {
 	return err == nil && info.IsDir()
 }
 
-func populateScopeSkills(scope scopeEntry, agentsToCheck []string, cwd string, skillsMap map[string]*InstalledSkill) {
+func populateScopeSkills(scope scopeEntry, harnessesToCheck []string, cwd string, skillsMap map[string]*InstalledSkill) {
 	entries, err := os.ReadDir(scope.path)
 	if err != nil {
 		return
@@ -627,12 +629,12 @@ func populateScopeSkills(scope scopeEntry, agentsToCheck []string, cwd string, s
 			continue
 		}
 		mapKey := scopeKey + ":" + s.Name
-		if scope.agentType != "" {
-			mergeAgentSkillIntoMap(skillsMap, mapKey, scope.agentType, s, skillDir, scopeKey)
+		if scope.harnessType != "" {
+			mergeHarnessSkillIntoMap(skillsMap, mapKey, scope.harnessType, s, skillDir, scopeKey)
 			continue
 		}
-		agents := findAgentsForSkill(s, e.Name(), agentsToCheck, scope.isGlobal, cwd)
-		mergeCanonicalSkillIntoMap(skillsMap, mapKey, agents, s, skillDir, scopeKey)
+		harnesses := findHarnessesForSkill(s, e.Name(), harnessesToCheck, scope.isGlobal, cwd)
+		mergeCanonicalSkillIntoMap(skillsMap, mapKey, harnesses, s, skillDir, scopeKey)
 	}
 }
 
@@ -647,19 +649,19 @@ func shortenPath(fullPath, cwd string) string {
 	return fullPath
 }
 
-func listInstalledSkills(global *bool, agentFilter []string) ([]*InstalledSkill, error) {
+func listInstalledSkills(global *bool, harnessFilter []string) ([]*InstalledSkill, error) {
 	cwd, _ := os.Getwd()
-	agentsToCheck := filterAgentsToCheck(agent.DetectInstalledAgents(), agentFilter)
+	harnessesToCheck := filterHarnessesToCheck(harness.DetectInstalledHarnesses(), harnessFilter)
 
 	scopeTypes := []bool{false, true}
 	if global != nil {
 		scopeTypes = []bool{*global}
 	}
-	scopes := buildScopeEntries(agentsToCheck, scopeTypes, cwd)
+	scopes := buildScopeEntries(harnessesToCheck, scopeTypes, cwd)
 
 	skillsMap := map[string]*InstalledSkill{}
 	for _, scope := range scopes {
-		populateScopeSkills(scope, agentsToCheck, cwd, skillsMap)
+		populateScopeSkills(scope, harnessesToCheck, cwd, skillsMap)
 	}
 
 	globalLock := lock.ReadGlobalState()
@@ -691,21 +693,21 @@ func listInstalledSkills(global *bool, agentFilter []string) ([]*InstalledSkill,
 	return result, nil
 }
 
-// installWellKnownSkillForAgent installs a well-known skill for an agent.
-// (moved from registry/wellknown.go since it depends on installSkillFilesForAgent)
-func installWellKnownSkillForAgent(sk *registry.WellKnownSkill, agentName string, global bool, mode InstallMode) InstallResult {
+// installWellKnownSkillForHarness installs a well-known skill for a harness.
+// (moved from registry/wellknown.go since it depends on installSkillFilesForHarness)
+func installWellKnownSkillForHarness(sk *registry.WellKnownSkill, harnessName string, global bool, mode InstallMode) InstallResult {
 	var files []struct{ Path, Contents string }
 	for path, content := range sk.Files {
 		files = append(files, struct{ Path, Contents string }{path, content})
 	}
-	return installSkillFilesForAgent(sk.InstallName, files, agentName, global, mode)
+	return installSkillFilesForHarness(sk.InstallName, files, harnessName, global, mode)
 }
 
-// linkInstalledSkillToAgent symlinks (or copies) an already-installed skill's
-// canonical directory into the given agent's own skills directory.
-// Returns true when the agent's skill directory now exists (created or was already present).
-func linkInstalledSkillToAgent(skillName, agentName string, global bool, cwd string) bool {
-	a := agent.AllAgents[agentName]
+// linkInstalledSkillToHarness symlinks (or copies) an already-installed skill's
+// canonical directory into the given harness's own skills directory.
+// Returns true when the harness's skill directory now exists (created or was already present).
+func linkInstalledSkillToHarness(skillName, harnessName string, global bool, cwd string) bool {
+	a := harness.AllHarnesses[harnessName]
 	if a == nil || (global && a.GlobalSkillsDir == "") {
 		return false
 	}
@@ -714,19 +716,19 @@ func linkInstalledSkillToAgent(skillName, agentName string, global bool, cwd str
 	if _, err := os.Stat(canonicalDir); err != nil {
 		return false
 	}
-	agentBase := getAgentBaseDir(agentName, global, cwd)
-	agentDir := filepath.Join(agentBase, skillName)
-	if !isPathSafe(canonicalBase, canonicalDir) || !isPathSafe(agentBase, agentDir) {
+	harnessBase := getHarnessBaseDir(harnessName, global, cwd)
+	harnessDir := filepath.Join(harnessBase, skillName)
+	if !isPathSafe(canonicalBase, canonicalDir) || !isPathSafe(harnessBase, harnessDir) {
 		return false
 	}
-	if _, err := os.Stat(agentDir); err == nil {
+	if _, err := os.Stat(harnessDir); err == nil {
 		return true // already present
 	}
-	if createSymlink(canonicalDir, agentDir) {
+	if createSymlink(canonicalDir, harnessDir) {
 		return true
 	}
-	if err := os.MkdirAll(agentBase, 0755); err != nil {
+	if err := os.MkdirAll(harnessBase, 0755); err != nil {
 		return false
 	}
-	return copyDirectory(canonicalDir, agentDir) == nil
+	return copyDirectory(canonicalDir, harnessDir) == nil
 }

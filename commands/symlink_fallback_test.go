@@ -35,7 +35,7 @@ func captureStdout(t *testing.T, fn func()) string {
 
 // When a symlink cannot be created, the install is copied instead and the
 // result says so. Nothing is recorded about it. The one-per-run warning names
-// each agent once, however many skills fell back for it, and the summary line
+// each harness once, however many skills fell back for it, and the summary line
 // stops claiming a clean symlink install.
 func TestInstallReportsSymlinkFallbackOnce(t *testing.T) {
 	cwd := t.TempDir()
@@ -54,7 +54,7 @@ func TestInstallReportsSymlinkFallbackOnce(t *testing.T) {
 
 	var fallbacks symlinkFallbacks
 	for _, name := range []string{"s1", "s2"} {
-		r := installSkillForAgent(&skill.Skill{Name: name, Path: src}, "claude-code", false, InstallModeSymlink)
+		r := installSkillForHarness(&skill.Skill{Name: name, Path: src}, "claude-code", false, InstallModeSymlink)
 		if !r.Success {
 			t.Fatalf("install of %s failed: %s", name, r.Error)
 		}
@@ -63,8 +63,8 @@ func TestInstallReportsSymlinkFallbackOnce(t *testing.T) {
 		}
 		fallbacks.note("claude-code", r)
 	}
-	// A second agent, recorded through the same path a real loop would use.
-	fallbacks.note("other-agent", InstallResult{Success: true, SymlinkFailed: true})
+	// A second harness, recorded through the same path a real loop would use.
+	fallbacks.note("other-harness", InstallResult{Success: true, SymlinkFailed: true})
 	// A result without a fallback is ignored.
 	fallbacks.note("cursor", InstallResult{Success: true})
 
@@ -81,11 +81,11 @@ func TestInstallReportsSymlinkFallbackOnce(t *testing.T) {
 	}
 
 	out := captureStdout(t, func() {
-		printInstallSummary(2, false, []string{"claude-code", "other-agent"}, InstallModeSymlink, &fallbacks)
+		printInstallSummary(2, false, []string{"claude-code", "other-harness"}, InstallModeSymlink, &fallbacks)
 	})
 	for _, want := range []string{
 		"symlink mode, copied where symlinks failed",
-		"Could not create symlinks for Claude Code, other-agent",
+		"Could not create symlinks for Claude Code, other-harness",
 		"still in symlink mode",
 		"run with --copy once to record it",
 	} {
@@ -97,7 +97,7 @@ func TestInstallReportsSymlinkFallbackOnce(t *testing.T) {
 		t.Errorf("warning printed %d times, want once:\n%s", n, out)
 	}
 	if strings.Contains(out, "Cursor") {
-		t.Errorf("an agent that did not fall back is named in the warning:\n%s", out)
+		t.Errorf("a harness that did not fall back is named in the warning:\n%s", out)
 	}
 }
 

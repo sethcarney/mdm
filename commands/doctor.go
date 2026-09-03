@@ -10,7 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/sethcarney/mdm/internal/agent"
+	"github.com/sethcarney/mdm/internal/harness"
 	"github.com/sethcarney/mdm/internal/lock"
 	"github.com/sethcarney/mdm/internal/skill"
 )
@@ -151,8 +151,8 @@ func runDoctor(opts DoctorOptions) {
 	var readmeIssue *doctorIssue
 	if checkProject {
 		instrIssues = checkInstructionFiles(cwd)
-		unlinkedRulesIssues = checkUnlinkedRulesAgents(cwd)
-		missingSkillLinkIssues = checkMissingAgentSkillLinks(cwd)
+		unlinkedRulesIssues = checkUnlinkedRulesHarnesses(cwd)
+		missingSkillLinkIssues = checkMissingHarnessSkillLinks(cwd)
 		knowledgeIssues = checkKnowledgeBundles(cwd)
 		pluginIssues = checkInstalledPlugins(cwd)
 		migrationIssues = checkProjectMigration(cwd)
@@ -251,16 +251,16 @@ func buildProjectSkipPaths(cwd, canonicalBase string, skipDirs, skipFiles map[st
 	if _, err := os.Stat(canonicalBase); err == nil {
 		skipDirs[filepath.Clean(canonicalBase)] = true
 	}
-	for _, agentCfg := range agent.AllAgents {
-		if agentCfg == nil {
+	for _, harnessCfg := range harness.AllHarnesses {
+		if harnessCfg == nil {
 			continue
 		}
-		agentSkillsDir := filepath.Clean(filepath.Join(cwd, agentCfg.SkillsDir))
-		if _, err := os.Stat(agentSkillsDir); err == nil {
-			skipDirs[agentSkillsDir] = true
+		harnessSkillsDir := filepath.Clean(filepath.Join(cwd, harnessCfg.SkillsDir))
+		if _, err := os.Stat(harnessSkillsDir); err == nil {
+			skipDirs[harnessSkillsDir] = true
 		}
-		if agentCfg.InstructionsFile != "" {
-			skipFiles[filepath.Clean(filepath.Join(cwd, agentCfg.InstructionsFile))] = true
+		if harnessCfg.InstructionsFile != "" {
+			skipFiles[filepath.Clean(filepath.Join(cwd, harnessCfg.InstructionsFile))] = true
 		}
 	}
 }
@@ -299,31 +299,31 @@ func diagnoseSkill(r *doctorResult, global bool, cwd string) {
 		}
 	}
 
-	// 3. Symlinks in agent-specific directories must resolve
-	checkAgentLinks(r, global, cwd)
+	// 3. Symlinks in harness-specific directories must resolve
+	checkHarnessLinks(r, global, cwd)
 
-	// 4. Markdown files must not be too large for agent context windows
+	// 4. Markdown files must not be too large for harness context windows
 	checkLargeMarkdown(r)
 }
 
-// checkAgentLinks verifies that symlinks in non-universal agent directories
+// checkHarnessLinks verifies that symlinks in non-universal harness directories
 // point to an existing target.
-func checkAgentLinks(r *doctorResult, global bool, cwd string) {
+func checkHarnessLinks(r *doctorResult, global bool, cwd string) {
 	sName := sanitizeName(r.Name)
-	for agentName, agentCfg := range agent.AllAgents {
-		if agentCfg == nil || agent.UsesSharedSkillsDir(agentName) {
+	for harnessName, harnessCfg := range harness.AllHarnesses {
+		if harnessCfg == nil || harness.UsesSharedSkillsDir(harnessName) {
 			continue
 		}
-		var agentBase string
+		var harnessBase string
 		if global {
-			if agentCfg.GlobalSkillsDir == "" {
+			if harnessCfg.GlobalSkillsDir == "" {
 				continue
 			}
-			agentBase = agentCfg.GlobalSkillsDir
+			harnessBase = harnessCfg.GlobalSkillsDir
 		} else {
-			agentBase = filepath.Join(cwd, agentCfg.SkillsDir)
+			harnessBase = filepath.Join(cwd, harnessCfg.SkillsDir)
 		}
-		linkPath := filepath.Join(agentBase, sName)
+		linkPath := filepath.Join(harnessBase, sName)
 		info, err := os.Lstat(linkPath)
 		if err != nil || info.Mode()&os.ModeSymlink == 0 {
 			continue // not present or not a symlink
@@ -332,7 +332,7 @@ func checkAgentLinks(r *doctorResult, global bool, cwd string) {
 		if err != nil {
 			r.Issues = append(r.Issues, doctorIssue{
 				Level:   "error",
-				Message: fmt.Sprintf("broken symlink in %s directory", agentCfg.DisplayName),
+				Message: fmt.Sprintf("broken symlink in %s directory", harnessCfg.DisplayName),
 			})
 			continue
 		}
@@ -342,14 +342,14 @@ func checkAgentLinks(r *doctorResult, global bool, cwd string) {
 		if _, err := os.Stat(target); os.IsNotExist(err) {
 			r.Issues = append(r.Issues, doctorIssue{
 				Level:   "error",
-				Message: fmt.Sprintf("broken symlink in %s directory: target not found", agentCfg.DisplayName),
+				Message: fmt.Sprintf("broken symlink in %s directory: target not found", harnessCfg.DisplayName),
 			})
 		}
 	}
 }
 
 // checkLargeMarkdown walks the skill directory and flags .md files that are
-// large enough to threaten agent context windows. Common dependency/build
+// large enough to threaten harness context windows. Common dependency/build
 // directories (e.g. .git, node_modules, vendor) are skipped.
 func checkLargeMarkdown(r *doctorResult) {
 	_ = filepath.WalkDir(r.Path, func(path string, d fs.DirEntry, err error) error {
@@ -387,11 +387,11 @@ func checkLargeMarkdown(r *doctorResult) {
 	})
 }
 
-// checkUnlinkedRulesAgents finds configured agents that have a unique
+// checkUnlinkedRulesHarnesses finds configured harnesses that have a unique
 // instructions file (e.g. CLAUDE.md, .cursorrules) which is not yet symlinked
-// to AGENTS.md. This means the agent has been added via skills add or agents
+// to AGENTS.md. This means the harness has been added via skills add or agents
 // add but mdm rules link has not been run for it yet.
-func checkUnlinkedRulesAgents(cwd string) []doctorIssue {
+func checkUnlinkedRulesHarnesses(cwd string) []doctorIssue {
 	configured := lock.GetConfiguredAgents(false, cwd)
 	if len(configured) == 0 {
 		return nil
@@ -404,7 +404,7 @@ func checkUnlinkedRulesAgents(cwd string) []doctorIssue {
 
 	var issues []doctorIssue
 	for _, name := range configured {
-		cfg := agent.AllAgents[name]
+		cfg := harness.AllHarnesses[name]
 		if cfg == nil || cfg.NativeInstructions {
 			continue
 		}
@@ -430,11 +430,11 @@ func checkUnlinkedRulesAgents(cwd string) []doctorIssue {
 	return issues
 }
 
-// checkMissingAgentSkillLinks finds configured agents whose rules file is
-// properly linked but whose agent-specific skills directory is missing symlinks
+// checkMissingHarnessSkillLinks finds configured harnesses whose rules file is
+// properly linked but whose harness-specific skills directory is missing symlinks
 // for one or more installed project skills. This catches the case where rules
-// link was run but skills add was never run for that agent.
-func checkMissingAgentSkillLinks(cwd string) []doctorIssue {
+// link was run but skills add was never run for that harness.
+func checkMissingHarnessSkillLinks(cwd string) []doctorIssue {
 	configured := lock.GetConfiguredAgents(false, cwd)
 	if len(configured) == 0 {
 		return nil
@@ -447,14 +447,14 @@ func checkMissingAgentSkillLinks(cwd string) []doctorIssue {
 
 	var issues []doctorIssue
 	for _, name := range configured {
-		cfg := agent.AllAgents[name]
-		if cfg == nil || agent.UsesSharedSkillsDir(name) {
-			// Shared-skills-dir agents don't need per-agent symlinks.
+		cfg := harness.AllHarnesses[name]
+		if cfg == nil || harness.UsesSharedSkillsDir(name) {
+			// Shared-skills-dir harnesses don't need per-harness symlinks.
 			continue
 		}
-		// Only flag agents whose rules file IS already linked (or they have no
-		// rules file - e.g. a pure-skills-dir agent). Agents whose rules file
-		// is missing are already reported by checkUnlinkedRulesAgents.
+		// Only flag harnesses whose rules file IS already linked (or they have no
+		// rules file — e.g. a pure-skills-dir harness). Harnesses whose rules file
+		// is missing are already reported by checkUnlinkedRulesHarnesses.
 		if !cfg.NativeInstructions {
 			instrPath := filepath.Join(cwd, cfg.InstructionsFile)
 			info, err := os.Lstat(instrPath)
@@ -463,11 +463,11 @@ func checkMissingAgentSkillLinks(cwd string) []doctorIssue {
 			}
 		}
 
-		agentSkillsDir := filepath.Join(cwd, cfg.SkillsDir)
+		harnessSkillsDir := filepath.Join(cwd, cfg.SkillsDir)
 		var missing []string
 		for skillName := range localLock.Skills {
 			sName := sanitizeName(skillName)
-			linkPath := filepath.Join(agentSkillsDir, sName)
+			linkPath := filepath.Join(harnessSkillsDir, sName)
 			if _, err := os.Lstat(linkPath); os.IsNotExist(err) {
 				canonicalPath := filepath.Join(canonicalBase, sName)
 				// Only flag if the canonical skill dir actually exists.
@@ -489,18 +489,18 @@ func checkMissingAgentSkillLinks(cwd string) []doctorIssue {
 	return issues
 }
 
-// checkInstructionFiles scans the project root for known agent instruction
+// checkInstructionFiles scans the project root for known harness instruction
 // files (CLAUDE.md, AGENTS.md, .cursorrules, .github/copilot-instructions.md,
 // etc.) and flags oversized ones.
 func checkInstructionFiles(cwd string) []doctorIssue {
 	seen := map[string]bool{}
 	var issues []doctorIssue
 
-	for _, agentCfg := range agent.AllAgents {
-		if agentCfg == nil || agentCfg.InstructionsFile == "" {
+	for _, harnessCfg := range harness.AllHarnesses {
+		if harnessCfg == nil || harnessCfg.InstructionsFile == "" {
 			continue
 		}
-		fname := agentCfg.InstructionsFile
+		fname := harnessCfg.InstructionsFile
 		if seen[fname] {
 			continue
 		}
@@ -546,7 +546,7 @@ func checkProjectReadme(cwd string) *doctorIssue {
 }
 
 // checkProjectMarkdown walks the project tree and flags .md files that are
-// large enough to strain agent context windows. It skips directories and files
+// large enough to strain harness context windows. It skips directories and files
 // already covered by the skill and instruction-file checks, as well as common
 // build/dependency directories. The walk stops after markdownWalkLimit
 // filesystem entries to prevent hangs on very large repositories.

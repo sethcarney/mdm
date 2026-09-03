@@ -11,20 +11,20 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/sethcarney/mdm/internal/agent"
+	"github.com/sethcarney/mdm/internal/harness"
 	"github.com/sethcarney/mdm/internal/lock"
 )
 
 // ── Fixtures ───────────────────────────────────────────────────────────────────
 
-// isolateHome points the global state and every user-level agent directory
+// isolateHome points the global state and every user-level harness directory
 // at a fresh temp home, so a test touching global scope never reads or
 // rewrites the developer's real files. The registry resolves global paths
-// once at init, so agent.Reload is what makes the redirect stick; its cleanup
+// once at init, so harness.Reload is what makes the redirect stick; its cleanup
 // is registered first so it runs after the env is restored. Not parallel-safe.
 func isolateHome(t *testing.T) string {
 	t.Helper()
-	t.Cleanup(agent.Reload)
+	t.Cleanup(harness.Reload)
 	home := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	t.Setenv("HOME", home)
@@ -32,7 +32,7 @@ func isolateHome(t *testing.T) string {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude"))
-	agent.Reload()
+	harness.Reload()
 	return home
 }
 
@@ -58,26 +58,26 @@ func symlinkOrSkip(t *testing.T, target, link string) {
 	}
 }
 
-// linkSkillInto lays out a symlink-mode install for one agent: the canonical
-// .agents/skills/<name> and <agentDir>/skills/<name> pointing at it.
-func linkSkillInto(t *testing.T, cwd, agentDir, name string) (canonical, link string) {
+// linkSkillInto lays out a symlink-mode install for one harness: the canonical
+// .agents/skills/<name> and <harnessDir>/skills/<name> pointing at it.
+func linkSkillInto(t *testing.T, cwd, harnessDir, name string) (canonical, link string) {
 	t.Helper()
 	canonical = filepath.Join(cwd, ".agents", "skills", name)
 	writeSkillDir(t, canonical)
-	link = filepath.Join(cwd, agentDir, "skills", name)
+	link = filepath.Join(cwd, harnessDir, "skills", name)
 	symlinkOrSkip(t, canonical, link)
 	return canonical, link
 }
 
-// linkSkill is linkSkillInto for Claude Code, the agent most tests use.
+// linkSkill is linkSkillInto for Claude Code, the harness most tests use.
 func linkSkill(t *testing.T, cwd, name string) (canonical, link string) {
 	t.Helper()
 	return linkSkillInto(t, cwd, ".claude", name)
 }
 
 // writeCopiedSkill lays out a copy-mode install for Claude Code: a real
-// directory at the agent path and no canonical directory, which is what
-// `--copy` writes for an agent with a directory of its own.
+// directory at the harness path and no canonical directory, which is what
+// `--copy` writes for a harness with a directory of its own.
 func writeCopiedSkill(t *testing.T, cwd, name string) string {
 	t.Helper()
 	dir := filepath.Join(cwd, ".claude", "skills", name)
@@ -92,9 +92,9 @@ func lockSkill(t *testing.T, cwd, name string) {
 	}
 }
 
-func setConfigured(t *testing.T, cwd string, agents ...string) {
+func setConfigured(t *testing.T, cwd string, harnesses ...string) {
 	t.Helper()
-	if err := lock.SetConfiguredAgents(agents, false, cwd); err != nil {
+	if err := lock.SetConfiguredAgents(harnesses, false, cwd); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -221,9 +221,9 @@ func TestCommitScopeInstallModeResolvesMode(t *testing.T) {
 				setMode(t, cwd, tc.recorded)
 			}
 			tc.opts.Project, tc.opts.Yes = true, true
-			global, _, ok := promptScopeAndAgents(tc.opts, cwd)
+			global, _, ok := promptScopeAndHarnesses(tc.opts, cwd)
 			if !ok {
-				t.Fatal("promptScopeAndAgents returned not ok")
+				t.Fatal("promptScopeAndHarnesses returned not ok")
 			}
 			mode, ok := commitScopeInstallMode(tc.opts, global, cwd)
 			if !ok || mode != tc.want {
@@ -281,7 +281,7 @@ func TestRematerializeConvertsSymlinksToRealDirectories(t *testing.T) {
 		t.Errorf("converted %d, want 1", n)
 	}
 	assertRealSkill(t, link)
-	// The canonical directory stays: shared-dir agents install into it in
+	// The canonical directory stays: shared-dir harnesses install into it in
 	// copy mode too, and doctor and remove resolve it for every locked skill.
 	assertRealSkill(t, canonical)
 }
@@ -303,25 +303,25 @@ func TestRematerializeIsANoOpWhenAlreadyReal(t *testing.T) {
 }
 
 // --copy converts every install in the scope, whatever configuredAgents
-// says: that list only records what the interactive picker last saved, so an
-// agent installed with `-a <agent> -y` is missing from it. Converting only
-// the listed agents would leave the scope half symlinked and half copied.
+// says: that list only records what the interactive picker last saved, so a
+// harness installed with `-a <harness> -y` is missing from it. Converting only
+// the listed harnesses would leave the scope half symlinked and half copied.
 func TestApplyScopeInstallModeConvertsEveryInstall(t *testing.T) {
 	cases := []struct {
-		name       string
-		agentDirs  map[string]string // agent name -> project directory
-		configured []string
+		name        string
+		harnessDirs map[string]string // harness name -> project directory
+		configured  []string
 	}{
-		{"configured agent", map[string]string{"claude-code": ".claude"}, []string{"claude-code"}},
-		{"no configured agents", map[string]string{"claude-code": ".claude"}, nil},
-		{"agent missing from configuredAgents", map[string]string{"claude-code": ".claude", "roo": ".roo"}, []string{"claude-code"}},
+		{"configured harness", map[string]string{"claude-code": ".claude"}, []string{"claude-code"}},
+		{"no configured harnesses", map[string]string{"claude-code": ".claude"}, nil},
+		{"harness missing from configuredAgents", map[string]string{"claude-code": ".claude", "roo": ".roo"}, []string{"claude-code"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			cwd := t.TempDir()
 			var canonical string
 			links := map[string]string{}
-			for name, dir := range tc.agentDirs {
+			for name, dir := range tc.harnessDirs {
 				canonical, links[name] = linkSkillInto(t, cwd, dir, "s1")
 			}
 			lockSkill(t, cwd, "s1")
@@ -403,12 +403,12 @@ func TestRematerializeLeavesForeignSymlinksAlone(t *testing.T) {
 	assertLinkTo(t, link, outside)
 }
 
-// An agent that reads the shared .agents/skills directory has no install
+// A harness that reads the shared .agents/skills directory has no install
 // path of its own: its path IS the canonical directory, real in both modes.
 // Listing it made --copy announce a conversion and then convert nothing.
-func TestScopeInstallPathsSkipsSharedSkillsDirAgents(t *testing.T) {
-	if !agent.UsesSharedSkillsDir("amp") {
-		t.Skip("fixture agent no longer uses the shared skills directory")
+func TestScopeInstallPathsSkipsSharedSkillsDirHarnesses(t *testing.T) {
+	if !harness.UsesSharedSkillsDir("amp") {
+		t.Skip("fixture harness no longer uses the shared skills directory")
 	}
 	cwd := t.TempDir()
 	canonical := filepath.Join(cwd, ".agents", "skills", "s1")
@@ -444,7 +444,7 @@ func TestScopeSkillNamesFollowsScope(t *testing.T) {
 // ── Copy to symlink ────────────────────────────────────────────────────────────
 
 // --symlink turns each real install back into an mdm link, creating the
-// canonical copy first because a copy install never wrote one for this agent.
+// canonical copy first because a copy install never wrote one for this harness.
 func TestRematerializeConvertsRealDirectoriesToSymlinks(t *testing.T) {
 	cwd := t.TempDir()
 	symlinkOrSkip(t, cwd, filepath.Join(cwd, "probe"))
@@ -553,37 +553,37 @@ func TestApplyScopeInstallModeSymlinkOverridesRecordedCopy(t *testing.T) {
 
 // ── Where the mode is committed ────────────────────────────────────────────────
 
-// Cancelling at the agent selection must leave the scope untouched: a
+// Cancelling at the harness selection must leave the scope untouched: a
 // conversion run before the picker converted the project before a single
 // skill was fetched, so backing out left copies behind and nothing installed.
-func TestPromptScopeDoesNotConvertWhenAgentSelectionFails(t *testing.T) {
+func TestPromptScopeDoesNotConvertWhenHarnessSelectionFails(t *testing.T) {
 	cwd := t.TempDir()
 	canonical, link := linkSkill(t, cwd, "s1")
 	setConfigured(t, cwd, "claude-code")
 	lockSkill(t, cwd, "s1")
 
-	// Naming only an unknown agent fails selection without a terminal.
-	opts := AddOptions{Project: true, Yes: true, Copy: true, Agents: []string{"definitely-not-an-agent"}}
-	if _, _, ok := promptScopeAndAgents(opts, cwd); ok {
-		t.Fatal("promptScopeAndAgents returned ok with no valid agent")
+	// Naming only an unknown harness fails selection without a terminal.
+	opts := AddOptions{Project: true, Yes: true, Copy: true, Harnesses: []string{"definitely-not-a-harness"}}
+	if _, _, ok := promptScopeAndHarnesses(opts, cwd); ok {
+		t.Fatal("promptScopeAndHarnesses returned ok with no valid harness")
 	}
 	assertRecordedMode(t, cwd, "")
 	assertLinkTo(t, link, canonical)
 }
 
-// promptScopeAndAgents must not commit the mode: callers still have gates
+// promptScopeAndHarnesses must not commit the mode: callers still have gates
 // after it (the post-audit confirmation, cherry-pick's clobber filter), and
 // returning from one after a conversion leaves a converted scope with nothing
 // installed. The caller's commit is what does the work.
-func TestPromptScopeAndAgentsDoesNotCommitTheMode(t *testing.T) {
+func TestPromptScopeAndHarnessesDoesNotCommitTheMode(t *testing.T) {
 	cwd := t.TempDir()
 	canonical, link := linkSkill(t, cwd, "s1")
 	lockSkill(t, cwd, "s1")
 
-	opts := AddOptions{Project: true, Yes: true, Copy: true, Agents: []string{"claude-code"}}
-	global, agents, ok := promptScopeAndAgents(opts, cwd)
-	if !ok || len(agents) != 1 || agents[0] != "claude-code" {
-		t.Fatalf("agents = %v ok = %v, want [claude-code] true", agents, ok)
+	opts := AddOptions{Project: true, Yes: true, Copy: true, Harnesses: []string{"claude-code"}}
+	global, harnesses, ok := promptScopeAndHarnesses(opts, cwd)
+	if !ok || len(harnesses) != 1 || harnesses[0] != "claude-code" {
+		t.Fatalf("harnesses = %v ok = %v, want [claude-code] true", harnesses, ok)
 	}
 	assertRecordedMode(t, cwd, "")
 	assertLinkTo(t, link, canonical)
@@ -594,14 +594,14 @@ func TestPromptScopeAndAgentsDoesNotCommitTheMode(t *testing.T) {
 	assertRealSkill(t, link)
 }
 
-// dropClobberingAgents can empty the agent list, in which case nothing is
+// dropClobberingHarnesses can empty the harness list, in which case nothing is
 // installed and the scope must not be converted for it.
-func TestInstallForksDoesNotConvertWhenEveryAgentIsDropped(t *testing.T) {
+func TestInstallForksDoesNotConvertWhenEveryHarnessIsDropped(t *testing.T) {
 	isolateHome(t)
 	cwd := t.TempDir()
 	// OpenClaw reads ./skills, the default forks directory, so it is always dropped.
-	if a := agent.AllAgents["openclaw"]; a == nil || a.SkillsDir != defaultForksDir {
-		t.Skip("fixture agent no longer reads the forks directory")
+	if a := harness.AllHarnesses["openclaw"]; a == nil || a.SkillsDir != defaultForksDir {
+		t.Skip("fixture harness no longer reads the forks directory")
 	}
 	forkDir := filepath.Join(cwd, defaultForksDir, "f1")
 	writeSkillDir(t, forkDir)
@@ -609,7 +609,7 @@ func TestInstallForksDoesNotConvertWhenEveryAgentIsDropped(t *testing.T) {
 	lockSkill(t, cwd, "s1")
 
 	installForks([]string{forkDir}, CherryPickOptions{
-		Dir: defaultForksDir, Project: true, Yes: true, Copy: true, Agents: []string{"openclaw"},
+		Dir: defaultForksDir, Project: true, Yes: true, Copy: true, Harnesses: []string{"openclaw"},
 	}, cwd)
 
 	assertRecordedMode(t, cwd, "")

@@ -11,7 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/sethcarney/mdm/internal/agent"
+	"github.com/sethcarney/mdm/internal/harness"
 )
 
 // ──────────────────────────────────────────────────────────
@@ -39,13 +39,13 @@ var BugFieldIDs = []string{"version", "os", "shell", "go", "agents", "command", 
 const bugLogsLimit = 1500
 
 type bugReport struct {
-	Version string
-	OS      string
-	Shell   string
-	Go      string
-	Agents  string
-	Command string
-	Logs    string
+	Version   string
+	OS        string
+	Shell     string
+	Go        string
+	Harnesses string
+	Command   string
+	Logs      string
 }
 
 func buildBugCmd(ver string) *cobra.Command {
@@ -86,17 +86,17 @@ func collectBugReport(ver, failedCommand string) bugReport {
 	if shell == "" && runtime.GOOS == "windows" {
 		shell = os.Getenv("ComSpec")
 	}
-	detected := agent.DetectInstalledAgents()
+	detected := harness.DetectInstalledHarnesses()
 	if len(detected) > 8 {
 		detected = append(detected[:8], fmt.Sprintf("(+%d more)", len(detected)-8))
 	}
 	return bugReport{
-		Version: ver,
-		OS:      runtime.GOOS + "/" + runtime.GOARCH,
-		Shell:   scrubHome(shell),
-		Go:      runtime.Version(),
-		Agents:  strings.Join(detected, ", "),
-		Command: scrubHome(failedCommand),
+		Version:   ver,
+		OS:        runtime.GOOS + "/" + runtime.GOARCH,
+		Shell:     scrubHome(shell),
+		Go:        runtime.Version(),
+		Harnesses: strings.Join(detected, ", "),
+		Command:   scrubHome(failedCommand),
 	}
 }
 
@@ -131,7 +131,7 @@ func buildBugURL(report bugReport) string {
 	set("os", report.OS)
 	set("shell", report.Shell)
 	set("go", report.Go)
-	set("agents", report.Agents)
+	set("agents", report.Harnesses)
 	set("command", report.Command)
 	set("logs", truncateForURL(report.Logs))
 	return bugRepoURL + "/issues/new?" + values.Encode()
@@ -149,7 +149,7 @@ func renderBugBody(report bugReport) string {
 	write("os", report.OS)
 	write("shell", report.Shell)
 	write("go", report.Go)
-	write("agents", report.Agents)
+	write("agents", report.Harnesses)
 	write("command", report.Command)
 	write("logs", report.Logs)
 	return b.String()

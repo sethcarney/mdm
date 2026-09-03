@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/sethcarney/mdm/internal/agent"
+	"github.com/sethcarney/mdm/internal/harness"
 	"github.com/sethcarney/mdm/internal/lock"
 )
 
@@ -81,25 +81,25 @@ func scopeSkillNames(global bool, cwd string) []string {
 }
 
 // scopeInstallPaths lists the existing on-disk install path of every skill
-// the scope records, for each agent the scope supports, deduplicated. It
-// sweeps every agent rather than configuredAgents: that list only records
-// what the interactive picker last saved, so consulting it would skip agents
-// installed with `-a <agent> -y` and leave the scope half converted. The
+// the scope records, for each harness the scope supports, deduplicated. It
+// sweeps every harness rather than configuredAgents: that list only records
+// what the interactive picker last saved, so consulting it would skip harnesses
+// installed with `-a <harness> -y` and leave the scope half converted. The
 // sweep is safe because rematerializeScope converts only what mdm installed.
 func scopeInstallPaths(global bool, cwd string) []string {
 	skills := scopeSkillNames(global, cwd)
-	agents := allAgentsForScope(global)
+	harnesses := allHarnessesForScope(global)
 
 	seen := map[string]bool{}
 	var paths []string
 	for _, skillName := range skills {
-		for _, agentName := range agents {
-			// A shared-dir agent's install path is the canonical directory,
+		for _, harnessName := range harnesses {
+			// A shared-dir harness's install path is the canonical directory,
 			// real in both modes and never convertible.
-			if agent.UsesSharedSkillsDir(agentName) {
+			if harness.UsesSharedSkillsDir(harnessName) {
 				continue
 			}
-			base := getAgentBaseDir(agentName, global, cwd)
+			base := getHarnessBaseDir(harnessName, global, cwd)
 			if base == "" {
 				continue
 			}
@@ -147,7 +147,7 @@ func resolvedDir(dir string) string {
 // Only what mdm installed is touched: symlink to copy converts links
 // pointing at <canonicalDir>/<name>, and copy to symlink converts real
 // directories holding a SKILL.md. Anything else is the user's own and is
-// skipped, not counted. The canonical directory is never removed: agents
+// skipped, not counted. The canonical directory is never removed: harnesses
 // that read the shared directory install into it in copy mode too, and
 // doctor and remove resolve it for every locked skill.
 func rematerializeScope(to InstallMode, canonicalDir string, installPaths []string) (int, error) {
@@ -229,7 +229,7 @@ func linkToCopy(canonical, target string) (bool, error) {
 // copyToLink replaces one real skill directory at target with an mdm symlink
 // to <canonical>/<name>, reporting whether it converted anything. The
 // canonical copy is created first when missing, since it is the only place
-// the content can live once the agent directory is a link; the copy is then
+// the content can live once the harness directory is a link; the copy is then
 // set aside with a rename so a failed link can put it straight back.
 func copyToLink(canonical, target string) (bool, error) {
 	installDir := filepath.Dir(target)

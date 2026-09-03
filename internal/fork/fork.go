@@ -24,7 +24,7 @@ import (
 
 const (
 	// OriginFileName holds the machine-readable provenance record. The leading
-	// dot keeps it out of copyDirectory's install path, so agent-facing copies
+	// dot keeps it out of copyDirectory's install path, so harness-facing copies
 	// of the skill carry the notice but not the bookkeeping.
 	OriginFileName = ".mdm-origin.json"
 

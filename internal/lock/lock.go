@@ -132,7 +132,7 @@ func HasProjectSkills(cwd string) bool {
 	return false
 }
 
-// GetConfiguredAgents returns the configured agent list for the given scope.
+// GetConfiguredAgents returns the configured harness list for the given scope.
 func GetConfiguredAgents(global bool, cwd string) []string {
 	if global {
 		return ReadGlobalState().ConfiguredAgents
@@ -140,15 +140,15 @@ func GetConfiguredAgents(global bool, cwd string) []string {
 	return ReadLocalLock(cwd).ConfiguredAgents
 }
 
-// SetConfiguredAgents replaces the configured agent list for the given scope.
-func SetConfiguredAgents(agents []string, global bool, cwd string) error {
+// SetConfiguredAgents replaces the configured harness list for the given scope.
+func SetConfiguredAgents(harnesses []string, global bool, cwd string) error {
 	if global {
 		lk := ReadGlobalState()
-		lk.ConfiguredAgents = agents
+		lk.ConfiguredAgents = harnesses
 		return WriteGlobalState(lk)
 	}
 	lk := ReadLocalLock(cwd)
-	lk.ConfiguredAgents = agents
+	lk.ConfiguredAgents = harnesses
 	return WriteLocalLock(lk, cwd)
 }
 
@@ -176,7 +176,7 @@ func SetInstallMode(mode string, global bool, cwd string) error {
 	return WriteProjectLock(lk, cwd)
 }
 
-// AddToConfiguredAgents appends agents that aren't already in the list.
+// AddToConfiguredAgents appends harnesses that aren't already in the list.
 func AddToConfiguredAgents(toAdd []string, global bool, cwd string) error {
 	current := GetConfiguredAgents(global, cwd)
 	existing := map[string]bool{}
@@ -193,7 +193,7 @@ func AddToConfiguredAgents(toAdd []string, global bool, cwd string) error {
 	return SetConfiguredAgents(current, global, cwd)
 }
 
-// RemoveFromConfiguredAgents removes the given agents from the configured list.
+// RemoveFromConfiguredAgents removes the given harnesses from the configured list.
 func RemoveFromConfiguredAgents(toRemove []string, global bool, cwd string) error {
 	current := GetConfiguredAgents(global, cwd)
 	removeSet := map[string]bool{}

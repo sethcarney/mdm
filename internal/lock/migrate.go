@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/sethcarney/mdm/internal/agent"
+	"github.com/sethcarney/mdm/internal/harness"
 )
 
 // ──────────────────────────────────────────────────────────
@@ -204,17 +204,17 @@ func (m *ProjectMigration) absorb(d legacyFileData) {
 	}
 }
 
-// scanAgents returns the agents whose install directories are worth
-// scanning: the recorded list, or every agent the scope supports when it is
+// scanHarnesses returns the harnesses whose install directories are worth
+// scanning: the recorded list, or every harness the scope supports when it is
 // empty. An empty list is common, since configuredAgents only records
 // interactive picks and `mdm skills add <src> -a claude-code -y` leaves it
 // empty.
-func scanAgents(agents []string, global bool) []string {
-	if len(agents) > 0 {
-		return agents
+func scanHarnesses(harnesses []string, global bool) []string {
+	if len(harnesses) > 0 {
+		return harnesses
 	}
 	var all []string
-	for name, cfg := range agent.AllAgents {
+	for name, cfg := range harness.AllHarnesses {
 		if global && cfg.GlobalSkillsDir == "" {
 			continue
 		}
@@ -235,25 +235,25 @@ func skillNames[E any](skills map[string]E) []string {
 }
 
 // inferInstallMode reports the mode a scope was using from what is on disk
-// at each agent's install path (see scanAgents): a real directory holding a
+// at each harness's install path (see scanHarnesses): a real directory holding a
 // SKILL.md means --copy, anything else is no evidence. It returns
 // InstallModeCopy or "", never the literal "symlink", so no evidence leaves
 // the key absent for a later migration. It never reads .agents/skills:
 // a symlink install creates that as a real directory, so it reads as copy
 // for every project. Runs at migration time only; the recorded mode is
 // authoritative once it exists.
-func inferInstallMode(names, agents []string, global bool, cwd string) string {
-	agents = scanAgents(agents, global)
+func inferInstallMode(names, harnesses []string, global bool, cwd string) string {
+	harnesses = scanHarnesses(harnesses, global)
 	for _, name := range names {
-		for _, agentName := range agents {
-			// A shared-dir agent's install path is the canonical directory,
+		for _, harnessName := range harnesses {
+			// A shared-dir harness's install path is the canonical directory,
 			// real in both modes: never evidence.
-			if agent.UsesSharedSkillsDir(agentName) {
+			if harness.UsesSharedSkillsDir(harnessName) {
 				continue
 			}
 			// The same resolution the installer uses, so this cannot drift
 			// from where installs land. Lock keys are already sanitized.
-			installDir := agent.SkillsInstallDir(agentName, global, cwd)
+			installDir := harness.SkillsInstallDir(harnessName, global, cwd)
 			if installDir == "" {
 				continue
 			}

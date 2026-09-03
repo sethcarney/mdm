@@ -4,39 +4,39 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/sethcarney/mdm/internal/agent"
+	"github.com/sethcarney/mdm/internal/harness"
 )
 
 // symlinkFallbacks collects the installs in one run that were copied because
 // a symlink could not be created (see performSymlinkInstall). The fallback is
 // per install and records nothing: the scope stays in symlink mode, so the
 // next `mdm skills install` or `mdm skills update` tries to link again. One
-// warning per run says so, rather than one per skill and agent, and gives
+// warning per run says so, rather than one per skill and harness, and gives
 // `--copy` as the way to make the copies deliberate.
 type symlinkFallbacks struct {
-	agents []string
-	seen   map[string]bool
+	harnesses []string
+	seen      map[string]bool
 }
 
-// note records the result of one install for one agent. Results that did
+// note records the result of one install for one harness. Results that did
 // not fall back are ignored, so every install loop can call it unconditionally.
-func (f *symlinkFallbacks) note(agentName string, r InstallResult) {
+func (f *symlinkFallbacks) note(harnessName string, r InstallResult) {
 	if !r.SymlinkFailed {
 		return
 	}
 	if f.seen == nil {
 		f.seen = map[string]bool{}
 	}
-	if f.seen[agentName] {
+	if f.seen[harnessName] {
 		return
 	}
-	f.seen[agentName] = true
-	f.agents = append(f.agents, agentName)
+	f.seen[harnessName] = true
+	f.harnesses = append(f.harnesses, harnessName)
 }
 
 // any reports whether at least one install fell back to a copy.
 func (f *symlinkFallbacks) any() bool {
-	return f != nil && len(f.agents) > 0
+	return f != nil && len(f.harnesses) > 0
 }
 
 // warn prints the one-per-run warning. It prints nothing when no install
@@ -45,9 +45,9 @@ func (f *symlinkFallbacks) warn() {
 	if !f.any() {
 		return
 	}
-	names := make([]string, 0, len(f.agents))
-	for _, a := range f.agents {
-		if cfg := agent.AllAgents[a]; cfg != nil {
+	names := make([]string, 0, len(f.harnesses))
+	for _, a := range f.harnesses {
+		if cfg := harness.AllHarnesses[a]; cfg != nil {
 			names = append(names, cfg.DisplayName)
 		} else {
 			names = append(names, a)

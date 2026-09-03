@@ -254,7 +254,7 @@ func TestForkLabels(t *testing.T) {
 // ─── Guards against destroying a fork ──────────────────────────────────────────
 //
 // A fork lives in ./skills, which is also OpenClaw's project skills directory.
-// Every command that treats an agent's skills directory as disposable can reach
+// Every command that treats a harness's skills directory as disposable can reach
 // a fork through it, so each guard is pinned here.
 
 func writeTestFork(t *testing.T, dir string) {
@@ -290,29 +290,29 @@ func TestIsCherryPickedSource(t *testing.T) {
 	}
 }
 
-func TestRemoveAgentSkillsDirKeepsForks(t *testing.T) {
+func TestRemoveHarnessSkillsDirKeepsForks(t *testing.T) {
 	skillsDir := t.TempDir()
 	writeTestFork(t, filepath.Join(skillsDir, "forked"))
 	writeTestFile(t, filepath.Join(skillsDir, "installed", "SKILL.md"), "---\nname: installed\ndescription: b\n---\n")
 
-	kept, removed := removeAgentSkillsDir(skillsDir)
+	kept, removed := removeHarnessSkillsDir(skillsDir)
 	if !removed || kept != 1 {
 		t.Fatalf("kept = %d, removed = %v; want 1, true", kept, removed)
 	}
 	if _, err := os.Stat(filepath.Join(skillsDir, "forked", "SKILL.md")); err != nil {
-		t.Error("the fork must survive an agent removal")
+		t.Error("the fork must survive a harness removal")
 	}
 	if _, err := os.Stat(filepath.Join(skillsDir, "installed")); !os.IsNotExist(err) {
 		t.Error("the installed skill should have been removed")
 	}
 }
 
-func TestRemoveAgentSkillsDirRemovesEverythingWhenNoForks(t *testing.T) {
+func TestRemoveHarnessSkillsDirRemovesEverythingWhenNoForks(t *testing.T) {
 	parent := t.TempDir()
 	skillsDir := filepath.Join(parent, "skills")
 	writeTestFile(t, filepath.Join(skillsDir, "installed", "SKILL.md"), "---\nname: installed\ndescription: b\n---\n")
 
-	kept, removed := removeAgentSkillsDir(skillsDir)
+	kept, removed := removeHarnessSkillsDir(skillsDir)
 	if !removed || kept != 0 {
 		t.Fatalf("kept = %d, removed = %v; want 0, true", kept, removed)
 	}
@@ -321,8 +321,8 @@ func TestRemoveAgentSkillsDirRemovesEverythingWhenNoForks(t *testing.T) {
 	}
 }
 
-// Installing a fork into an agent that reads the forks directory would replace
-// the fork with a symlink to a copy of itself - destroying the source.
+// Installing a fork into a harness that reads the forks directory would replace
+// the fork with a symlink to a copy of itself — destroying the source.
 func TestClobbersForks(t *testing.T) {
 	cwd := t.TempDir()
 	forksRoot := filepath.Join(cwd, defaultForksDir)
@@ -338,7 +338,7 @@ func TestClobbersForks(t *testing.T) {
 		t.Error("the canonical skills directory must be treated as clobbering too")
 	}
 
-	kept := dropClobberingAgents([]string{"openclaw", "claude-code"}, false, cwd, forksRoot)
+	kept := dropClobberingHarnesses([]string{"openclaw", "claude-code"}, false, cwd, forksRoot)
 	if len(kept) != 1 || kept[0] != "claude-code" {
 		t.Errorf("kept = %v, want only claude-code", kept)
 	}

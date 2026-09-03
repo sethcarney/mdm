@@ -13,7 +13,7 @@ func (t MCPTarget) configFile(projectRoot string) string {
 	return filepath.Join(projectRoot, filepath.FromSlash(t.ConfigPath))
 }
 
-// readConfig loads the agent config file into a top-level raw map plus the
+// readConfig loads the harness config file into a top-level raw map plus the
 // parsed server map, preserving every key mdm does not manage. A missing
 // file yields empty maps.
 func (t MCPTarget) readConfig(projectRoot string) (map[string]json.RawMessage, map[string]json.RawMessage, error) {

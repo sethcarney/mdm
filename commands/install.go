@@ -168,15 +168,15 @@ func restoreSkills(entries map[string]sourceRef, baseOpts AddOptions) {
 		}
 	}
 
-	// Resolve agents once so the user is not prompted for each source group.
-	if len(baseOpts.Agents) == 0 {
+	// Resolve harnesses once so the user is not prompted for each source group.
+	if len(baseOpts.Harnesses) == 0 {
 		cwd, _ := os.Getwd()
-		agents, ok := promptAgents(baseOpts, baseOpts.Global, cwd)
+		harnesses, ok := promptHarnesses(baseOpts, baseOpts.Global, cwd)
 		if !ok {
 			fmt.Println("Cancelled.")
 			return
 		}
-		baseOpts.Agents = agents
+		baseOpts.Harnesses = harnesses
 	}
 
 	vlog(verboseFlag, "grouped %d skill(s) into %d source group(s)", len(entries), len(sourceMap))

@@ -118,7 +118,7 @@ func installFakeRepo(t *testing.T, skillsByPath map[string]string) {
 	t.Cleanup(func() { http.DefaultClient.Transport = orig })
 }
 
-// A repo that contains installed copies of its skills committed under agent
+// A repo that contains installed copies of its skills committed under harness
 // directories (.claude/skills/, .cursor/skills/, …) must offer each skill once,
 // not once per copy - that's what the git-clone discovery path already does.
 func TestTryBlobInstallDeduplicatesSkillCopies(t *testing.T) {

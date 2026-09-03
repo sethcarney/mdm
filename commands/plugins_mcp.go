@@ -11,10 +11,10 @@ import (
 )
 
 // wirePluginMCP translates the plugin's mcp.json servers into each target
-// agent's native MCP config and returns agent → namespaced server ids.
-// Agents without an MCP config descriptor are skipped silently - skills
+// harness's native MCP config and returns harness → namespaced server ids.
+// Harnesses without an MCP config descriptor are skipped silently — skills
 // still install for them, matching the spec's incremental-adoption rule.
-func wirePluginMCP(c pluginCandidate, destDir, dataDir string, agents []string, opts PluginsAddOptions, cwd string) map[string][]string {
+func wirePluginMCP(c pluginCandidate, destDir, dataDir string, harnesses []string, opts PluginsAddOptions, cwd string) map[string][]string {
 	if opts.SkipMCP {
 		return nil
 	}
@@ -33,8 +33,8 @@ func wirePluginMCP(c pluginCandidate, destDir, dataDir string, agents []string, 
 	}
 
 	result := map[string][]string{}
-	for _, agentName := range agents {
-		target, ok := mcpwire.Targets[agentName]
+	for _, harnessName := range harnesses {
+		target, ok := mcpwire.Targets[harnessName]
 		if !ok {
 			continue
 		}
@@ -42,7 +42,7 @@ func wirePluginMCP(c pluginCandidate, destDir, dataDir string, agents []string, 
 		for _, s := range cfg.Servers {
 			rendered, err := target.RenderServer(s, destDir, dataDir)
 			if err != nil {
-				ui.LogWarn(fmt.Sprintf("%s: server %q skipped for %s: %v", c.Name, s.ID, agentName, err))
+				ui.LogWarn(fmt.Sprintf("%s: server %q skipped for %s: %v", c.Name, s.ID, harnessName, err))
 				continue
 			}
 			entries[mcpwire.NamespacedID(c.Name, s.ID)] = rendered
@@ -53,7 +53,7 @@ func wirePluginMCP(c pluginCandidate, destDir, dataDir string, agents []string, 
 			continue
 		}
 		if len(ids) > 0 {
-			result[agentName] = ids
+			result[harnessName] = ids
 		}
 	}
 	if len(result) == 0 {
@@ -62,11 +62,11 @@ func wirePluginMCP(c pluginCandidate, destDir, dataDir string, agents []string, 
 	return result
 }
 
-// unwirePluginMCP removes the plugin's server entries from every agent MCP
+// unwirePluginMCP removes the plugin's server entries from every harness MCP
 // config recorded in the lock entry.
 func unwirePluginMCP(name string, entry lock.PluginLockEntry, cwd string) {
-	for agentName, ids := range entry.MCP {
-		target, ok := mcpwire.Targets[agentName]
+	for harnessName, ids := range entry.MCP {
+		target, ok := mcpwire.Targets[harnessName]
 		if !ok {
 			continue
 		}

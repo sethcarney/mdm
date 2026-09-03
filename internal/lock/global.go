@@ -6,14 +6,14 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/sethcarney/mdm/internal/agent"
+	"github.com/sethcarney/mdm/internal/harness"
 )
 
 // ──────────────────────────────────────────────────────────
 // Global state (~/.agents/mdm-state.json)
 //
 // Per-user, per-machine state: globally installed skills, dismissed
-// prompts, the global configured-agent list, and experimental opt-ins.
+// prompts, the global configured-harness list, and experimental opt-ins.
 // v1 called this file skills-lock.json, but unlike the project lock it is
 // never committed or shared - v2 names it what it is. Unknown top-level
 // keys survive a read/write round trip, same as the project lock.
@@ -130,7 +130,7 @@ func GetGlobalStatePath() string {
 		return filepath.Join(xdgState, "mdm", "state.json")
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, agent.AgentsDir, "mdm-state.json")
+	return filepath.Join(home, harness.SharedRootDir, "mdm-state.json")
 }
 
 // legacyGlobalLockPath returns where v1 kept the global skills-lock.json.
@@ -139,7 +139,7 @@ func legacyGlobalLockPath() string {
 		return filepath.Join(xdgState, "skills", "skills-lock.json")
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, agent.AgentsDir, "skills-lock.json")
+	return filepath.Join(home, harness.SharedRootDir, "skills-lock.json")
 }
 
 // ReadGlobalState reads mdm-state.json, falling back to the legacy v1

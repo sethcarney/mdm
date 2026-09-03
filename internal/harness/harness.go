@@ -1,4 +1,4 @@
-package agent
+package harness
 
 import (
 	"os"
@@ -6,12 +6,12 @@ import (
 	"strings"
 )
 
-// AgentConfig describes a single AI coding agent.
+// HarnessConfig describes a single AI coding harness.
 //
 // The two boolean fields SharedSkillsDir and NativeInstructions are the
-// canonical source of truth for agent capability classification. All helper
+// canonical source of truth for harness capability classification. All helper
 // functions (UsesSharedSkillsDir, NeedsNoTracking, …) read these fields.
-// Set them explicitly when adding a new agent; do not rely on path strings.
+// Set them explicitly when adding a new harness; do not rely on path strings.
 //
 //	SharedSkillsDir  NativeInstructions  Meaning
 //	──────────────── ──────────────────  ────────────────────────────────────────
@@ -19,34 +19,34 @@ import (
 //	true             false               uses shared skills; needs rules symlink
 //	false            true                needs skills dir; rules auto-covered
 //	true             true                fully automatic; no configuration needed
-type AgentConfig struct {
+type HarnessConfig struct {
 	Name            string
 	DisplayName     string
 	SkillsDir       string // relative, project-level skills directory path
 	GlobalSkillsDir string // absolute, user-level path (empty = global not supported)
-	// ExcludeFromPicker, when true, hides this agent from the locked section of
-	// the agent picker in `mdm skills add`. Only a small handful of shared-dir
-	// agents (replit, universal) are excluded; all others are shown by default.
+	// ExcludeFromPicker, when true, hides this harness from the locked section of
+	// the harness picker in `mdm skills add`. Only a small handful of shared-dir
+	// harnesses (replit, universal) are excluded; all others are shown by default.
 	ExcludeFromPicker bool
 
-	// InstructionsFile is the project-root path to this agent's instruction
+	// InstructionsFile is the project-root path to this harness's instruction
 	// file (e.g. "CLAUDE.md", ".cursorrules"). Empty means no instruction file.
 	InstructionsFile string
 
-	// SharedSkillsDir is true when this agent reads skills from the shared
+	// SharedSkillsDir is true when this harness reads skills from the shared
 	// .agents/skills directory. Skills installed there are available
-	// automatically - no per-agent skills directory needs to be configured.
+	// automatically — no per-harness skills directory needs to be configured.
 	SharedSkillsDir bool
 
-	// NativeInstructions is true when this agent reads AGENTS.md natively or
+	// NativeInstructions is true when this harness reads AGENTS.md natively or
 	// has no per-project instruction file. When true, no symlink to AGENTS.md
-	// is needed and configuredAgents does not need to track this agent for rules.
+	// is needed and configuredAgents does not need to track this harness for rules.
 	NativeInstructions bool
 
 	DetectInstalled func() bool
 }
 
-const AgentsDir = ".agents"
+const SharedRootDir = ".agents"
 const SkillsSubdir = "skills"
 
 func getXDGConfigHome() string {
@@ -92,16 +92,16 @@ func pathExists(p string) bool {
 	return err == nil
 }
 
-var AllAgents map[string]*AgentConfig
+var AllHarnesses map[string]*HarnessConfig
 
 func init() {
 	Reload()
 }
 
-// Reload rebuilds AllAgents from the current environment. Global install
+// Reload rebuilds AllHarnesses from the current environment. Global install
 // paths are resolved once at init from the home directory and the XDG and
-// agent-specific variables, so a test that redirects those must call this.
-// AllAgents is replaced wholesale, so inject test agents after the last
+// harness-specific variables, so a test that redirects those must call this.
+// AllHarnesses is replaced wholesale, so inject test harnesses after the last
 // call, and never run such tests in parallel.
 func Reload() {
 	home, _ := os.UserHomeDir()
@@ -110,10 +110,10 @@ func Reload() {
 	claudeHome := getClaudeHome()
 
 	// ── SharedSkillsDir=true + NativeInstructions=false ────────────────────────
-	// Agents that use .agents/skills but have their own instruction file.
+	// Harnesses that use .agents/skills but have their own instruction file.
 	// Skills are auto-covered; only the rules symlink needs to be configured.
 
-	sharedSkillsUniqueRules := map[string]*AgentConfig{
+	sharedSkillsUniqueRules := map[string]*HarnessConfig{
 		"amp": {
 			Name:               "amp",
 			DisplayName:        "Amp",
@@ -167,11 +167,11 @@ func Reload() {
 	}
 
 	// ── SharedSkillsDir=true + NativeInstructions=true ─────────────────────────
-	// Fully automatic agents: skills come from .agents/skills and instructions
-	// are read from AGENTS.md (or this agent has no instruction file). No
-	// configuration in configuredAgents is needed for these agents.
+	// Fully automatic harnesses: skills come from .agents/skills and instructions
+	// are read from AGENTS.md (or this harness has no instruction file). No
+	// configuration in configuredAgents is needed for these harnesses.
 
-	fullyAutomatic := map[string]*AgentConfig{
+	fullyAutomatic := map[string]*HarnessConfig{
 		"antigravity": {
 			Name:               "antigravity",
 			DisplayName:        "Antigravity",
@@ -193,7 +193,7 @@ func Reload() {
 		},
 		"deepagents": {
 			Name:               "deepagents",
-			DisplayName:        "Deep Agents",
+			DisplayName:        "Deep Harnesses",
 			SkillsDir:          ".agents/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".deepagents/agent/skills"),
 			SharedSkillsDir:    true,
@@ -264,10 +264,10 @@ func Reload() {
 	}
 
 	// ── SharedSkillsDir=false + NativeInstructions=false ───────────────────────
-	// Agents that need both a dedicated skills directory AND a rules symlink.
+	// Harnesses that need both a dedicated skills directory AND a rules symlink.
 	// Both must be explicitly configured via configuredAgents.
 
-	uniqueSkillsUniqueRules := map[string]*AgentConfig{
+	uniqueSkillsUniqueRules := map[string]*HarnessConfig{
 		"claude-code": {
 			Name:               "claude-code",
 			DisplayName:        "Claude Code",
@@ -301,11 +301,11 @@ func Reload() {
 	}
 
 	// ── SharedSkillsDir=false + NativeInstructions=true ────────────────────────
-	// Agents with their own dedicated skills directory but no per-project
+	// Harnesses with their own dedicated skills directory but no per-project
 	// instruction file (or they read AGENTS.md natively). Only the skills
 	// directory needs to be configured via configuredAgents.
 
-	uniqueSkillsNativeRules := map[string]*AgentConfig{
+	uniqueSkillsNativeRules := map[string]*HarnessConfig{
 		"adal": {
 			Name:               "adal",
 			DisplayName:        "AdaL",
@@ -570,24 +570,24 @@ func Reload() {
 		},
 	}
 
-	AllAgents = make(map[string]*AgentConfig)
+	AllHarnesses = make(map[string]*HarnessConfig)
 	for k, v := range sharedSkillsUniqueRules {
-		AllAgents[k] = v
+		AllHarnesses[k] = v
 	}
 	for k, v := range fullyAutomatic {
-		AllAgents[k] = v
+		AllHarnesses[k] = v
 	}
 	for k, v := range uniqueSkillsUniqueRules {
-		AllAgents[k] = v
+		AllHarnesses[k] = v
 	}
 	for k, v := range uniqueSkillsNativeRules {
-		AllAgents[k] = v
+		AllHarnesses[k] = v
 	}
 }
 
-func DetectInstalledAgents() []string {
+func DetectInstalledHarnesses() []string {
 	var installed []string
-	for name, a := range AllAgents {
+	for name, a := range AllHarnesses {
 		if a.DetectInstalled() {
 			installed = append(installed, name)
 		}
@@ -595,16 +595,16 @@ func DetectInstalledAgents() []string {
 	return installed
 }
 
-// ─── Agent classification helpers ─────────────────────────────────────────────
+// ─── Harness classification helpers ────────────────────────────────────────────
 //
 // These functions read the explicit SharedSkillsDir and NativeInstructions
-// boolean fields on AgentConfig. Do not add new string comparisons against
-// SkillsDir or InstructionsFile in calling code - use these helpers instead.
+// boolean fields on HarnessConfig. Do not add new string comparisons against
+// SkillsDir or InstructionsFile in calling code — use these helpers instead.
 
-// UsesSharedSkillsDir reports whether the agent reads skills from the shared
+// UsesSharedSkillsDir reports whether the harness reads skills from the shared
 // .agents/skills directory (SharedSkillsDir == true).
 func UsesSharedSkillsDir(name string) bool {
-	a, ok := AllAgents[name]
+	a, ok := AllHarnesses[name]
 	return ok && a.SharedSkillsDir
 }
 
@@ -619,23 +619,23 @@ func CanonicalSkillsDir(global bool, cwd string) string {
 	if global {
 		baseDir, _ = os.UserHomeDir()
 	}
-	return filepath.Join(baseDir, AgentsDir, SkillsSubdir)
+	return filepath.Join(baseDir, SharedRootDir, SkillsSubdir)
 }
 
-// SkillsInstallDir returns the directory an agent reads its skills from in the
-// given scope, or "" when the agent is unknown or has no directory for that
+// SkillsInstallDir returns the directory a harness reads its skills from in the
+// given scope, or "" when the harness is unknown or has no directory for that
 // scope. An empty cwd means the current working directory. Installing,
 // re-materializing, and migration inference all resolve the path here so they
 // cannot drift. Callers that treat the shared .agents/skills directory
 // specially must still check UsesSharedSkillsDir.
 //
 // TODO: four older callers still build the path themselves and do not handle
-// SharedSkillsDir this way: agentDirForScope and isSkillInstalled in
-// commands/installer.go, checkAgentLinks in commands/doctor.go, and
-// cleanUpRemovedAgentFiles in commands/agents.go. Check a new agent layout
+// SharedSkillsDir this way: harnessDirForScope and isSkillInstalled in
+// commands/installer.go, checkHarnessLinks in commands/doctor.go, and
+// cleanUpRemovedHarnessFiles in commands/harnesses.go. Check a new harness layout
 // against them too.
 func SkillsInstallDir(name string, global bool, cwd string) string {
-	a := AllAgents[name]
+	a := AllHarnesses[name]
 	if a == nil {
 		return ""
 	}
@@ -661,19 +661,19 @@ func SkillsInstallDir(name string, global bool, cwd string) string {
 	return filepath.Join(cwd, a.SkillsDir)
 }
 
-// NeedsNoTracking reports whether an agent requires no entry in configuredAgents.
+// NeedsNoTracking reports whether a harness requires no entry in configuredAgents.
 // True when both skills and instructions are auto-covered
 // (SharedSkillsDir && NativeInstructions).
 func NeedsNoTracking(name string) bool {
-	a, ok := AllAgents[name]
+	a, ok := AllHarnesses[name]
 	return ok && a.SharedSkillsDir && a.NativeInstructions
 }
 
-// GetSharedSkillsDirAgents returns agents that use .agents/skills and are
-// shown in the locked section of the agent picker (ExcludeFromPicker == false).
-func GetSharedSkillsDirAgents() []string {
+// GetSharedSkillsDirHarnesses returns harnesses that use .agents/skills and are
+// shown in the locked section of the harness picker (ExcludeFromPicker == false).
+func GetSharedSkillsDirHarnesses() []string {
 	var result []string
-	for name, a := range AllAgents {
+	for name, a := range AllHarnesses {
 		if a.SharedSkillsDir && !a.ExcludeFromPicker {
 			result = append(result, name)
 		}
@@ -681,11 +681,11 @@ func GetSharedSkillsDirAgents() []string {
 	return result
 }
 
-// GetUniqueSkillsDirAgents returns agents with their own dedicated skills
+// GetUniqueSkillsDirHarnesses returns harnesses with their own dedicated skills
 // directory. These always need explicit configuration.
-func GetUniqueSkillsDirAgents() []string {
+func GetUniqueSkillsDirHarnesses() []string {
 	var result []string
-	for name, a := range AllAgents {
+	for name, a := range AllHarnesses {
 		if !a.SharedSkillsDir {
 			result = append(result, name)
 		}

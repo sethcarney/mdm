@@ -11,13 +11,13 @@ import (
 	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
 
-	"github.com/sethcarney/mdm/internal/agent"
+	"github.com/sethcarney/mdm/internal/harness"
 )
 
 func buildListCmd() *cobra.Command {
 	var globalFlag bool
 	var projectFlag bool
-	var agentFilter []string
+	var harnessFilter []string
 	var jsonMode bool
 
 	cmd := &cobra.Command{
@@ -40,23 +40,23 @@ func buildListCmd() *cobra.Command {
 				f := false
 				gFlag = &f
 			}
-			runListWithOpts(gFlag, agentFilter, jsonMode)
+			runListWithOpts(gFlag, harnessFilter, jsonMode)
 		},
 	}
 
 	f := cmd.Flags()
 	f.BoolVarP(&globalFlag, "global", "g", false, "List global skills")
 	f.BoolVarP(&projectFlag, "project", "p", false, "List project skills")
-	f.StringArrayVarP(&agentFilter, "agent", "a", nil, "Filter by specific agents")
+	f.StringArrayVarP(&harnessFilter, "agent", "a", nil, "Filter by specific agents")
 	f.BoolVar(&jsonMode, "json", false, "Output as JSON")
 
-	_ = cmd.RegisterFlagCompletionFunc("agent", agentFlagCompletion)
+	_ = cmd.RegisterFlagCompletionFunc("agent", harnessFlagCompletion)
 
 	return cmd
 }
 
-func runListWithOpts(globalFlag *bool, agentFilter []string, jsonMode bool) {
-	skills, err := listInstalledSkills(globalFlag, agentFilter)
+func runListWithOpts(globalFlag *bool, harnessFilter []string, jsonMode bool) {
+	skills, err := listInstalledSkills(globalFlag, harnessFilter)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -125,10 +125,10 @@ func printSkillsForScope(scopeSkills []*InstalledSkill, scope, cwd string) {
 			fmt.Printf("  %s%s%s", ansiDim, s.Description, ansiReset)
 		}
 		fmt.Println()
-		if len(s.Agents) > 0 {
+		if len(s.Harnesses) > 0 {
 			var displayNames []string
-			for _, a := range s.Agents {
-				if cfg := agent.AllAgents[a]; cfg != nil {
+			for _, a := range s.Harnesses {
+				if cfg := harness.AllHarnesses[a]; cfg != nil {
 					displayNames = append(displayNames, cfg.DisplayName)
 				} else {
 					displayNames = append(displayNames, a)

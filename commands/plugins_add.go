@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/sethcarney/mdm/internal/agent"
 	"github.com/sethcarney/mdm/internal/git"
+	"github.com/sethcarney/mdm/internal/harness"
 	"github.com/sethcarney/mdm/internal/lock"
 	"github.com/sethcarney/mdm/internal/plugin"
 	"github.com/sethcarney/mdm/internal/security/markdownscan"
@@ -25,18 +25,18 @@ const (
 // pluginsBaseDir is where installed plugins live: each plugin's directory
 // is its PLUGIN_ROOT.
 func pluginsBaseDir(cwd string) string {
-	return filepath.Join(cwd, agent.AgentsDir, pluginsSubdir)
+	return filepath.Join(cwd, harness.SharedRootDir, pluginsSubdir)
 }
 
 // pluginsDataBaseDir holds each plugin's persistent PLUGIN_DATA directory,
 // preserved across updates.
 func pluginsDataBaseDir(cwd string) string {
-	return filepath.Join(cwd, agent.AgentsDir, pluginsDataSubdir)
+	return filepath.Join(cwd, harness.SharedRootDir, pluginsDataSubdir)
 }
 
 type PluginsAddOptions struct {
 	Plugins          []string
-	Agents           []string
+	Harnesses        []string
 	Yes              bool
 	DryRun           bool
 	AllowHiddenChars bool
@@ -61,7 +61,7 @@ and local paths, with an optional #ref for version pinning.
 %sExamples:%s
   mdm plugins add acme/toolkit
   mdm plugins add acme/toolkit#v1.2.0 -a claude-code
-  mdm plugins add ./local-plugin --skip-mcp`, agent.AgentsDir, pluginsSubdir, lockName, ansiBold, ansiReset),
+  mdm plugins add ./local-plugin --skip-mcp`, harness.SharedRootDir, pluginsSubdir, lockName, ansiBold, ansiReset),
 		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			runPluginsAdd(args[0], opts)
@@ -70,13 +70,13 @@ and local paths, with an optional #ref for version pinning.
 
 	f := cmd.Flags()
 	f.StringArrayVarP(&opts.Plugins, "plugin", "p", nil, "Plugin names to install (repeatable, use '*' for all)")
-	f.StringArrayVarP(&opts.Agents, "agent", "a", nil, "Agents to install for (repeatable)")
+	f.StringArrayVarP(&opts.Harnesses, "agent", "a", nil, "Agents to install for (repeatable)")
 	f.BoolVarP(&opts.Yes, "yes", "y", false, "Skip confirmation prompts and install all discovered plugins")
 	f.BoolVar(&opts.DryRun, "dry-run", false, "Show what would be installed without writing anything")
 	f.BoolVar(&opts.AllowHiddenChars, "allow-hidden-chars", false, "Allow markdown files with hidden Unicode characters")
 	f.BoolVar(&opts.SkipMCP, "skip-mcp", false, "Install skills only; do not write MCP server config")
 
-	_ = cmd.RegisterFlagCompletionFunc("agent", agentFlagCompletion)
+	_ = cmd.RegisterFlagCompletionFunc("agent", harnessFlagCompletion)
 
 	return cmd
 }
@@ -113,7 +113,7 @@ func runPluginsAdd(sourceInput string, opts PluginsAddOptions) {
 		os.Exit(1)
 	}
 
-	agents, ok := resolvePluginAgents(opts, cwd)
+	harnesses, ok := resolvePluginHarnesses(opts, cwd)
 	if !ok {
 		os.Exit(1)
 	}
@@ -121,7 +121,7 @@ func runPluginsAdd(sourceInput string, opts PluginsAddOptions) {
 	baseEntry := pluginLockEntry(parsed, sourceInput)
 	installed := 0
 	for _, c := range selected {
-		if installPluginCandidate(c, baseEntry, opts, agents, cwd) {
+		if installPluginCandidate(c, baseEntry, opts, harnesses, cwd) {
 			installed++
 		}
 	}
@@ -130,7 +130,7 @@ func runPluginsAdd(sourceInput string, opts PluginsAddOptions) {
 		fmt.Printf("%sDry run - nothing was written.%s\n\n", ansiDim, ansiReset)
 		return
 	}
-	fmt.Printf("%sInstalled %d plugin(s) to ./%s/%s%s\n\n", ansiText, installed, agent.AgentsDir, pluginsSubdir, ansiReset)
+	fmt.Printf("%sInstalled %d plugin(s) to ./%s/%s%s\n\n", ansiText, installed, harness.SharedRootDir, pluginsSubdir, ansiReset)
 }
 
 // fetchPluginSource materializes the source on disk and returns the
@@ -246,7 +246,7 @@ func selectPluginCandidates(candidates []pluginCandidate, opts PluginsAddOptions
 }
 
 // scanPluginCandidates runs the hidden-character scan over every selected
-// plugin. Plugin markdown is agent-bound, so this gate is mandatory.
+// plugin. Plugin markdown is harness-bound, so this gate is mandatory.
 func scanPluginCandidates(selected []pluginCandidate, allow bool) bool {
 	ok := true
 	for _, c := range selected {
@@ -263,22 +263,22 @@ func scanPluginCandidates(selected []pluginCandidate, allow bool) bool {
 	return ok
 }
 
-// resolvePluginAgents picks the agents to install for: the --agent flag,
-// then the project's configured agents, then detected agents.
-func resolvePluginAgents(opts PluginsAddOptions, cwd string) ([]string, bool) {
-	if len(opts.Agents) > 0 {
-		for _, name := range opts.Agents {
-			if agent.AllAgents[name] == nil {
+// resolvePluginHarnesses picks the harnesses to install for: the --agent flag,
+// then the project's configured harnesses, then detected harnesses.
+func resolvePluginHarnesses(opts PluginsAddOptions, cwd string) ([]string, bool) {
+	if len(opts.Harnesses) > 0 {
+		for _, name := range opts.Harnesses {
+			if harness.AllHarnesses[name] == nil {
 				fmt.Fprintf(os.Stderr, "%sError:%s unknown agent %q\n", ansiText, ansiReset, name)
 				return nil, false
 			}
 		}
-		return opts.Agents, true
+		return opts.Harnesses, true
 	}
 	if configured := lock.GetConfiguredAgents(false, cwd); len(configured) > 0 {
 		return configured, true
 	}
-	if detected := agent.DetectInstalledAgents(); len(detected) > 0 {
+	if detected := harness.DetectInstalledHarnesses(); len(detected) > 0 {
 		return detected, true
 	}
 	fmt.Fprintf(os.Stderr, "%sError:%s no agents detected - pass --agent (e.g. -a claude-code)\n", ansiText, ansiReset)
@@ -307,10 +307,10 @@ func pluginLockEntry(parsed source.ParsedSource, sourceInput string) lock.Plugin
 	return entry
 }
 
-func installPluginCandidate(c pluginCandidate, baseEntry lock.PluginLockEntry, opts PluginsAddOptions, agents []string, cwd string) bool {
+func installPluginCandidate(c pluginCandidate, baseEntry lock.PluginLockEntry, opts PluginsAddOptions, harnesses []string, cwd string) bool {
 	if opts.DryRun {
 		fmt.Printf("  %s%s%s  %s → ./%s\n", ansiText, c.Name, ansiReset, pluginCandidateHint(c),
-			filepath.ToSlash(filepath.Join(agent.AgentsDir, pluginsSubdir, c.Name)))
+			filepath.ToSlash(filepath.Join(harness.SharedRootDir, pluginsSubdir, c.Name)))
 		return true
 	}
 
@@ -324,18 +324,18 @@ func installPluginCandidate(c pluginCandidate, baseEntry lock.PluginLockEntry, o
 		return false
 	}
 
-	installedSkills, skipped := installPluginSkills(c.Name, destDir, agents, cwd)
+	installedSkills, skipped := installPluginSkills(c.Name, destDir, harnesses, cwd)
 
 	entry := baseEntry
-	entry.InstallDir = filepath.ToSlash(filepath.Join(agent.AgentsDir, pluginsSubdir, c.Name))
-	entry.DataDir = filepath.ToSlash(filepath.Join(agent.AgentsDir, pluginsDataSubdir, c.Name))
+	entry.InstallDir = filepath.ToSlash(filepath.Join(harness.SharedRootDir, pluginsSubdir, c.Name))
+	entry.DataDir = filepath.ToSlash(filepath.Join(harness.SharedRootDir, pluginsDataSubdir, c.Name))
 	entry.Version = c.Report.Manifest.Version
 	entry.Skills = installedSkills
-	entry.SkillAgents = agents
+	entry.SkillAgents = harnesses
 	if hash, err := plugin.HashPluginDir(destDir); err == nil {
 		entry.ContentHash = hash
 	}
-	entry.MCP = wirePluginMCP(c, destDir, dataDir, agents, opts, cwd)
+	entry.MCP = wirePluginMCP(c, destDir, dataDir, harnesses, opts, cwd)
 	if err := lock.AddPluginToLock(c.Name, entry, cwd); err != nil {
 		ui.LogWarn(fmt.Sprintf("could not update %s: %v", lockName, err))
 	}
@@ -418,14 +418,14 @@ func copyPluginTree(root, src, dst string) error {
 }
 
 // installPluginSkills links each skill from the installed plugin directory
-// into the canonical skills dir and each agent's skills dir. It returns
+// into the canonical skills dir and each harness's skills dir. It returns
 // the sanitized names installed and how many were skipped over collisions.
-func installPluginSkills(pluginName, destDir string, agents []string, cwd string) ([]string, int) {
+func installPluginSkills(pluginName, destDir string, harnesses []string, cwd string) ([]string, int) {
 	skills, _ := plugin.ListSkills(destDir)
 	var installed []string
 	skipped := 0
 	for _, ps := range skills {
-		if !installPluginSkillLink(pluginName, ps, agents, cwd) {
+		if !installPluginSkillLink(pluginName, ps, harnesses, cwd) {
 			skipped++
 			continue
 		}
@@ -437,8 +437,8 @@ func installPluginSkills(pluginName, destDir string, agents []string, cwd string
 // installPluginSkillLink links one plugin skill: the canonical skills dir
 // gets a symlink pointing into the plugin's own directory (so provenance
 // is visible from the link target and the plugin stays the single source
-// of truth), and each agent dir links to the canonical one as usual.
-func installPluginSkillLink(pluginName string, ps plugin.PluginSkill, agents []string, cwd string) bool {
+// of truth), and each harness dir links to the canonical one as usual.
+func installPluginSkillLink(pluginName string, ps plugin.PluginSkill, harnesses []string, cwd string) bool {
 	skillName := sanitizeName(ps.Name)
 	canonicalBase := getCanonicalSkillsDir(false, cwd)
 	canonicalDir := filepath.Join(canonicalBase, skillName)
@@ -467,11 +467,11 @@ func installPluginSkillLink(pluginName string, ps plugin.PluginSkill, agents []s
 			return false
 		}
 	}
-	for _, agentName := range agents {
-		if agent.UsesSharedSkillsDir(agentName) {
+	for _, harnessName := range harnesses {
+		if harness.UsesSharedSkillsDir(harnessName) {
 			continue
 		}
-		linkInstalledSkillToAgent(skillName, agentName, false, cwd)
+		linkInstalledSkillToHarness(skillName, harnessName, false, cwd)
 	}
 	return true
 }

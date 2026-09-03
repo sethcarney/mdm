@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sethcarney/mdm/internal/agent"
+	"github.com/sethcarney/mdm/internal/harness"
 	"github.com/sethcarney/mdm/internal/lock"
 )
 
@@ -214,8 +214,8 @@ func TestCheckProjectMarkdownSkipsExistingDirs(t *testing.T) {
 
 	// Non-existent dir added to skipDirs - should not cause a panic or side effects
 	skipDirs := map[string]bool{
-		filepath.Clean(skillsDir):                    true,
-		filepath.Join(root, "nonexistent-agent-dir"): true,
+		filepath.Clean(skillsDir):                      true,
+		filepath.Join(root, "nonexistent-harness-dir"): true,
 	}
 
 	issues, _ := checkProjectMarkdown(root, skipDirs, map[string]bool{})
@@ -424,7 +424,7 @@ func TestCheckLargeMarkdownVendorSkipped(t *testing.T) {
 }
 
 // TestDiagnoseSkillHealthySkill ensures a well-formed skill directory reports
-// no issues (except possibly agent-link checks that won't have links on disk).
+// no issues (except possibly harness-link checks that won't have links on disk).
 func TestDiagnoseSkillHealthySkill(t *testing.T) {
 	dir := t.TempDir()
 	content := "---\nname: My Skill\ndescription: A healthy skill\n---\nDo stuff.\n"
@@ -447,17 +447,17 @@ func TestDiagnoseSkillHealthySkill(t *testing.T) {
 
 // isolatedGlobalSkillsDir returns Claude Code's global skills directory under
 // a temp home, failing if the registry did not pick up the redirect: the
-// global sweep walks every agent's directory, so an un-isolated registry
+// global sweep walks every harness's directory, so an un-isolated registry
 // would read the developer's real files.
 func isolatedGlobalSkillsDir(t *testing.T) string {
 	t.Helper()
 	home := isolateHome(t)
-	cfg := agent.AllAgents["claude-code"]
+	cfg := harness.AllHarnesses["claude-code"]
 	if cfg == nil || cfg.GlobalSkillsDir == "" {
-		t.Skip("fixture agent no longer supports global installs")
+		t.Skip("fixture harness no longer supports global installs")
 	}
 	if !strings.HasPrefix(cfg.GlobalSkillsDir, home) {
-		t.Fatalf("agent registry not isolated: %q is outside the test home %q", cfg.GlobalSkillsDir, home)
+		t.Fatalf("harness registry not isolated: %q is outside the test home %q", cfg.GlobalSkillsDir, home)
 	}
 	return cfg.GlobalSkillsDir
 }
