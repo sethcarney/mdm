@@ -43,11 +43,24 @@ type HarnessConfig struct {
 	// is needed and configuredAgents does not need to track this harness for rules.
 	NativeInstructions bool
 
+	// AgentsInstallDir is the project-relative directory this harness reads
+	// agent definitions from. Empty means the harness has no agent concept,
+	// and an install skips it with a notice rather than failing.
+	// GlobalAgentsInstallDir is the user-level equivalent.
+	AgentsInstallDir       string
+	GlobalAgentsInstallDir string
+
+	// AgentFileSuffix overrides the default ".md" for files this harness
+	// reads from AgentsInstallDir. GitHub Copilot CLI is the known
+	// exception: it loads only files ending in ".agent.md".
+	AgentFileSuffix string
+
 	DetectInstalled func() bool
 }
 
 const SharedRootDir = ".agents"
 const SkillsSubdir = "skills"
+const AgentsSubdir = "agents"
 
 func getXDGConfigHome() string {
 	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
@@ -142,7 +155,12 @@ func Reload() {
 			InstructionsFile:   ".cursorrules",
 			SharedSkillsDir:    true,
 			NativeInstructions: false,
-			DetectInstalled:    func() bool { return pathExists(filepath.Join(home, ".cursor")) },
+			// https://cursor.com/docs/subagents — checked 2026-09-03. Project
+			// and user dirs both hold plain .md files with name/description
+			// frontmatter.
+			AgentsInstallDir:       ".cursor/agents",
+			GlobalAgentsInstallDir: filepath.Join(home, ".cursor/agents"),
+			DetectInstalled:        func() bool { return pathExists(filepath.Join(home, ".cursor")) },
 		},
 		"gemini-cli": {
 			Name:               "gemini-cli",
@@ -152,7 +170,11 @@ func Reload() {
 			InstructionsFile:   "GEMINI.md",
 			SharedSkillsDir:    true,
 			NativeInstructions: false,
-			DetectInstalled:    func() bool { return pathExists(filepath.Join(home, ".gemini")) },
+			// https://geminicli.com/docs/core/subagents/ — checked 2026-09-03.
+			// Project and user dirs both hold plain .md files.
+			AgentsInstallDir:       ".gemini/agents",
+			GlobalAgentsInstallDir: filepath.Join(home, ".gemini/agents"),
+			DetectInstalled:        func() bool { return pathExists(filepath.Join(home, ".gemini")) },
 		},
 		"github-copilot": {
 			Name:               "github-copilot",
@@ -162,7 +184,21 @@ func Reload() {
 			InstructionsFile:   ".github/copilot-instructions.md",
 			SharedSkillsDir:    true,
 			NativeInstructions: false,
-			DetectInstalled:    func() bool { return pathExists(filepath.Join(home, ".copilot")) },
+			// https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli
+			// — checked 2026-09-03. Project dir .github/agents, user dir
+			// ~/.copilot/agents. Copilot CLI loads ONLY files ending in
+			// ".agent.md" — a plain ".md" there is silently never read.
+			//
+			// Precedence: a same-named user (~/.copilot/agents) file wins
+			// over the project (.github/agents) one. This is confirmed from
+			// the docs above, not a guess, and it is the OPPOSITE of
+			// claude-code's project-over-user order and of how mdm's own
+			// skills scoping behaves — do not "fix" this to match those; it
+			// is deliberate and specific to Copilot CLI.
+			AgentsInstallDir:       ".github/agents",
+			GlobalAgentsInstallDir: filepath.Join(home, ".copilot/agents"),
+			AgentFileSuffix:        ".agent.md",
+			DetectInstalled:        func() bool { return pathExists(filepath.Join(home, ".copilot")) },
 		},
 	}
 
@@ -226,7 +262,14 @@ func Reload() {
 			InstructionsFile:   "AGENTS.md",
 			SharedSkillsDir:    true,
 			NativeInstructions: true,
-			DetectInstalled:    func() bool { return pathExists(filepath.Join(configHome, "opencode")) },
+			// https://opencode.ai/docs/agents/ — checked 2026-09-03. Plural
+			// "agents" in both dirs; the earlier fork had this wrong (a docs
+			// mismatch elsewhere singularizes it for the "opencode agent
+			// create" CLI command's output dir, but the loader — and this
+			// docs page — use the plural form).
+			AgentsInstallDir:       ".opencode/agents",
+			GlobalAgentsInstallDir: filepath.Join(configHome, "opencode/agents"),
+			DetectInstalled:        func() bool { return pathExists(filepath.Join(configHome, "opencode")) },
 		},
 		"replit": {
 			Name:               "replit",
@@ -276,7 +319,12 @@ func Reload() {
 			InstructionsFile:   "CLAUDE.md",
 			SharedSkillsDir:    false,
 			NativeInstructions: false,
-			DetectInstalled:    func() bool { return pathExists(claudeHome) },
+			// https://code.claude.com/docs/en/sub-agents — checked 2026-09-03.
+			// Project and user dirs both hold plain .md files with name and
+			// description frontmatter, scanned recursively.
+			AgentsInstallDir:       ".claude/agents",
+			GlobalAgentsInstallDir: filepath.Join(claudeHome, "agents"),
+			DetectInstalled:        func() bool { return pathExists(claudeHome) },
 		},
 		"roo": {
 			Name:               "roo",
@@ -608,10 +656,13 @@ func UsesSharedSkillsDir(name string) bool {
 	return ok && a.SharedSkillsDir
 }
 
-// CanonicalSkillsDir returns the shared .agents/skills directory for a scope:
-// under the user's home in global scope, under cwd in project scope. An empty
-// cwd means the current working directory.
-func CanonicalSkillsDir(global bool, cwd string) string {
+// canonicalSharedDir resolves the shared .agents/<subdir> directory for a
+// scope: under the user's home in global scope, under cwd in project scope.
+// An empty cwd means the current working directory. This is the one place
+// that branching lives; CanonicalSkillsDir and CanonicalAgentsDir differ
+// only in which subdir they pass, so a fix to the resolution itself (e.g.
+// how cwd or the home directory is found) cannot drift between the two.
+func canonicalSharedDir(subdir string, global bool, cwd string) string {
 	if cwd == "" {
 		cwd, _ = os.Getwd()
 	}
@@ -619,7 +670,25 @@ func CanonicalSkillsDir(global bool, cwd string) string {
 	if global {
 		baseDir, _ = os.UserHomeDir()
 	}
-	return filepath.Join(baseDir, SharedRootDir, SkillsSubdir)
+	return filepath.Join(baseDir, SharedRootDir, subdir)
+}
+
+// CanonicalSkillsDir returns the shared .agents/skills directory for a scope:
+// under the user's home in global scope, under cwd in project scope. An empty
+// cwd means the current working directory.
+func CanonicalSkillsDir(global bool, cwd string) string {
+	return canonicalSharedDir(SkillsSubdir, global, cwd)
+}
+
+// CanonicalAgentsDir returns the shared .agents/agents directory for a scope,
+// following the same rule as CanonicalSkillsDir: under the user's home in
+// global scope, under cwd in project scope. An empty cwd means the current
+// working directory. Agent definitions are single files rather than
+// directories, so unlike skills, nothing else about a harness's own
+// resolution (AgentsInstallDirFor) ever consults this path — it exists
+// solely as the location of mdm's own canonical copy.
+func CanonicalAgentsDir(global bool, cwd string) string {
+	return canonicalSharedDir(AgentsSubdir, global, cwd)
 }
 
 // SkillsInstallDir returns the directory a harness reads its skills from in the
@@ -659,6 +728,36 @@ func SkillsInstallDir(name string, global bool, cwd string) string {
 		cwd, _ = os.Getwd()
 	}
 	return filepath.Join(cwd, a.SkillsDir)
+}
+
+// AgentFileExt returns the extension harnessName expects for a file under
+// its AgentsInstallDir, defaulting to ".md" for a harness with no override
+// and for an unknown name.
+func AgentFileExt(harnessName string) string {
+	if h, ok := AllHarnesses[harnessName]; ok && h.AgentFileSuffix != "" {
+		return h.AgentFileSuffix
+	}
+	return ".md"
+}
+
+// AgentsInstallDirFor resolves where harnessName reads agent definitions
+// for a scope. It returns "" when the harness has no agent concept, or when
+// global scope is asked of a harness with no user-level directory.
+func AgentsInstallDirFor(name string, global bool, cwd string) string {
+	h, ok := AllHarnesses[name]
+	if !ok {
+		return ""
+	}
+	if global {
+		return h.GlobalAgentsInstallDir
+	}
+	if h.AgentsInstallDir == "" {
+		return ""
+	}
+	if cwd == "" {
+		cwd, _ = os.Getwd()
+	}
+	return filepath.Join(cwd, h.AgentsInstallDir)
 }
 
 // NeedsNoTracking reports whether a harness requires no entry in configuredAgents.

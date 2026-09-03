@@ -52,3 +52,50 @@ func TestSkillsInstallDirUnknownHarness(t *testing.T) {
 		t.Errorf("SkillsInstallDir = %q, want empty for an unknown harness", got)
 	}
 }
+
+// AgentsInstallDirFor's scope handling is exercised in production only by
+// the confirmed registry entries, and all five of those populate both
+// AgentsInstallDir and GlobalAgentsInstallDir — so nothing in the registry
+// exercises "global scope asked of a harness with a project dir but no
+// global dir" (must return "", not fall back to the project dir). A
+// synthetic HarnessConfig, not a real registry entry, is needed to reach
+// that combination without waiting for a harness that happens to have it.
+//
+// Not run in parallel: it replaces the package-level AllHarnesses map for
+// its duration, and Reload's own doc comment says such tests must not run
+// alongside anything else that reads or replaces it.
+func TestAgentsInstallDirForScopes(t *testing.T) {
+	orig := AllHarnesses
+	defer func() { AllHarnesses = orig }()
+	AllHarnesses = map[string]*HarnessConfig{
+		"both-scopes": {
+			AgentsInstallDir:       ".both/agents",
+			GlobalAgentsInstallDir: filepath.Join("global", "both", "agents"),
+		},
+		"project-only": {
+			AgentsInstallDir: ".projectonly/agents",
+			// GlobalAgentsInstallDir intentionally left empty.
+		},
+	}
+
+	cwd := filepath.Join("some", "project")
+
+	tests := []struct {
+		name        string
+		harnessName string
+		global      bool
+		want        string
+	}{
+		{"project scope with a project dir", "both-scopes", false, filepath.Join(cwd, ".both", "agents")},
+		{"global scope with a global dir", "both-scopes", true, filepath.Join("global", "both", "agents")},
+		{"global scope, no global dir despite a project dir", "project-only", true, ""},
+		{"unknown harness", "no-such-harness", false, ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := AgentsInstallDirFor(tc.harnessName, tc.global, cwd); got != tc.want {
+				t.Errorf("AgentsInstallDirFor(%q, global=%v) = %q, want %q", tc.harnessName, tc.global, got, tc.want)
+			}
+		})
+	}
+}
