@@ -400,14 +400,10 @@ func readProjectLockE(cwd string) (ProjectLockFile, error) {
 	if lk.Version > projectLockVersion {
 		return EmptyProjectLock(), errNewerLock(path, lk.Version, projectLockVersion)
 	}
-	// A version 1 mdm.lock predates the install-mode switch. Accept it,
-	// upgrade in memory, and let the next write persist the current
-	// version. The mode stays empty (meaning symlink); `mdm migrate` is
-	// what infers a mode from disk, because scanning on every read would
-	// be both slow and surprising.
-	//
-	// Written as a range rather than `== 1` so the next version bump does
-	// not silently reintroduce the read-as-empty bug for version 2 files.
+	// A version 1 lock predates the install-mode switch: upgrade it in
+	// memory and let the next write persist the version. The mode stays
+	// empty; `mdm migrate` infers it from disk. A range, not `== 1`, so the
+	// next bump does not reintroduce the read-as-empty bug.
 	if lk.Version >= 1 && lk.Version < projectLockVersion {
 		lk.Version = projectLockVersion
 	}

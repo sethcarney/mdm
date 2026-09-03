@@ -198,16 +198,10 @@ func checkProjectMigration(cwd string) []doctorIssue {
 			})
 		}
 	}
-	// A project installed with --copy before the install mode was recorded
-	// has copies on disk and no mode in its lock, so the next restore
-	// re-symlinks them. `mdm migrate` is the documented recovery.
-	//
-	// Both lock shapes need the warning. An existing mdm.lock with no mode
-	// has no legacy files left, so nothing else tells the user to migrate.
-	// A v1 lock does get the legacy warning above, but that warning names
-	// the file to fold in and not the copies it is about to cost, and a v1
-	// lock is the shape most exposed: the mode is inferred at migration
-	// time only, so an install that runs first still re-symlinks.
+	// Copies on disk with no recorded mode get re-symlinked by the next
+	// restore. Both lock shapes need this: an existing mdm.lock has no
+	// legacy files left to prompt a migration, and a v1 lock's legacy
+	// warning names the file but not the copies at stake.
 	if plan.InstallModeBackfill != "" {
 		msg := fmt.Sprintf("skills here are installed in %s mode but %s does not record it: run `mdm migrate` so installs and updates keep it", plan.InstallModeBackfill, lockName)
 		if !plan.TargetExists {
@@ -219,17 +213,10 @@ func checkProjectMigration(cwd string) []doctorIssue {
 }
 
 // checkGlobalMigration flags the v1 global skills-lock.json, and an install
-// mode the global scope is using but has not recorded. It always runs, in
-// every scope, the way its v1-only predecessor always did.
-//
-// checkGlobal says whether this run is actually about global scope, and
-// decides only the level of the unreadable-state issue. An unreadable
-// mdm-state.json is an error when you asked about global scope, and the
-// project check's own unreadable-lock issue is an error for the same reason.
-// But printDoctorResults folds every issue here into the error count and
-// runDoctor exits 1 on any of them, so leaving it an error would fail
-// `mdm doctor -p` as a project CI gate over a machine-global file the project
-// does not own. Warning keeps the finding visible without failing the gate.
+// mode the global scope is using but has not recorded. It runs in every
+// scope; checkGlobal only decides the level of the unreadable-state issue,
+// which is an error in global scope and a warning otherwise, so `mdm doctor
+// -p` used as a CI gate does not exit 1 over a machine-global file.
 func checkGlobalMigration(checkGlobal bool) []doctorIssue {
 	var issues []doctorIssue
 	if path, ok := lock.LegacyGlobalLockExists(); ok {
@@ -249,9 +236,7 @@ func checkGlobalMigration(checkGlobal bool) []doctorIssue {
 			Message: fmt.Sprintf("global state could not be read: %v", err),
 		})
 	}
-	// Both state shapes need the warning, for the reason checkProjectMigration
-	// gives: a v1 global state file is the shape most exposed, and its legacy
-	// warning above names the file to move and not the copies it costs.
+	// Both state shapes need the warning, as in checkProjectMigration.
 	if plan.InstallModeBackfill != "" {
 		msg := fmt.Sprintf("global skills are installed in %s mode but %s does not record it: run `mdm migrate` so installs and updates keep it", plan.InstallModeBackfill, lock.GetGlobalStatePath())
 		if !plan.TargetExists {

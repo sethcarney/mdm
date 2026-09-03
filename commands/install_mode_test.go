@@ -2,7 +2,6 @@ package commands
 
 import (
 	"errors"
-	"github.com/spf13/cobra"
 	"io"
 	"os"
 	"path/filepath"
@@ -10,342 +9,167 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+
 	"github.com/sethcarney/mdm/internal/agent"
 	"github.com/sethcarney/mdm/internal/lock"
 )
 
-// isolateHome points the global state AND every user-level directory the
-// agent registry resolves at a fresh temp home, so a test that touches
-// global scope can never read or write the developer's real files.
-//
-// Redirecting the state file alone is not enough: global install paths are
-// built from the user's home directory, so listing a global scope's install
-// paths would otherwise Lstat, and a conversion would rewrite, real
-// directories under the developer's home. That has already happened once
-// during development, which is why this is not left to each test.
-//
-// agent.Reload is what makes the redirect stick: the registry resolves every
-// global path once, at package init. Its cleanup is registered before the
-// t.Setenv calls so it runs after them, rebuilding the registry from the
-// restored environment. Tests using this must not run in parallel.
+// ── Fixtures ───────────────────────────────────────────────────────────────────
+
+// isolateHome points the global state and every user-level agent directory
+// at a fresh temp home, so a test touching global scope never reads or
+// rewrites the developer's real files. The registry resolves global paths
+// once at init, so agent.Reload is what makes the redirect stick; its cleanup
+// is registered first so it runs after the env is restored. Not parallel-safe.
 func isolateHome(t *testing.T) string {
 	t.Helper()
 	t.Cleanup(agent.Reload)
-
 	home := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
-	// os.UserHomeDir reads USERPROFILE on Windows and HOME elsewhere; set
-	// both so the isolation does not depend on which platform runs the test.
 	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
+	t.Setenv("USERPROFILE", home) // os.UserHomeDir reads this on Windows
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude"))
 	agent.Reload()
-
 	return home
 }
 
-func TestPromptScopeInheritsRecordedCopyMode(t *testing.T) {
-	cwd := t.TempDir()
-	if err := lock.SetInstallMode(lock.InstallModeCopy, false, cwd); err != nil {
+// writeSkillDir creates dir holding a SKILL.md.
+func writeSkillDir(t *testing.T, dir string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	// Yes: true skips every prompt, mirroring how `mdm install` and
-	// `mdm skills update` reach this function.
-	opts := AddOptions{Project: true, Yes: true}
-	global, _, ok := promptScopeAndAgents(opts, cwd)
-	if !ok {
-		t.Fatal("promptScopeAndAgents returned not ok")
-	}
-	mode, ok := commitScopeInstallMode(opts, global, cwd)
-	if !ok {
-		t.Fatal("commitScopeInstallMode returned not ok")
-	}
-	if mode != InstallModeCopy {
-		t.Errorf("mode = %q, want %q: a restore must not re-symlink copy installs", mode, InstallModeCopy)
-	}
-}
-
-func TestPromptScopeDefaultsToSymlink(t *testing.T) {
-	cwd := t.TempDir()
-	opts := AddOptions{Project: true, Yes: true}
-	global, _, ok := promptScopeAndAgents(opts, cwd)
-	if !ok {
-		t.Fatal("promptScopeAndAgents returned not ok")
-	}
-	mode, ok := commitScopeInstallMode(opts, global, cwd)
-	if !ok {
-		t.Fatal("commitScopeInstallMode returned not ok")
-	}
-	if mode != InstallModeSymlink {
-		t.Errorf("mode = %q, want %q", mode, InstallModeSymlink)
-	}
-}
-
-func TestPromptScopeExplicitCopyWinsOverSymlinkScope(t *testing.T) {
-	cwd := t.TempDir()
-	if err := lock.SetInstallMode(lock.InstallModeSymlink, false, cwd); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("# "+filepath.Base(dir)+"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	opts := AddOptions{Project: true, Yes: true, Copy: true}
-	global, _, ok := promptScopeAndAgents(opts, cwd)
-	if !ok {
-		t.Fatal("promptScopeAndAgents returned not ok")
-	}
-	mode, ok := commitScopeInstallMode(opts, global, cwd)
-	if !ok {
-		t.Fatal("commitScopeInstallMode returned not ok")
-	}
-	if mode != InstallModeCopy {
-		t.Errorf("mode = %q, want %q", mode, InstallModeCopy)
-	}
 }
 
-func TestApplyScopeInstallModeRecordsFirstCopy(t *testing.T) {
-	cwd := t.TempDir()
-	mode, ok := applyScopeInstallMode(InstallModeCopy, false, cwd)
-	if !ok || mode != InstallModeCopy {
-		t.Fatalf("mode = %q ok = %v, want copy true", mode, ok)
-	}
-	if got := lock.GetInstallMode(false, cwd); got != lock.InstallModeCopy {
-		t.Errorf("scope mode = %q, want %q", got, lock.InstallModeCopy)
-	}
-}
-
-func TestApplyScopeInstallModeIsIdempotent(t *testing.T) {
-	cwd := t.TempDir()
-	if _, ok := applyScopeInstallMode(InstallModeCopy, false, cwd); !ok {
-		t.Fatal("first call not ok")
-	}
-	if _, ok := applyScopeInstallMode(InstallModeCopy, false, cwd); !ok {
-		t.Fatal("second call not ok")
-	}
-	if got := lock.GetInstallMode(false, cwd); got != lock.InstallModeCopy {
-		t.Errorf("scope mode = %q, want %q", got, lock.InstallModeCopy)
-	}
-}
-
-func TestApplyScopeInstallModeDoesNotRecordPlainSymlink(t *testing.T) {
-	cwd := t.TempDir()
-	if _, ok := applyScopeInstallMode(InstallModeSymlink, false, cwd); !ok {
-		t.Fatal("not ok")
-	}
-	// A default symlink install must not write a lock file just to say so.
-	if got := lock.GetInstallMode(false, cwd); got != "" {
-		t.Errorf("scope mode = %q, want empty", got)
-	}
-}
-
-func TestRematerializeConvertsSymlinksToRealDirectories(t *testing.T) {
-	cwd := t.TempDir()
-
-	// A canonical skill plus a symlink standing in for an installed one.
-	canonical := filepath.Join(cwd, ".agents", "skills", "s1")
-	if err := os.MkdirAll(canonical, 0755); err != nil {
+// symlinkOrSkip creates a symlink, skipping the test where the host cannot.
+func symlinkOrSkip(t *testing.T, target, link string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(link), 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(canonical, "SKILL.md"), []byte("# s1\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	linked := filepath.Join(cwd, ".claude", "skills")
-	if err := os.MkdirAll(linked, 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(canonical, filepath.Join(linked, "s1")); err != nil {
+	if err := os.Symlink(target, link); err != nil {
 		t.Skipf("symlinks unavailable on this host: %v", err)
 	}
+}
 
-	if err := lock.SetConfiguredAgents([]string{"claude-code"}, false, cwd); err != nil {
-		t.Fatal(err)
-	}
-	if err := lock.AddSkillToLocalLock("s1", lock.LocalSkillLockEntry{Source: "o/r", SourceType: "github"}, cwd); err != nil {
-		t.Fatal(err)
-	}
+// linkSkillInto lays out a symlink-mode install for one agent: the canonical
+// .agents/skills/<name> and <agentDir>/skills/<name> pointing at it.
+func linkSkillInto(t *testing.T, cwd, agentDir, name string) (canonical, link string) {
+	t.Helper()
+	canonical = filepath.Join(cwd, ".agents", "skills", name)
+	writeSkillDir(t, canonical)
+	link = filepath.Join(cwd, agentDir, "skills", name)
+	symlinkOrSkip(t, canonical, link)
+	return canonical, link
+}
 
-	n, err := rematerializeScope(InstallModeCopy, getCanonicalSkillsDir(false, cwd), scopeInstallPaths(false, cwd))
-	if err != nil {
+// linkSkill is linkSkillInto for Claude Code, the agent most tests use.
+func linkSkill(t *testing.T, cwd, name string) (canonical, link string) {
+	t.Helper()
+	return linkSkillInto(t, cwd, ".claude", name)
+}
+
+// writeCopiedSkill lays out a copy-mode install for Claude Code: a real
+// directory at the agent path and no canonical directory, which is what
+// `--copy` writes for an agent with a directory of its own.
+func writeCopiedSkill(t *testing.T, cwd, name string) string {
+	t.Helper()
+	dir := filepath.Join(cwd, ".claude", "skills", name)
+	writeSkillDir(t, dir)
+	return dir
+}
+
+func lockSkill(t *testing.T, cwd, name string) {
+	t.Helper()
+	if err := lock.AddSkillToLocalLock(name, lock.LocalSkillLockEntry{Source: "o/r", SourceType: "github"}, cwd); err != nil {
 		t.Fatal(err)
-	}
-	if n != 1 {
-		t.Errorf("converted %d skills, want 1", n)
-	}
-	info, err := os.Lstat(filepath.Join(linked, "s1"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		t.Error("still a symlink after re-materialization")
-	}
-	if _, err := os.Stat(filepath.Join(linked, "s1", "SKILL.md")); err != nil {
-		t.Errorf("content not copied: %v", err)
-	}
-	// The canonical directory stays: agents that read the shared skills
-	// directory install into it in copy mode too, and it is the path doctor
-	// and remove resolve for every locked skill.
-	if _, err := os.Stat(filepath.Join(canonical, "SKILL.md")); err != nil {
-		t.Errorf("canonical directory removed by the conversion: %v", err)
 	}
 }
 
-func TestRematerializeIsANoOpWhenAlreadyReal(t *testing.T) {
-	cwd := t.TempDir()
-	if err := lock.SetConfiguredAgents([]string{"claude-code"}, false, cwd); err != nil {
+func setConfigured(t *testing.T, cwd string, agents ...string) {
+	t.Helper()
+	if err := lock.SetConfiguredAgents(agents, false, cwd); err != nil {
 		t.Fatal(err)
-	}
-	if err := lock.AddSkillToLocalLock("s1", lock.LocalSkillLockEntry{Source: "o/r", SourceType: "github"}, cwd); err != nil {
-		t.Fatal(err)
-	}
-	// A real (non-symlink) install already sitting at the agent's install
-	// path. Without this, the loop body never runs and a return of 0 is
-	// trivial rather than a genuine no-op.
-	real := filepath.Join(cwd, ".claude", "skills", "s1")
-	if err := os.MkdirAll(real, 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(real, "SKILL.md"), []byte("# s1\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	n, err := rematerializeScope(InstallModeCopy, getCanonicalSkillsDir(false, cwd), scopeInstallPaths(false, cwd))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n != 0 {
-		t.Errorf("converted %d skills, want 0", n)
-	}
-	info, err := os.Lstat(real)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		t.Error("a real directory was replaced with a symlink")
-	}
-	if _, err := os.Stat(filepath.Join(real, "SKILL.md")); err != nil {
-		t.Errorf("real directory content missing after no-op: %v", err)
 	}
 }
 
-func TestRematerializeFailureLeavesModeAndSymlinkUnchanged(t *testing.T) {
-	cwd := t.TempDir()
+func setMode(t *testing.T, cwd, mode string) {
+	t.Helper()
+	if err := lock.SetInstallMode(mode, false, cwd); err != nil {
+		t.Fatal(err)
+	}
+}
 
-	canonical := filepath.Join(cwd, ".agents", "skills", "s1")
-	if err := os.MkdirAll(canonical, 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(canonical, "SKILL.md"), []byte("# s1\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	linked := filepath.Join(cwd, ".claude", "skills")
-	if err := os.MkdirAll(linked, 0755); err != nil {
-		t.Fatal(err)
-	}
-	linkPath := filepath.Join(linked, "s1")
-	if err := os.Symlink(canonical, linkPath); err != nil {
-		t.Skipf("symlinks unavailable on this host: %v", err)
-	}
-
-	if err := lock.SetConfiguredAgents([]string{"claude-code"}, false, cwd); err != nil {
-		t.Fatal(err)
-	}
-	if err := lock.AddSkillToLocalLock("s1", lock.LocalSkillLockEntry{Source: "o/r", SourceType: "github"}, cwd); err != nil {
-		t.Fatal(err)
-	}
-	if err := lock.SetInstallMode(lock.InstallModeSymlink, false, cwd); err != nil {
-		t.Fatal(err)
-	}
-
-	// Force the copy step to fail. Real OS-level fault injection (denying
-	// read/write permissions) is not reliably forceable on Windows, so this
-	// swaps the package-level copy hook for a fake that always errors.
+// failCopy and failRename swap the package-level hooks for ones that always
+// error, since neither failure can be forced reliably at the OS level.
+func failCopy(t *testing.T) {
+	t.Helper()
 	orig := copyDirFn
-	copyDirFn = func(src, dst string) error { return errors.New("forced copy failure") }
-	defer func() { copyDirFn = orig }()
+	copyDirFn = func(_, _ string) error { return errors.New("forced copy failure") }
+	t.Cleanup(func() { copyDirFn = orig })
+}
 
-	mode, ok := applyScopeInstallMode(InstallModeCopy, false, cwd)
-	if ok {
-		t.Fatalf("applyScopeInstallMode returned ok=true (mode=%q), want false on a copy failure", mode)
-	}
+func failRename(t *testing.T) {
+	t.Helper()
+	orig := renameFn
+	renameFn = func(_, _ string) error { return errors.New("forced rename failure") }
+	t.Cleanup(func() { renameFn = orig })
+}
 
-	if got := lock.GetInstallMode(false, cwd); got != lock.InstallModeSymlink {
-		t.Errorf("recorded install mode = %q, want unchanged %q after a failed conversion", got, lock.InstallModeSymlink)
-	}
-	info, err := os.Lstat(linkPath)
+// ── Assertions ─────────────────────────────────────────────────────────────────
+
+func isSymlink(t *testing.T, path string) bool {
+	t.Helper()
+	info, err := os.Lstat(path)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("nothing at %s: %v", path, err)
 	}
-	if info.Mode()&os.ModeSymlink == 0 {
-		t.Error("symlink was replaced despite the copy failing")
+	return info.Mode()&os.ModeSymlink != 0
+}
+
+// assertRealSkill checks that path is a real directory holding a SKILL.md.
+func assertRealSkill(t *testing.T, path string) {
+	t.Helper()
+	if isSymlink(t, path) {
+		t.Errorf("%s is a symlink, want a real directory", path)
 	}
-	// No temp directory should be left behind.
-	entries, err := os.ReadDir(linked)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(entries) != 1 {
-		t.Errorf("linked skills dir has %d entries, want 1 (leftover temp dir?)", len(entries))
+	if _, err := os.Stat(filepath.Join(path, "SKILL.md")); err != nil {
+		t.Errorf("%s has no SKILL.md: %v", path, err)
 	}
 }
 
-// TestApplyScopeInstallModeConvertsUnrecordedSymlinkScope is the common
-// path: a project that predates the install-mode switch has symlinked
-// installs and NO recorded mode, and the user passes --copy. Gating the
-// conversion on "a mode string is already recorded" skipped exactly this
-// case, leaving the lock saying copy over symlinks on disk.
-func TestApplyScopeInstallModeConvertsUnrecordedSymlinkScope(t *testing.T) {
-	cwd := t.TempDir()
-
-	canonical := filepath.Join(cwd, ".agents", "skills", "s1")
-	if err := os.MkdirAll(canonical, 0755); err != nil {
-		t.Fatal(err)
+// assertLinkTo checks that link is a symlink resolving to target.
+func assertLinkTo(t *testing.T, link, target string) {
+	t.Helper()
+	if !isSymlink(t, link) {
+		t.Fatalf("%s is not a symlink", link)
 	}
-	if err := os.WriteFile(filepath.Join(canonical, "SKILL.md"), []byte("# s1\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	linked := filepath.Join(cwd, ".claude", "skills")
-	if err := os.MkdirAll(linked, 0755); err != nil {
-		t.Fatal(err)
-	}
-	linkPath := filepath.Join(linked, "s1")
-	if err := os.Symlink(canonical, linkPath); err != nil {
-		t.Skipf("symlinks unavailable on this host: %v", err)
-	}
-
-	if err := lock.SetConfiguredAgents([]string{"claude-code"}, false, cwd); err != nil {
-		t.Fatal(err)
-	}
-	if err := lock.AddSkillToLocalLock("s1", lock.LocalSkillLockEntry{Source: "o/r", SourceType: "github"}, cwd); err != nil {
-		t.Fatal(err)
-	}
-	if got := lock.GetInstallMode(false, cwd); got != "" {
-		t.Fatalf("precondition failed: recorded mode = %q, want empty", got)
-	}
-
-	mode, ok := applyScopeInstallMode(InstallModeCopy, false, cwd)
-	if !ok || mode != InstallModeCopy {
-		t.Fatalf("mode = %q ok = %v, want copy true", mode, ok)
-	}
-	if got := lock.GetInstallMode(false, cwd); got != lock.InstallModeCopy {
-		t.Errorf("recorded mode = %q, want %q", got, lock.InstallModeCopy)
-	}
-	info, err := os.Lstat(linkPath)
+	got, err := filepath.EvalSymlinks(link)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		t.Error("still a symlink: the lock now says copy while the disk says symlink")
+	if want, _ := filepath.EvalSymlinks(target); got != want {
+		t.Errorf("%s resolves to %q, want %q", link, got, want)
 	}
-	if _, err := os.Stat(filepath.Join(linkPath, "SKILL.md")); err != nil {
-		t.Errorf("content not copied: %v", err)
-	}
-	assertSameMode(t, linkPath, canonical)
 }
 
-// assertSameMode fails when the two directories have different permission
-// bits. A converted install is built in an os.MkdirTemp directory, which is
-// created 0700; it must end up with the canonical directory's mode, the same
-// as a fresh copy install, not one only its owner can read. Mode bits are
-// not meaningful on Windows, so the check is skipped there.
+// assertNoTempDirs fails when a conversion left its scratch directory behind.
+func assertNoTempDirs(t *testing.T, dir string) {
+	t.Helper()
+	if leftovers, _ := filepath.Glob(filepath.Join(dir, "*.mdm-tmp-*")); len(leftovers) != 0 {
+		t.Errorf("temp directories left behind: %v", leftovers)
+	}
+}
+
+// assertSameMode checks two directories share permission bits. A converted
+// install is built under os.MkdirTemp (0700) and must end up with the
+// canonical directory's mode. Skipped on Windows, where mode bits mean little.
 func assertSameMode(t *testing.T, got, want string) {
 	t.Helper()
 	if runtime.GOOS == "windows" {
@@ -360,257 +184,255 @@ func assertSameMode(t *testing.T, got, want string) {
 		t.Fatal(err)
 	}
 	if gotInfo.Mode().Perm() != wantInfo.Mode().Perm() {
-		t.Errorf("%s mode = %o, want %o (the mode of %s)", got, gotInfo.Mode().Perm(), wantInfo.Mode().Perm(), want)
+		t.Errorf("%s mode = %o, want %o", got, gotInfo.Mode().Perm(), wantInfo.Mode().Perm())
 	}
 }
 
-// A scope with nothing installed has nothing to convert, so it must simply
-// record the mode.
-func TestApplyScopeInstallModeRecordsWithNothingInstalled(t *testing.T) {
-	cwd := t.TempDir()
-	mode, ok := applyScopeInstallMode(InstallModeCopy, false, cwd)
-	if !ok || mode != InstallModeCopy {
-		t.Fatalf("mode = %q ok = %v, want copy true", mode, ok)
-	}
-	if got := lock.GetInstallMode(false, cwd); got != lock.InstallModeCopy {
-		t.Errorf("recorded mode = %q, want %q", got, lock.InstallModeCopy)
+func assertRecordedMode(t *testing.T, cwd, want string) {
+	t.Helper()
+	if got := lock.GetInstallMode(false, cwd); got != want {
+		t.Errorf("recorded mode = %q, want %q", got, want)
 	}
 }
 
-// Cancelling at the agent selection must leave the scope exactly as it was.
-// Applying the mode records it and re-materializes every install in the
-// scope, so doing that before the agent picker converted the whole project
-// during the prompt phase, before a single skill had been fetched: the user
-// backing out, or a clone failing, left copies behind and nothing installed.
-func TestPromptScopeDoesNotConvertWhenAgentSelectionFails(t *testing.T) {
-	cwd := t.TempDir()
+// ── Mode resolution ────────────────────────────────────────────────────────────
 
-	canonical := filepath.Join(cwd, ".agents", "skills", "s1")
-	if err := os.MkdirAll(canonical, 0755); err != nil {
-		t.Fatal(err)
+// commitScopeInstallMode resolves the mode from the flags and the recorded
+// mode: an explicit flag wins, otherwise the scope's mode is inherited, and
+// symlink is the default. Yes: true mirrors how install and update call it.
+func TestCommitScopeInstallModeResolvesMode(t *testing.T) {
+	cases := []struct {
+		name         string
+		recorded     string
+		opts         AddOptions
+		want         InstallMode
+		wantRecorded string
+	}{
+		{"default is symlink", "", AddOptions{}, InstallModeSymlink, ""},
+		{"inherits recorded copy", lock.InstallModeCopy, AddOptions{}, InstallModeCopy, lock.InstallModeCopy},
+		{"--copy wins over recorded symlink", lock.InstallModeSymlink, AddOptions{Copy: true}, InstallModeCopy, lock.InstallModeCopy},
+		{"--symlink wins over recorded copy", lock.InstallModeCopy, AddOptions{Symlink: true}, InstallModeSymlink, lock.InstallModeSymlink},
+		{"--symlink on a fresh scope writes nothing", "", AddOptions{Symlink: true}, InstallModeSymlink, ""},
 	}
-	if err := os.WriteFile(filepath.Join(canonical, "SKILL.md"), []byte("# s1\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	linked := filepath.Join(cwd, ".claude", "skills")
-	if err := os.MkdirAll(linked, 0755); err != nil {
-		t.Fatal(err)
-	}
-	linkPath := filepath.Join(linked, "s1")
-	if err := os.Symlink(canonical, linkPath); err != nil {
-		t.Skipf("symlinks unavailable on this host: %v", err)
-	}
-	if err := lock.SetConfiguredAgents([]string{"claude-code"}, false, cwd); err != nil {
-		t.Fatal(err)
-	}
-	if err := lock.AddSkillToLocalLock("s1", lock.LocalSkillLockEntry{Source: "o/r", SourceType: "github"}, cwd); err != nil {
-		t.Fatal(err)
-	}
-
-	// Naming only an unknown agent is how agent selection fails without a
-	// terminal; the interactive picker returning false is the same branch.
-	_, _, ok := promptScopeAndAgents(AddOptions{
-		Project: true,
-		Yes:     true,
-		Copy:    true,
-		Agents:  []string{"definitely-not-an-agent"},
-	}, cwd)
-	if ok {
-		t.Fatal("promptScopeAndAgents returned ok with no valid agent")
-	}
-
-	if got := lock.GetInstallMode(false, cwd); got != "" {
-		t.Errorf("recorded mode = %q, want empty: nothing was installed", got)
-	}
-	info, err := os.Lstat(linkPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode()&os.ModeSymlink == 0 {
-		t.Error("the scope was converted even though the install never started")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cwd := t.TempDir()
+			if tc.recorded != "" {
+				setMode(t, cwd, tc.recorded)
+			}
+			tc.opts.Project, tc.opts.Yes = true, true
+			global, _, ok := promptScopeAndAgents(tc.opts, cwd)
+			if !ok {
+				t.Fatal("promptScopeAndAgents returned not ok")
+			}
+			mode, ok := commitScopeInstallMode(tc.opts, global, cwd)
+			if !ok || mode != tc.want {
+				t.Fatalf("mode = %q ok = %v, want %q true", mode, ok, tc.want)
+			}
+			assertRecordedMode(t, cwd, tc.wantRecorded)
+			if tc.wantRecorded == "" {
+				if _, err := os.Stat(lock.GetProjectLockPath(cwd)); !os.IsNotExist(err) {
+					t.Errorf("a plain symlink install must not write a lock file: %v", err)
+				}
+			}
+		})
 	}
 }
 
-// When the final rename fails, the symlink is put back. It has to be put
-// back the way mdm writes every other link, which is RELATIVE: an absolute
-// link is shaped unlike its neighbours, and anything comparing link targets
-// would read the recovered one as foreign.
-func TestRematerializeRestoresARelativeSymlinkAfterARenameFailure(t *testing.T) {
-	cwd := t.TempDir()
-
-	canonical := filepath.Join(cwd, ".agents", "skills", "s1")
-	if err := os.MkdirAll(canonical, 0755); err != nil {
-		t.Fatal(err)
+// With nothing installed there is nothing to convert, so applying a mode
+// just records it. Recording copy is idempotent, and recording the default
+// symlink writes nothing at all.
+func TestApplyScopeInstallModeRecordsMode(t *testing.T) {
+	cases := []struct {
+		name         string
+		apply        []InstallMode
+		wantRecorded string
+	}{
+		{"first copy", []InstallMode{InstallModeCopy}, lock.InstallModeCopy},
+		{"copy twice", []InstallMode{InstallModeCopy, InstallModeCopy}, lock.InstallModeCopy},
+		{"plain symlink", []InstallMode{InstallModeSymlink}, ""},
 	}
-	if err := os.WriteFile(filepath.Join(canonical, "SKILL.md"), []byte("# s1\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	linked := filepath.Join(cwd, ".claude", "skills")
-	if err := os.MkdirAll(linked, 0755); err != nil {
-		t.Fatal(err)
-	}
-	linkPath := filepath.Join(linked, "s1")
-	if err := os.Symlink(canonical, linkPath); err != nil {
-		t.Skipf("symlinks unavailable on this host: %v", err)
-	}
-
-	// Force the swap to fail. A rename inside one directory does not fail on
-	// demand, so this swaps the package-level hook the same way the copy
-	// failure test does.
-	orig := renameFn
-	renameFn = func(oldpath, newpath string) error { return errors.New("forced rename failure") }
-	defer func() { renameFn = orig }()
-
-	n, err := rematerializeScope(InstallModeCopy, getCanonicalSkillsDir(false, cwd), []string{linkPath})
-	if err == nil {
-		t.Fatal("expected an error from the forced rename failure")
-	}
-	if n != 0 {
-		t.Errorf("converted = %d, want 0", n)
-	}
-
-	info, err := os.Lstat(linkPath)
-	if err != nil {
-		t.Fatalf("nothing left at the install path: %v", err)
-	}
-	if info.Mode()&os.ModeSymlink == 0 {
-		t.Fatal("the symlink was not restored")
-	}
-	restored, err := os.Readlink(linkPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if filepath.IsAbs(restored) {
-		t.Errorf("restored link target = %q, want a relative path like every other mdm link", restored)
-	}
-	resolved, err := filepath.EvalSymlinks(linkPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want, _ := filepath.EvalSymlinks(canonical); resolved != want {
-		t.Errorf("restored link resolves to %q, want %q", resolved, want)
-	}
-	// The temp directory holding the copy must not be left behind.
-	entries, err := os.ReadDir(linked)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(entries) != 1 {
-		t.Errorf("linked skills dir has %d entries, want 1 (leftover temp dir?)", len(entries))
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cwd := t.TempDir()
+			for _, m := range tc.apply {
+				if mode, ok := applyScopeInstallMode(m, false, cwd); !ok || mode != m {
+					t.Fatalf("mode = %q ok = %v, want %q true", mode, ok, m)
+				}
+			}
+			assertRecordedMode(t, cwd, tc.wantRecorded)
+		})
 	}
 }
 
-// A symlink mdm did not create must survive a switch to copy mode. Every
-// mdm link points into the scope's canonical skills directory; a hand-made
-// link to somewhere else exists precisely so edits propagate, and replacing
-// it with a frozen copy would break that silently.
-func TestRematerializeLeavesForeignSymlinksAlone(t *testing.T) {
+// ── Symlink to copy ────────────────────────────────────────────────────────────
+
+func TestRematerializeConvertsSymlinksToRealDirectories(t *testing.T) {
 	cwd := t.TempDir()
+	canonical, link := linkSkill(t, cwd, "s1")
+	setConfigured(t, cwd, "claude-code")
+	lockSkill(t, cwd, "s1")
 
-	// The user's own skill source, outside the project entirely.
-	outside := filepath.Join(t.TempDir(), "pdf-skill")
-	if err := os.MkdirAll(outside, 0755); err != nil {
+	n, err := rematerializeScope(InstallModeCopy, getCanonicalSkillsDir(false, cwd), scopeInstallPaths(false, cwd))
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(outside, "SKILL.md"), []byte("# pdf\n"), 0600); err != nil {
-		t.Fatal(err)
+	if n != 1 {
+		t.Errorf("converted %d, want 1", n)
 	}
-	linked := filepath.Join(cwd, ".claude", "skills")
-	if err := os.MkdirAll(linked, 0755); err != nil {
-		t.Fatal(err)
-	}
-	linkPath := filepath.Join(linked, "pdf")
-	if err := os.Symlink(outside, linkPath); err != nil {
-		t.Skipf("symlinks unavailable on this host: %v", err)
-	}
+	assertRealSkill(t, link)
+	// The canonical directory stays: shared-dir agents install into it in
+	// copy mode too, and doctor and remove resolve it for every locked skill.
+	assertRealSkill(t, canonical)
+}
 
-	if err := lock.SetConfiguredAgents([]string{"claude-code"}, false, cwd); err != nil {
-		t.Fatal(err)
-	}
-	if err := lock.AddSkillToLocalLock("pdf", lock.LocalSkillLockEntry{Source: "o/r", SourceType: "github"}, cwd); err != nil {
-		t.Fatal(err)
-	}
+func TestRematerializeIsANoOpWhenAlreadyReal(t *testing.T) {
+	cwd := t.TempDir()
+	real := writeCopiedSkill(t, cwd, "s1")
+	setConfigured(t, cwd, "claude-code")
+	lockSkill(t, cwd, "s1")
 
 	n, err := rematerializeScope(InstallModeCopy, getCanonicalSkillsDir(false, cwd), scopeInstallPaths(false, cwd))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if n != 0 {
-		t.Errorf("converted %d installs, want 0: a foreign link is not mdm's to replace", n)
+		t.Errorf("converted %d, want 0", n)
 	}
-	info, err := os.Lstat(linkPath)
-	if err != nil {
-		t.Fatal(err)
+	assertRealSkill(t, real)
+}
+
+// --copy converts every install in the scope, whatever configuredAgents
+// says: that list only records what the interactive picker last saved, so an
+// agent installed with `-a <agent> -y` is missing from it. Converting only
+// the listed agents would leave the scope half symlinked and half copied.
+func TestApplyScopeInstallModeConvertsEveryInstall(t *testing.T) {
+	cases := []struct {
+		name       string
+		agentDirs  map[string]string // agent name -> project directory
+		configured []string
+	}{
+		{"configured agent", map[string]string{"claude-code": ".claude"}, []string{"claude-code"}},
+		{"no configured agents", map[string]string{"claude-code": ".claude"}, nil},
+		{"agent missing from configuredAgents", map[string]string{"claude-code": ".claude", "roo": ".roo"}, []string{"claude-code"}},
 	}
-	if info.Mode()&os.ModeSymlink == 0 {
-		t.Fatal("the user's own symlink was replaced by a copy")
-	}
-	resolved, err := filepath.EvalSymlinks(linkPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want, _ := filepath.EvalSymlinks(outside); resolved != want {
-		t.Errorf("link now resolves to %q, want %q", resolved, want)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cwd := t.TempDir()
+			var canonical string
+			links := map[string]string{}
+			for name, dir := range tc.agentDirs {
+				canonical, links[name] = linkSkillInto(t, cwd, dir, "s1")
+			}
+			lockSkill(t, cwd, "s1")
+			if tc.configured != nil {
+				setConfigured(t, cwd, tc.configured...)
+			}
+			assertRecordedMode(t, cwd, "")
+
+			if mode, ok := applyScopeInstallMode(InstallModeCopy, false, cwd); !ok || mode != InstallModeCopy {
+				t.Fatalf("mode = %q ok = %v, want copy true", mode, ok)
+			}
+			assertRecordedMode(t, cwd, lock.InstallModeCopy)
+			for _, link := range links {
+				assertRealSkill(t, link)
+				assertSameMode(t, link, canonical)
+			}
+		})
 	}
 }
 
-// An agent that reads the shared .agents/skills directory installs nothing
-// of its own: its install path IS the canonical directory, which is a real
-// directory in both modes and can never be converted. Listing it as an
-// install path made `--copy` announce that every installed skill would be
-// re-materialized, and then convert nothing.
+// A failed copy leaves the recorded mode, the symlink, and the directory
+// exactly as they were.
+func TestRematerializeFailureLeavesModeAndSymlinkUnchanged(t *testing.T) {
+	cwd := t.TempDir()
+	canonical, link := linkSkill(t, cwd, "s1")
+	setConfigured(t, cwd, "claude-code")
+	lockSkill(t, cwd, "s1")
+	setMode(t, cwd, lock.InstallModeSymlink)
+	failCopy(t)
+
+	if mode, ok := applyScopeInstallMode(InstallModeCopy, false, cwd); ok {
+		t.Fatalf("ok = true (mode %q), want false on a copy failure", mode)
+	}
+	assertRecordedMode(t, cwd, lock.InstallModeSymlink)
+	assertLinkTo(t, link, canonical)
+	assertNoTempDirs(t, filepath.Dir(link))
+}
+
+// When the final rename fails the symlink is put back, and put back RELATIVE
+// like every other mdm link, or anything comparing link targets would read
+// the recovered one as foreign.
+func TestRematerializeRestoresARelativeSymlinkAfterARenameFailure(t *testing.T) {
+	cwd := t.TempDir()
+	canonical, link := linkSkill(t, cwd, "s1")
+	failRename(t)
+
+	n, err := rematerializeScope(InstallModeCopy, getCanonicalSkillsDir(false, cwd), []string{link})
+	if err == nil {
+		t.Fatal("expected an error from the forced rename failure")
+	}
+	if n != 0 {
+		t.Errorf("converted %d, want 0", n)
+	}
+	assertLinkTo(t, link, canonical)
+	if restored, _ := os.Readlink(link); filepath.IsAbs(restored) {
+		t.Errorf("restored link target = %q, want a relative path", restored)
+	}
+	assertNoTempDirs(t, filepath.Dir(link))
+}
+
+// A symlink mdm did not create points outside the canonical directory and
+// exists so edits propagate; replacing it with a frozen copy would break that.
+func TestRematerializeLeavesForeignSymlinksAlone(t *testing.T) {
+	cwd := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "pdf-skill")
+	writeSkillDir(t, outside)
+	link := filepath.Join(cwd, ".claude", "skills", "pdf")
+	symlinkOrSkip(t, outside, link)
+	setConfigured(t, cwd, "claude-code")
+	lockSkill(t, cwd, "pdf")
+
+	n, err := rematerializeScope(InstallModeCopy, getCanonicalSkillsDir(false, cwd), scopeInstallPaths(false, cwd))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Errorf("converted %d, want 0: a foreign link is not mdm's to replace", n)
+	}
+	assertLinkTo(t, link, outside)
+}
+
+// An agent that reads the shared .agents/skills directory has no install
+// path of its own: its path IS the canonical directory, real in both modes.
+// Listing it made --copy announce a conversion and then convert nothing.
 func TestScopeInstallPathsSkipsSharedSkillsDirAgents(t *testing.T) {
 	if !agent.UsesSharedSkillsDir("amp") {
 		t.Skip("fixture agent no longer uses the shared skills directory")
 	}
 	cwd := t.TempDir()
-
 	canonical := filepath.Join(cwd, ".agents", "skills", "s1")
-	if err := os.MkdirAll(canonical, 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(canonical, "SKILL.md"), []byte("# s1\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := lock.AddSkillToLocalLock("s1", lock.LocalSkillLockEntry{Source: "o/r", SourceType: "github"}, cwd); err != nil {
-		t.Fatal(err)
-	}
+	writeSkillDir(t, canonical)
+	lockSkill(t, cwd, "s1")
 
-	// amp is in the registry, so the scope-wide sweep reaches it; only the
-	// shared-skills-dir skip keeps its canonical path out of the result.
 	if paths := scopeInstallPaths(false, cwd); len(paths) != 0 {
-		t.Errorf("scopeInstallPaths = %v, want none: the canonical directory is not convertible", paths)
+		t.Errorf("scopeInstallPaths = %v, want none", paths)
 	}
-
-	// Nothing is convertible, so the mode is recorded and nothing else
-	// happens.
-	mode, ok := applyScopeInstallMode(InstallModeCopy, false, cwd)
-	if !ok || mode != InstallModeCopy {
+	if mode, ok := applyScopeInstallMode(InstallModeCopy, false, cwd); !ok || mode != InstallModeCopy {
 		t.Fatalf("mode = %q ok = %v, want copy true", mode, ok)
 	}
-	if got := lock.GetInstallMode(false, cwd); got != lock.InstallModeCopy {
-		t.Errorf("recorded mode = %q, want %q", got, lock.InstallModeCopy)
-	}
-	info, err := os.Lstat(canonical)
-	if err != nil || !info.IsDir() {
-		t.Fatalf("canonical skill directory disturbed: %v", err)
-	}
+	assertRecordedMode(t, cwd, lock.InstallModeCopy)
+	assertRealSkill(t, canonical)
 }
 
-// scopeSkillNames must follow the scope. Reading the project lock in global
-// scope misses every globally installed skill, and converts nothing at all
-// when run from a directory that has no project lock.
+// scopeSkillNames must read the lock of the scope it was asked about.
 func TestScopeSkillNamesFollowsScope(t *testing.T) {
 	isolateHome(t)
 	cwd := t.TempDir()
-
-	if err := lock.AddSkillToLocalLock("project-only", lock.LocalSkillLockEntry{Source: "o/r", SourceType: "github"}, cwd); err != nil {
-		t.Fatal(err)
-	}
+	lockSkill(t, cwd, "project-only")
 	if err := lock.AddSkillToGlobalState("global-only", lock.SkillLockEntry{Source: "o/r", SourceType: "github"}); err != nil {
 		t.Fatal(err)
 	}
-
 	if got := scopeSkillNames(false, cwd); len(got) != 1 || got[0] != "project-only" {
 		t.Errorf("project scope names = %v, want [project-only]", got)
 	}
@@ -619,254 +441,13 @@ func TestScopeSkillNamesFollowsScope(t *testing.T) {
 	}
 }
 
-// The scope's install paths must still be found when configuredAgents is
-// empty, which is what a non-interactive `mdm skills add -a <agent> -y`
-// leaves behind. Without the scope-wide sweep, --copy in such a project
-// converts nothing while recording copy.
-func TestApplyScopeInstallModeConvertsWithoutConfiguredAgents(t *testing.T) {
-	cwd := t.TempDir()
+// ── Copy to symlink ────────────────────────────────────────────────────────────
 
-	canonical := filepath.Join(cwd, ".agents", "skills", "s1")
-	if err := os.MkdirAll(canonical, 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(canonical, "SKILL.md"), []byte("# s1\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	linked := filepath.Join(cwd, ".claude", "skills")
-	if err := os.MkdirAll(linked, 0755); err != nil {
-		t.Fatal(err)
-	}
-	linkPath := filepath.Join(linked, "s1")
-	if err := os.Symlink(canonical, linkPath); err != nil {
-		t.Skipf("symlinks unavailable on this host: %v", err)
-	}
-	if err := lock.AddSkillToLocalLock("s1", lock.LocalSkillLockEntry{Source: "o/r", SourceType: "github"}, cwd); err != nil {
-		t.Fatal(err)
-	}
-	if agents := lock.GetConfiguredAgents(false, cwd); len(agents) != 0 {
-		t.Fatalf("precondition failed: configuredAgents = %v, want empty", agents)
-	}
-
-	if _, ok := applyScopeInstallMode(InstallModeCopy, false, cwd); !ok {
-		t.Fatal("applyScopeInstallMode returned not ok")
-	}
-	info, err := os.Lstat(linkPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		t.Error("symlink not converted when configuredAgents is empty")
-	}
-}
-
-// A non-empty configuredAgents must not narrow the sweep. The list records
-// only what the interactive agent picker last saved, and the picker saves it
-// before the mode is applied, so a scope switch that consulted it would see a
-// selection that omits every agent installed non-interactively.
-//
-// The shape: `mdm skills add repo -a roo -y` symlinks into .roo/skills and
-// leaves configuredAgents empty, then an interactive `mdm skills add other
-// --copy` saves ["claude-code"] from the picker. Converting only the saved
-// agents would leave .roo/skills symlinked into a canonical directory that
-// copy-mode installs no longer refresh, pinning that agent to pre-switch
-// content forever.
-func TestApplyScopeInstallModeConvertsAgentsMissingFromConfiguredAgents(t *testing.T) {
-	cwd := t.TempDir()
-
-	canonical := filepath.Join(cwd, ".agents", "skills", "s1")
-	if err := os.MkdirAll(canonical, 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(canonical, "SKILL.md"), []byte("# s1\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	// Two agents installed, only one of them ever named in the picker.
-	linkPaths := map[string]string{}
-	for agentName, dir := range map[string]string{"roo": ".roo", "claude-code": ".claude"} {
-		installDir := filepath.Join(cwd, dir, "skills")
-		if err := os.MkdirAll(installDir, 0755); err != nil {
-			t.Fatal(err)
-		}
-		linkPath := filepath.Join(installDir, "s1")
-		if err := os.Symlink(canonical, linkPath); err != nil {
-			t.Skipf("symlinks unavailable on this host: %v", err)
-		}
-		linkPaths[agentName] = linkPath
-	}
-
-	if err := lock.AddSkillToLocalLock("s1", lock.LocalSkillLockEntry{Source: "o/r", SourceType: "github"}, cwd); err != nil {
-		t.Fatal(err)
-	}
-	// What promptAgents saves before applyScopeInstallMode runs.
-	if err := lock.SetConfiguredAgents([]string{"claude-code"}, false, cwd); err != nil {
-		t.Fatal(err)
-	}
-
-	if _, ok := applyScopeInstallMode(InstallModeCopy, false, cwd); !ok {
-		t.Fatal("applyScopeInstallMode returned not ok")
-	}
-
-	for agentName, linkPath := range linkPaths {
-		info, err := os.Lstat(linkPath)
-		if err != nil {
-			t.Fatalf("%s install path missing: %v", agentName, err)
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			t.Errorf("%s is still a symlink: the scope is half symlinked and half copied", agentName)
-		}
-		if _, err := os.Stat(filepath.Join(linkPath, "SKILL.md")); err != nil {
-			t.Errorf("%s content not copied: %v", agentName, err)
-		}
-	}
-}
-
-// promptScopeAndAgents must not commit the install mode. Committing it
-// converts every install in the scope and records the new mode, and several
-// callers still have gates between the agent selection and the first install:
-// the post-audit confirmation in `mdm skills add`, and the clobber filter in
-// `mdm skills cherry-pick`. Returning from any of them after a conversion
-// would leave a converted scope with nothing installed.
-func TestPromptScopeAndAgentsDoesNotCommitTheMode(t *testing.T) {
-	cwd := t.TempDir()
-
-	canonical := filepath.Join(cwd, ".agents", "skills", "s1")
-	if err := os.MkdirAll(canonical, 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(canonical, "SKILL.md"), []byte("# s1\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	linked := filepath.Join(cwd, ".claude", "skills")
-	if err := os.MkdirAll(linked, 0755); err != nil {
-		t.Fatal(err)
-	}
-	linkPath := filepath.Join(linked, "s1")
-	if err := os.Symlink(canonical, linkPath); err != nil {
-		t.Skipf("symlinks unavailable on this host: %v", err)
-	}
-	if err := lock.AddSkillToLocalLock("s1", lock.LocalSkillLockEntry{Source: "o/r", SourceType: "github"}, cwd); err != nil {
-		t.Fatal(err)
-	}
-
-	opts := AddOptions{Project: true, Yes: true, Copy: true, Agents: []string{"claude-code"}}
-	global, agents, ok := promptScopeAndAgents(opts, cwd)
-	if !ok {
-		t.Fatal("promptScopeAndAgents returned not ok")
-	}
-	if len(agents) != 1 || agents[0] != "claude-code" {
-		t.Fatalf("agents = %v, want [claude-code]", agents)
-	}
-
-	if got := lock.GetInstallMode(false, cwd); got != "" {
-		t.Errorf("recorded mode = %q, want empty: the mode is committed by the caller, not here", got)
-	}
-	info, err := os.Lstat(linkPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode()&os.ModeSymlink == 0 {
-		t.Fatal("the scope was converted before the caller's remaining gates ran")
-	}
-
-	// And the caller's commit still does the work.
-	if _, ok := commitScopeInstallMode(opts, global, cwd); !ok {
-		t.Fatal("commitScopeInstallMode returned not ok")
-	}
-	info, err = os.Lstat(linkPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		t.Error("commitScopeInstallMode did not convert the scope")
-	}
-}
-
-// The cherry-pick half of the same window. dropClobberingAgents removes every
-// agent that already reads the forks directory, and an empty result means
-// nothing is installed at all; converting the scope first would record copy
-// over a project that never got a copied install.
-func TestInstallForksDoesNotConvertWhenEveryAgentIsDropped(t *testing.T) {
-	isolateHome(t)
-	cwd := t.TempDir()
-
-	// OpenClaw reads ./skills, which is also the default forks directory, so
-	// it is the agent dropClobberingAgents always removes.
-	if agent.AllAgents["openclaw"] == nil || agent.AllAgents["openclaw"].SkillsDir != defaultForksDir {
-		t.Skip("fixture agent no longer reads the forks directory")
-	}
-
-	forkDir := filepath.Join(cwd, defaultForksDir, "f1")
-	if err := os.MkdirAll(forkDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(forkDir, "SKILL.md"), []byte("---\nname: f1\ndescription: d\n---\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	canonical := filepath.Join(cwd, ".agents", "skills", "s1")
-	if err := os.MkdirAll(canonical, 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(canonical, "SKILL.md"), []byte("# s1\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	linked := filepath.Join(cwd, ".claude", "skills")
-	if err := os.MkdirAll(linked, 0755); err != nil {
-		t.Fatal(err)
-	}
-	linkPath := filepath.Join(linked, "s1")
-	if err := os.Symlink(canonical, linkPath); err != nil {
-		t.Skipf("symlinks unavailable on this host: %v", err)
-	}
-	if err := lock.AddSkillToLocalLock("s1", lock.LocalSkillLockEntry{Source: "o/r", SourceType: "github"}, cwd); err != nil {
-		t.Fatal(err)
-	}
-
-	installForks([]string{forkDir}, CherryPickOptions{
-		Dir:     defaultForksDir,
-		Project: true,
-		Yes:     true,
-		Copy:    true,
-		Agents:  []string{"openclaw"},
-	}, cwd)
-
-	if got := lock.GetInstallMode(false, cwd); got != "" {
-		t.Errorf("recorded mode = %q, want empty: no agent was left to install to", got)
-	}
-	info, err := os.Lstat(linkPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode()&os.ModeSymlink == 0 {
-		t.Error("the scope was converted for an install that never happened")
-	}
-}
-
-// writeCopiedSkill lays out one copy-mode install: a real directory holding
-// a SKILL.md at the agent's install path, and no canonical directory, which
-// is what `--copy` writes for an agent with a directory of its own.
-func writeCopiedSkill(t *testing.T, cwd, name string) string {
-	t.Helper()
-	dir := filepath.Join(cwd, ".claude", "skills", name)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("# "+name+"\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	return dir
-}
-
-// The reverse direction: --symlink on a scope recorded as copy turns each
-// real install back into an mdm link, creating the canonical copy first
-// because a copy install never wrote one for this agent.
+// --symlink turns each real install back into an mdm link, creating the
+// canonical copy first because a copy install never wrote one for this agent.
 func TestRematerializeConvertsRealDirectoriesToSymlinks(t *testing.T) {
 	cwd := t.TempDir()
-	if err := os.Symlink(cwd, filepath.Join(cwd, "probe")); err != nil {
-		t.Skipf("symlinks unavailable on this host: %v", err)
-	}
+	symlinkOrSkip(t, cwd, filepath.Join(cwd, "probe"))
 	target := writeCopiedSkill(t, cwd, "s1")
 	canonical := filepath.Join(cwd, ".agents", "skills")
 
@@ -877,40 +458,18 @@ func TestRematerializeConvertsRealDirectoriesToSymlinks(t *testing.T) {
 	if n != 1 {
 		t.Errorf("converted %d, want 1", n)
 	}
-	info, err := os.Lstat(target)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode()&os.ModeSymlink == 0 {
-		t.Fatal("agent path is still a real directory")
-	}
-	resolved, err := filepath.EvalSymlinks(target)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want, _ := filepath.EvalSymlinks(filepath.Join(canonical, "s1")); resolved != want {
-		t.Errorf("link resolves to %q, want %q", resolved, want)
-	}
-	if _, err := os.Stat(filepath.Join(canonical, "s1", "SKILL.md")); err != nil {
-		t.Errorf("canonical content not created: %v", err)
-	}
-	if leftovers, _ := filepath.Glob(filepath.Join(cwd, ".claude", "skills", "s1.mdm-tmp-*")); len(leftovers) != 0 {
-		t.Errorf("backup directory left behind: %v", leftovers)
-	}
+	assertLinkTo(t, target, filepath.Join(canonical, "s1"))
+	assertRealSkill(t, filepath.Join(canonical, "s1"))
+	assertNoTempDirs(t, filepath.Dir(target))
 }
 
-// An existing canonical directory is the one the link points at, and is
-// kept as is rather than overwritten from the agent copy.
+// An existing canonical directory is kept as is, not overwritten from the copy.
 func TestRematerializeToSymlinkKeepsExistingCanonical(t *testing.T) {
 	cwd := t.TempDir()
-	if err := os.Symlink(cwd, filepath.Join(cwd, "probe")); err != nil {
-		t.Skipf("symlinks unavailable on this host: %v", err)
-	}
+	symlinkOrSkip(t, cwd, filepath.Join(cwd, "probe"))
 	target := writeCopiedSkill(t, cwd, "s1")
 	canonical := filepath.Join(cwd, ".agents", "skills")
-	if err := os.MkdirAll(filepath.Join(canonical, "s1"), 0755); err != nil {
-		t.Fatal(err)
-	}
+	writeSkillDir(t, filepath.Join(canonical, "s1"))
 	if err := os.WriteFile(filepath.Join(canonical, "s1", "SKILL.md"), []byte("canonical\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -927,9 +486,7 @@ func TestRematerializeToSymlinkKeepsExistingCanonical(t *testing.T) {
 	}
 }
 
-// A real directory without a SKILL.md is not something mdm installed, so
-// switching to symlink mode leaves it exactly as it is and does not count
-// it.
+// A real directory without a SKILL.md is not an mdm install and is left alone.
 func TestRematerializeToSymlinkLeavesForeignDirectoriesAlone(t *testing.T) {
 	cwd := t.TempDir()
 	target := filepath.Join(cwd, ".claude", "skills", "s1")
@@ -948,130 +505,136 @@ func TestRematerializeToSymlinkLeavesForeignDirectoriesAlone(t *testing.T) {
 	if n != 0 {
 		t.Errorf("converted %d, want 0", n)
 	}
-	info, err := os.Lstat(target)
-	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		t.Errorf("foreign directory disturbed: %v %v", info, err)
+	if isSymlink(t, target) {
+		t.Error("foreign directory replaced with a symlink")
 	}
 	if _, err := os.Stat(filepath.Join(canonical, "s1")); !os.IsNotExist(err) {
 		t.Errorf("canonical directory created for a foreign directory: %v", err)
 	}
 }
 
-// If the copy cannot be set aside, nothing has changed yet: the real
-// directory stays, and the canonical copy made for it is the only trace.
+// If the copy cannot be set aside, the real directory stays in place.
 func TestRematerializeToSymlinkRenameFailureLeavesTheCopy(t *testing.T) {
 	cwd := t.TempDir()
-	if err := os.Symlink(cwd, filepath.Join(cwd, "probe")); err != nil {
-		t.Skipf("symlinks unavailable on this host: %v", err)
-	}
+	symlinkOrSkip(t, cwd, filepath.Join(cwd, "probe"))
 	target := writeCopiedSkill(t, cwd, "s1")
-	canonical := filepath.Join(cwd, ".agents", "skills")
+	failRename(t)
 
-	orig := renameFn
-	renameFn = func(_, _ string) error { return errors.New("forced rename failure") }
-	t.Cleanup(func() { renameFn = orig })
-
-	n, err := rematerializeScope(InstallModeSymlink, canonical, []string{target})
+	n, err := rematerializeScope(InstallModeSymlink, filepath.Join(cwd, ".agents", "skills"), []string{target})
 	if err == nil {
 		t.Fatal("expected an error from the forced rename failure")
 	}
 	if n != 0 {
 		t.Errorf("converted %d, want 0", n)
 	}
-	info, err := os.Lstat(target)
-	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		t.Errorf("agent copy not left in place: %v %v", info, err)
-	}
-	if _, err := os.Stat(filepath.Join(target, "SKILL.md")); err != nil {
-		t.Errorf("agent copy content lost: %v", err)
-	}
+	assertRealSkill(t, target)
 }
 
-// --symlink on a scope recorded as copy is the way back without editing the
-// lock: the installs are converted and the scope is recorded as symlink.
+// --symlink on a scope recorded as copy converts it, records symlink, and a
+// later plain add inherits symlink rather than copy.
 func TestApplyScopeInstallModeSymlinkOverridesRecordedCopy(t *testing.T) {
 	cwd := t.TempDir()
-	if err := os.Symlink(cwd, filepath.Join(cwd, "probe")); err != nil {
-		t.Skipf("symlinks unavailable on this host: %v", err)
-	}
+	symlinkOrSkip(t, cwd, filepath.Join(cwd, "probe"))
 	target := writeCopiedSkill(t, cwd, "s1")
-	if err := lock.AddSkillToLocalLock("s1", lock.LocalSkillLockEntry{Source: "o/r", SourceType: "github"}, cwd); err != nil {
-		t.Fatal(err)
-	}
-	if err := lock.SetInstallMode(lock.InstallModeCopy, false, cwd); err != nil {
-		t.Fatal(err)
-	}
+	lockSkill(t, cwd, "s1")
+	setMode(t, cwd, lock.InstallModeCopy)
 
-	mode, ok := applyScopeInstallMode(InstallModeSymlink, false, cwd)
-	if !ok || mode != InstallModeSymlink {
+	if mode, ok := applyScopeInstallMode(InstallModeSymlink, false, cwd); !ok || mode != InstallModeSymlink {
 		t.Fatalf("mode = %q ok = %v, want symlink true", mode, ok)
 	}
-	if got := lock.GetInstallMode(false, cwd); got != lock.InstallModeSymlink {
-		t.Errorf("recorded mode = %q, want %q", got, lock.InstallModeSymlink)
-	}
-	info, err := os.Lstat(target)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode()&os.ModeSymlink == 0 {
-		t.Error("still a real directory: the lock now says symlink while the disk says copy")
-	}
+	assertRecordedMode(t, cwd, lock.InstallModeSymlink)
+	assertLinkTo(t, target, filepath.Join(cwd, ".agents", "skills", "s1"))
 
-	// And a plain add afterwards inherits symlink, not copy.
 	if _, ok := commitScopeInstallMode(AddOptions{Project: true, Yes: true}, false, cwd); !ok {
 		t.Fatal("commitScopeInstallMode returned not ok")
 	}
-	if got := lock.GetInstallMode(false, cwd); got != lock.InstallModeSymlink {
-		t.Errorf("recorded mode after a plain add = %q, want %q", got, lock.InstallModeSymlink)
-	}
+	assertRecordedMode(t, cwd, lock.InstallModeSymlink)
 }
 
-// The explicit --symlink flag wins over a recorded copy mode; without it,
-// the recorded mode is inherited.
-func TestCommitScopeInstallModeSymlinkFlagWinsOverRecordedCopy(t *testing.T) {
+// ── Where the mode is committed ────────────────────────────────────────────────
+
+// Cancelling at the agent selection must leave the scope untouched: a
+// conversion run before the picker converted the project before a single
+// skill was fetched, so backing out left copies behind and nothing installed.
+func TestPromptScopeDoesNotConvertWhenAgentSelectionFails(t *testing.T) {
 	cwd := t.TempDir()
-	if err := lock.SetInstallMode(lock.InstallModeCopy, false, cwd); err != nil {
-		t.Fatal(err)
+	canonical, link := linkSkill(t, cwd, "s1")
+	setConfigured(t, cwd, "claude-code")
+	lockSkill(t, cwd, "s1")
+
+	// Naming only an unknown agent fails selection without a terminal.
+	opts := AddOptions{Project: true, Yes: true, Copy: true, Agents: []string{"definitely-not-an-agent"}}
+	if _, _, ok := promptScopeAndAgents(opts, cwd); ok {
+		t.Fatal("promptScopeAndAgents returned ok with no valid agent")
 	}
-	mode, ok := commitScopeInstallMode(AddOptions{Project: true, Yes: true, Symlink: true}, false, cwd)
-	if !ok || mode != InstallModeSymlink {
-		t.Fatalf("mode = %q ok = %v, want symlink true", mode, ok)
-	}
-	if got := lock.GetInstallMode(false, cwd); got != lock.InstallModeSymlink {
-		t.Errorf("recorded mode = %q, want %q", got, lock.InstallModeSymlink)
-	}
+	assertRecordedMode(t, cwd, "")
+	assertLinkTo(t, link, canonical)
 }
 
-// --symlink on a scope that has never set the switch is the default and
-// writes nothing, so a project does not gain a lock file it does not need.
-func TestCommitScopeInstallModeSymlinkFlagOnFreshScopeWritesNothing(t *testing.T) {
+// promptScopeAndAgents must not commit the mode: callers still have gates
+// after it (the post-audit confirmation, cherry-pick's clobber filter), and
+// returning from one after a conversion leaves a converted scope with nothing
+// installed. The caller's commit is what does the work.
+func TestPromptScopeAndAgentsDoesNotCommitTheMode(t *testing.T) {
 	cwd := t.TempDir()
-	mode, ok := commitScopeInstallMode(AddOptions{Project: true, Yes: true, Symlink: true}, false, cwd)
-	if !ok || mode != InstallModeSymlink {
-		t.Fatalf("mode = %q ok = %v, want symlink true", mode, ok)
+	canonical, link := linkSkill(t, cwd, "s1")
+	lockSkill(t, cwd, "s1")
+
+	opts := AddOptions{Project: true, Yes: true, Copy: true, Agents: []string{"claude-code"}}
+	global, agents, ok := promptScopeAndAgents(opts, cwd)
+	if !ok || len(agents) != 1 || agents[0] != "claude-code" {
+		t.Fatalf("agents = %v ok = %v, want [claude-code] true", agents, ok)
 	}
-	if _, err := os.Stat(lock.GetProjectLockPath(cwd)); !os.IsNotExist(err) {
-		t.Errorf("lock file written for a plain symlink install: %v", err)
+	assertRecordedMode(t, cwd, "")
+	assertLinkTo(t, link, canonical)
+
+	if _, ok := commitScopeInstallMode(opts, global, cwd); !ok {
+		t.Fatal("commitScopeInstallMode returned not ok")
 	}
+	assertRealSkill(t, link)
 }
 
-// The two mode flags contradict each other, so cobra must refuse them
-// together on both commands that take them.
+// dropClobberingAgents can empty the agent list, in which case nothing is
+// installed and the scope must not be converted for it.
+func TestInstallForksDoesNotConvertWhenEveryAgentIsDropped(t *testing.T) {
+	isolateHome(t)
+	cwd := t.TempDir()
+	// OpenClaw reads ./skills, the default forks directory, so it is always dropped.
+	if a := agent.AllAgents["openclaw"]; a == nil || a.SkillsDir != defaultForksDir {
+		t.Skip("fixture agent no longer reads the forks directory")
+	}
+	forkDir := filepath.Join(cwd, defaultForksDir, "f1")
+	writeSkillDir(t, forkDir)
+	canonical, link := linkSkill(t, cwd, "s1")
+	lockSkill(t, cwd, "s1")
+
+	installForks([]string{forkDir}, CherryPickOptions{
+		Dir: defaultForksDir, Project: true, Yes: true, Copy: true, Agents: []string{"openclaw"},
+	}, cwd)
+
+	assertRecordedMode(t, cwd, "")
+	assertLinkTo(t, link, canonical)
+}
+
+// The two mode flags contradict each other, so every command taking them
+// must refuse the pair.
 func TestCopyAndSymlinkFlagsAreMutuallyExclusive(t *testing.T) {
-	for _, build := range []struct {
+	cases := []struct {
 		name string
-		cmd  func() *cobra.Command
+		cmd  *cobra.Command
+		args []string
 	}{
-		{"add", func() *cobra.Command { return buildAddCmd("test") }},
-		{"cherry-pick", func() *cobra.Command { return buildCherryPickCmd("test") }},
-	} {
-		cmd := build.cmd()
-		cmd.SetArgs([]string{"o/r", "--copy", "--symlink"})
-		cmd.SetOut(io.Discard)
-		cmd.SetErr(io.Discard)
-		err := cmd.Execute()
+		{"add", buildAddCmd("test"), []string{"o/r", "--copy", "--symlink"}},
+		{"cherry-pick", buildCherryPickCmd("test"), []string{"o/r", "--copy", "--symlink"}},
+		{"install", buildInstallFromLockCmd("test"), []string{"--copy", "--symlink"}},
+	}
+	for _, tc := range cases {
+		tc.cmd.SetArgs(tc.args)
+		tc.cmd.SetOut(io.Discard)
+		tc.cmd.SetErr(io.Discard)
+		err := tc.cmd.Execute()
 		if err == nil || !strings.Contains(err.Error(), "none of the others can be") {
-			t.Errorf("%s --copy --symlink: err = %v, want a mutual-exclusion error", build.name, err)
+			t.Errorf("%s --copy --symlink: err = %v, want a mutual-exclusion error", tc.name, err)
 		}
 	}
 }

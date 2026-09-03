@@ -887,12 +887,9 @@ func selectSkillsWithPrompt(skills []*skill.Skill, opts AddOptions, message stri
 }
 
 // promptScopeAndAgents asks for global/project scope and agent selection.
-// Returns (global bool, agents []string, ok bool).
-//
-// It deliberately does not settle the install mode. Callers must call
-// commitScopeInstallMode themselves, as the last thing before installing:
-// committing the mode writes to the user's disk, so anything that can still
-// abort the install has to run first.
+// Returns (global bool, agents []string, ok bool). It does not settle the
+// install mode: callers run commitScopeInstallMode last, after anything
+// that can still abort the install.
 func promptScopeAndAgents(opts AddOptions, cwd string) (bool, []string, bool) {
 	// Determine scope
 	global := opts.Global
@@ -917,19 +914,12 @@ func promptScopeAndAgents(opts AddOptions, cwd string) (bool, []string, bool) {
 }
 
 // commitScopeInstallMode settles the scope's install mode and returns the mode
-// to install with. The scope's recorded mode is a single top-level switch, so
-// an install that does not ask for a mode inherits it. An explicit --copy or
-// --symlink wins over the recorded mode, which is how a scope is switched
-// without editing its lock; the two flags are mutually exclusive at the
-// command line.
-//
-// Call this immediately before installing, and never earlier. Committing the
-// mode records it and re-materializes every install in the scope, which is a
-// real change to the user's disk: running it while the user can still back out
-// (the agent picker, the post-audit confirmation, or an agent list that some
-// later filter empties) leaves a converted scope behind with nothing
-// installed. That is why it is a separate step from promptScopeAndAgents
-// rather than its last few lines.
+// to install with: an explicit --copy or --symlink wins, otherwise the
+// recorded mode is inherited, and symlink is the default. Call it immediately
+// before installing and never earlier: committing re-materializes every
+// install in the scope, and doing that while the user can still back out
+// (the agent picker, the audit confirmation, an emptied agent list) leaves a
+// converted scope with nothing installed.
 func commitScopeInstallMode(opts AddOptions, global bool, cwd string) (InstallMode, bool) {
 	requested := InstallModeSymlink
 	switch {
@@ -945,16 +935,9 @@ func commitScopeInstallMode(opts AddOptions, global bool, cwd string) (InstallMo
 
 // allAgentsForScope lists every agent the given scope can install to: all of
 // them in project scope, and in global scope only those with a user-level
-// skills directory, since the others have nowhere to install globally.
-//
-// It backs both `-a *` and scopeInstallPaths, but it is not the only door an
-// agent list reaches an install through: validateNamedAgents (an explicit
-// `-a agent1,agent2` list) and promptAgentsYes (a saved configuredAgents list
-// under --yes) apply no such filter. Every registry entry today sets
-// GlobalSkillsDir, so the gap cannot currently trigger; if a future entry
-// ever leaves it empty, those two would also need to check it before the set
-// an install can write to and the set a mode switch sweeps could be trusted
-// to match.
+// skills directory. It backs `-a *` and scopeInstallPaths. validateNamedAgents
+// and promptAgentsYes apply no such filter; every registry entry sets
+// GlobalSkillsDir today, so the gap cannot trigger.
 func allAgentsForScope(global bool) []string {
 	var all []string
 	for name := range agent.AllAgents {

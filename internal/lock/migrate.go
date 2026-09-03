@@ -50,13 +50,10 @@ type ProjectMigration struct {
 	// the existing mdm.lock and would be discarded by retiring the
 	// legacy files. Only populated when TargetExists.
 	Orphaned []string
-	// InstallModeBackfill is the install mode inferred from what is on
-	// disk, empty when there is nothing to record. It covers both shapes:
-	// an existing mdm.lock with no mode recorded yet (a project that
-	// migrated to v2 before this feature existed, so there are no legacy
-	// files left to trigger a migration), and the mode a fresh migration
-	// will stamp on the lock it is about to write. Planning it for both
-	// means --dry-run always names the write it is about to perform.
+	// InstallModeBackfill is the install mode inferred from disk, empty when
+	// there is nothing to record: for an existing mdm.lock with no mode, or
+	// the mode a fresh migration will write. Planned here so --dry-run
+	// names the write.
 	InstallModeBackfill string
 	// merged is the target lock assembled from the strictly parsed legacy
 	// files. Execution writes exactly this when the target does not exist.
@@ -160,11 +157,8 @@ func PlanProjectMigration(cwd string) (ProjectMigration, error) {
 	}
 	sort.Strings(plan.Orphaned)
 
-	// A fresh migration writes the merged lock, so the mode it will record
-	// has to be inferred here rather than inside execution: --dry-run must
-	// never hide a write it is about to perform. Only reachable with legacy
-	// files present, because the merged lock is otherwise empty and
-	// nothing gets written.
+	// A fresh migration infers its mode while planning, so --dry-run never
+	// hides a write. Only legacy files make the merged lock non-empty.
 	if !plan.TargetExists && len(plan.Legacy) > 0 {
 		plan.merged.InstallMode = inferInstallMode(skillNames(plan.merged.Skills), plan.merged.ConfiguredAgents, false, cwd)
 		plan.InstallModeBackfill = plan.merged.InstallMode
@@ -211,16 +205,10 @@ func (m *ProjectMigration) absorb(d legacyFileData) {
 }
 
 // scanAgents returns the agents whose install directories are worth
-// scanning for a scope. The recorded list wins when there is one.
-//
-// It falls back to every agent the scope supports when the list is empty,
-// which is a common shape rather than an edge case: configuredAgents only
-// records agents the user picked interactively, so `mdm skills add <src>
-// -a claude-code -y` installs skills and leaves the list empty. Inferring
-// from an empty list would find nothing for exactly the --copy user this
-// scan exists to serve. The fallback costs one Lstat per agent per skill
-// and only ever reports a mode when a real directory is sitting at an
-// agent's install path under a locked skill's name.
+// scanning: the recorded list, or every agent the scope supports when it is
+// empty. An empty list is common, since configuredAgents only records
+// interactive picks and `mdm skills add <src> -a claude-code -y` leaves it
+// empty.
 func scanAgents(agents []string, global bool) []string {
 	if len(agents) > 0 {
 		return agents
@@ -236,8 +224,7 @@ func scanAgents(agents []string, global bool) []string {
 	return all
 }
 
-// skillNames lists the keys of a skills section, so both scopes can feed
-// the same scanner despite holding different entry types.
+// skillNames lists the keys of a skills section of either entry type.
 func skillNames[E any](skills map[string]E) []string {
 	names := make([]string, 0, len(skills))
 	for name := range skills {
@@ -247,57 +234,37 @@ func skillNames[E any](skills map[string]E) []string {
 	return names
 }
 
-// inferInstallMode reports the install mode a scope was using, by looking
-// at what is actually on disk at each configured agent's install path, or
-// at every agent the scope supports when no agents are recorded (see
-// scanAgents). A real directory holding a SKILL.md means the user installed
-// with --copy; a symlink means the default symlink mode. Absent, unreadable,
-// or a directory that is not a skill is no evidence.
-//
-// The scan deliberately never looks at .agents/skills/<name>. That is the
-// canonical directory, which a symlink install creates as a real directory
-// and then points the per-agent paths at, so it reads as "copy" for every
-// project regardless of mode. Only the per-agent install paths distinguish
-// the two, which is also what re-materialization walks.
-//
-// The contract is InstallModeCopy or empty, never the literal "symlink":
-// no evidence must leave the key absent so a later migration can still
-// find it.
-//
-// This runs at migration time only. Scanning on every lock read would be
-// both slow and surprising, and the recorded mode is authoritative once
-// it exists.
+// inferInstallMode reports the mode a scope was using from what is on disk
+// at each agent's install path (see scanAgents): a real directory holding a
+// SKILL.md means --copy, anything else is no evidence. It returns
+// InstallModeCopy or "", never the literal "symlink", so no evidence leaves
+// the key absent for a later migration. It never reads .agents/skills:
+// a symlink install creates that as a real directory, so it reads as copy
+// for every project. Runs at migration time only; the recorded mode is
+// authoritative once it exists.
 func inferInstallMode(names, agents []string, global bool, cwd string) string {
 	agents = scanAgents(agents, global)
 	for _, name := range names {
 		for _, agentName := range agents {
-			// An agent that reads the shared .agents/skills directory has
-			// no install path of its own: it reads the canonical directory
-			// itself, which is a real directory in both modes. It is never
-			// evidence either way.
+			// A shared-dir agent's install path is the canonical directory,
+			// real in both modes: never evidence.
 			if agent.UsesSharedSkillsDir(agentName) {
 				continue
 			}
-			// agent.SkillsInstallDir is the same resolution the installer
-			// and the re-materializer use, so what this scan reads can never
-			// drift from where installs actually land.
+			// The same resolution the installer uses, so this cannot drift
+			// from where installs land. Lock keys are already sanitized.
 			installDir := agent.SkillsInstallDir(agentName, global, cwd)
 			if installDir == "" {
 				continue
 			}
-			// Lock keys are already stored in sanitized form, so the key
-			// is the directory name.
 			candidate := filepath.Join(installDir, name)
 			info, err := os.Lstat(candidate)
 			if err != nil {
 				continue
 			}
 			if info.Mode()&os.ModeSymlink == 0 && info.IsDir() {
-				// Every mdm-installed skill directory holds a SKILL.md, and
-				// `mdm doctor` reports one that does not. Requiring it keeps
-				// an unrelated directory that merely shares a locked skill's
-				// name from reading as a copy install, which the all-agents
-				// fallback above otherwise makes easy to hit.
+				// Requiring a SKILL.md keeps an unrelated directory that
+				// shares a locked skill's name from reading as a copy install.
 				if _, err := os.Stat(filepath.Join(candidate, "SKILL.md")); err != nil {
 					continue
 				}
@@ -326,16 +293,12 @@ func ExecuteProjectMigration(cwd string, tombstone bool) error {
 		return nil
 	}
 	if !plan.TargetExists {
-		// plan.merged.InstallMode was already inferred while planning, so
-		// what gets written here is exactly what --dry-run reported.
+		// plan.merged already carries the mode --dry-run reported.
 		if err := WriteProjectLock(plan.merged, cwd); err != nil {
 			return err
 		}
 	}
-	// A project that already migrated to v2 has no legacy files left and
-	// TargetExists is true, so the branch above never runs, but its lock
-	// may still have no InstallMode recorded. Backfill that independent of
-	// whether any legacy file was absorbed above.
+	// An existing lock may still have no mode recorded, legacy files or not.
 	if plan.TargetExists && plan.InstallModeBackfill != "" {
 		if err := backfillProjectInstallMode(cwd, plan.InstallModeBackfill); err != nil {
 			return err
@@ -397,11 +360,9 @@ type GlobalMigration struct {
 	// mdm-state.json that retiring the legacy file would discard. Only
 	// populated when TargetExists.
 	Orphaned []string
-	// InstallModeBackfill is the install mode inferred from what is on
-	// disk for the global scope, empty when there is nothing to record.
-	// A user who ran `mdm skills add -g --copy` before the switch existed
-	// has no mode recorded; this is their recovery path, and it mirrors
-	// the project-scope backfill.
+	// InstallModeBackfill is the install mode inferred from disk for the
+	// global scope, empty when there is nothing to record. It mirrors the
+	// project-scope backfill.
 	InstallModeBackfill string
 	needed              bool
 	merged              GlobalState
@@ -507,9 +468,7 @@ func ExecuteGlobalMigration() error {
 			return err
 		}
 	}
-	// An mdm-state.json that predates the install-mode switch has no mode
-	// recorded even though there is no legacy file left to absorb. Backfill
-	// it independently, the same way the project scope does.
+	// An existing state file may still have no mode recorded.
 	if plan.TargetExists && plan.InstallModeBackfill != "" {
 		state, err := readGlobalStateE()
 		if err != nil {

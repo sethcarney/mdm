@@ -445,10 +445,25 @@ func TestDiagnoseSkillHealthySkill(t *testing.T) {
 
 // ── Migration checks ───────────────────────────────────────────────────────────
 
-// A project installed with --copy before the install mode was recorded has
-// copies on disk and no mode in its lock, so the next restore re-symlinks
-// them. `mdm migrate` is the documented recovery, and doctor is where a user
-// finds out they need it.
+// isolatedGlobalSkillsDir returns Claude Code's global skills directory under
+// a temp home, failing if the registry did not pick up the redirect: the
+// global sweep walks every agent's directory, so an un-isolated registry
+// would read the developer's real files.
+func isolatedGlobalSkillsDir(t *testing.T) string {
+	t.Helper()
+	home := isolateHome(t)
+	cfg := agent.AllAgents["claude-code"]
+	if cfg == nil || cfg.GlobalSkillsDir == "" {
+		t.Skip("fixture agent no longer supports global installs")
+	}
+	if !strings.HasPrefix(cfg.GlobalSkillsDir, home) {
+		t.Fatalf("agent registry not isolated: %q is outside the test home %q", cfg.GlobalSkillsDir, home)
+	}
+	return cfg.GlobalSkillsDir
+}
+
+// Copies on disk with no mode in the lock get re-symlinked by the next
+// restore; doctor is where the user learns to run `mdm migrate` first.
 func TestCheckProjectMigrationReportsPendingInstallModeBackfill(t *testing.T) {
 	cwd := t.TempDir()
 	if err := lock.SetConfiguredAgents([]string{"claude-code"}, false, cwd); err != nil {
@@ -457,13 +472,7 @@ func TestCheckProjectMigrationReportsPendingInstallModeBackfill(t *testing.T) {
 	if err := lock.AddSkillToLocalLock("s1", lock.LocalSkillLockEntry{Source: "o/r", SourceType: "github"}, cwd); err != nil {
 		t.Fatal(err)
 	}
-	copied := filepath.Join(cwd, ".claude", "skills", "s1")
-	if err := os.MkdirAll(copied, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(copied, "SKILL.md"), []byte("# s1\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeSkillDir(t, filepath.Join(cwd, ".claude", "skills", "s1"))
 
 	issues := checkProjectMigration(cwd)
 	if len(issues) != 1 {
@@ -477,9 +486,7 @@ func TestCheckProjectMigrationReportsPendingInstallModeBackfill(t *testing.T) {
 	}
 }
 
-// A project whose lock already records the mode, and one with nothing to
-// infer, must both stay quiet: the check has to point at a real pending
-// write, not fire on every project.
+// A recorded mode, or nothing on disk to infer from, must stay quiet.
 func TestCheckProjectMigrationQuietWhenNothingPending(t *testing.T) {
 	cwd := t.TempDir()
 	if err := lock.AddSkillToLocalLock("s1", lock.LocalSkillLockEntry{Source: "o/r", SourceType: "github"}, cwd); err != nil {
@@ -489,13 +496,7 @@ func TestCheckProjectMigrationQuietWhenNothingPending(t *testing.T) {
 		t.Errorf("issues = %v, want none with nothing installed on disk", issues)
 	}
 
-	copied := filepath.Join(cwd, ".claude", "skills", "s1")
-	if err := os.MkdirAll(copied, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(copied, "SKILL.md"), []byte("# s1\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeSkillDir(t, filepath.Join(cwd, ".claude", "skills", "s1"))
 	if err := lock.SetInstallMode(lock.InstallModeCopy, false, cwd); err != nil {
 		t.Fatal(err)
 	}
@@ -504,31 +505,15 @@ func TestCheckProjectMigrationQuietWhenNothingPending(t *testing.T) {
 	}
 }
 
-// The global scope has the same recovery, and the global state file is the
-// one place a --copy user's mode can go unrecorded with no legacy file left
-// to prompt them. isolateHome keeps this sweep, which walks every agent the
-// scope supports, inside a temp home.
+// The global scope has the same recovery.
 func TestCheckGlobalMigrationReportsPendingInstallModeBackfill(t *testing.T) {
-	home := isolateHome(t)
-	cfg := agent.AllAgents["claude-code"]
-	if cfg == nil || cfg.GlobalSkillsDir == "" {
-		t.Skip("fixture agent no longer supports global installs")
-	}
-	if !strings.HasPrefix(cfg.GlobalSkillsDir, home) {
-		t.Fatalf("agent registry not isolated: %q is outside the test home %q", cfg.GlobalSkillsDir, home)
-	}
+	globalSkills := isolatedGlobalSkillsDir(t)
 
 	if issues := checkGlobalMigration(true); len(issues) != 0 {
 		t.Fatalf("issues = %v, want none in an empty global scope", issues)
 	}
 
-	copied := filepath.Join(cfg.GlobalSkillsDir, "s1")
-	if err := os.MkdirAll(copied, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(copied, "SKILL.md"), []byte("# s1\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeSkillDir(t, filepath.Join(globalSkills, "s1"))
 	if err := lock.AddSkillToGlobalState("s1", lock.SkillLockEntry{Source: "o/r", SourceType: "github"}); err != nil {
 		t.Fatal(err)
 	}
@@ -545,11 +530,8 @@ func TestCheckGlobalMigrationReportsPendingInstallModeBackfill(t *testing.T) {
 	}
 }
 
-// A project-scoped run must not fail because of a machine-global file the
-// project does not own. printDoctorResults folds migration issues into the
-// error count and runDoctor exits 1 on any error, so an unreadable
-// mdm-state.json reported at error level would fail `mdm doctor -p` as a CI
-// gate. The check still runs and still reports, at warn level.
+// `mdm doctor -p` is a CI gate and must not exit 1 over a machine-global
+// file the project does not own: the problem is still reported, at warn.
 func TestCheckGlobalMigrationUnreadableStateIsAWarnOutsideGlobalScope(t *testing.T) {
 	isolateHome(t)
 
@@ -583,10 +565,8 @@ func TestCheckGlobalMigrationUnreadableStateIsAWarnOutsideGlobalScope(t *testing
 	}
 }
 
-// A v1 lock is the shape most exposed to the symlink-over-copies bug: the
-// copies are on disk, no lock records the mode, and the next restore
-// replaces them. The legacy warning alone names the file to migrate but
-// not the stake, so the mode warning has to fire here too.
+// A v1 lock gets the legacy warning, which names the file but not the
+// copies at stake, so the mode warning has to fire alongside it.
 func TestCheckProjectMigrationWarnsOnCopyModeWithLegacyLock(t *testing.T) {
 	cwd := t.TempDir()
 	legacy := `{"version":1,"skills":{"s1":{"source":"o/r","sourceType":"github"}},` +
@@ -594,13 +574,7 @@ func TestCheckProjectMigrationWarnsOnCopyModeWithLegacyLock(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(cwd, "skills-lock.json"), []byte(legacy), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	copied := filepath.Join(cwd, ".claude", "skills", "s1")
-	if err := os.MkdirAll(copied, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(copied, "SKILL.md"), []byte("# s1\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeSkillDir(t, filepath.Join(cwd, ".claude", "skills", "s1"))
 
 	issues := checkProjectMigration(cwd)
 	var legacyIssue, modeIssue bool
@@ -623,26 +597,11 @@ func TestCheckProjectMigrationWarnsOnCopyModeWithLegacyLock(t *testing.T) {
 	}
 }
 
-// The global half of the same gap: a v1 global state file with copies on
-// disk gets the legacy warning, which names the file to move and not the
-// copies the next install costs.
+// The global half of the same gap.
 func TestCheckGlobalMigrationWarnsOnCopyModeWithLegacyState(t *testing.T) {
-	home := isolateHome(t)
-	cfg := agent.AllAgents["claude-code"]
-	if cfg == nil || cfg.GlobalSkillsDir == "" {
-		t.Skip("fixture agent no longer supports global installs")
-	}
-	if !strings.HasPrefix(cfg.GlobalSkillsDir, home) {
-		t.Fatalf("agent registry not isolated: %q is outside the test home %q", cfg.GlobalSkillsDir, home)
-	}
+	globalSkills := isolatedGlobalSkillsDir(t)
 
-	copied := filepath.Join(cfg.GlobalSkillsDir, "s1")
-	if err := os.MkdirAll(copied, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(copied, "SKILL.md"), []byte("# s1\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeSkillDir(t, filepath.Join(globalSkills, "s1"))
 	legacyPath, _ := lock.LegacyGlobalLockExists()
 	if err := os.MkdirAll(filepath.Dir(legacyPath), 0o755); err != nil {
 		t.Fatal(err)
