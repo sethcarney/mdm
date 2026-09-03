@@ -39,7 +39,8 @@ mdm skills add <package>
 | `--skill, -s`   | Skill names to install (repeatable; use `*` for all) |
 | `--list, -l`    | List available skills without installing             |
 | `--yes, -y`     | Skip all confirmation prompts                        |
-| `--copy`        | Copy files instead of symlinking                     |
+| `--copy`        | Copy files instead of symlinking; switches the scope to copy mode |
+| `--symlink`     | Symlink files from `.agents/skills` (the default); switches a scope back from copy mode |
 | `--all`         | Shorthand for `--skill '*' --agent '*' -y`           |
 | `--full-depth`  | Search all subdirectories for SKILL.md files         |
 | `--skip-audit`  | Skip the security audit check                        |
@@ -76,11 +77,11 @@ Agents that use the shared `.agents/skills` directory but also have a unique ins
 
 **Copy mode** (`--copy`): instead of symlinking from agent directories to `.agents/skills/`, files are copied directly. Use this if your tools don't follow symlinks.
 
-`--copy` is a scope-wide switch, not a per-skill one. Passing it records `installMode: copy` in the scope's lock, so later installs, updates, and restores in that scope copy without repeating the flag. Switching a scope that already has installs re-materializes them into the new mode instead of leaving a mix, and asks for confirmation first unless you pass `-y`. The switch is applied only once everything that could still stop the install has passed: the agent selection and the security-audit confirmation. Backing out at either of them leaves the install mode and the skills untouched, though an interactive agent picker already saves your selection to `configuredAgents` before the audit gate, so that part of the record can persist even when you decline it.
+The install mode is a scope-wide switch, not a per-skill one. Passing `--copy` records `installMode: copy` in the scope's lock, so later installs, updates, and restores in that scope copy without repeating the flag. Passing `--symlink` switches the scope back: it records symlink mode and turns the copied installs back into links, so there is no need to edit the lock by hand. Symlink is the default, so `--symlink` on a scope that has never been switched changes nothing. The two flags cannot be combined. Switching a scope that already has installs re-materializes them into the new mode instead of leaving a mix, and reports how many it converted; the flag itself is the consent, so there is no extra confirmation. The switch is applied only once everything that could still stop the install has passed: the agent selection and the security-audit confirmation. Backing out at either of them leaves the install mode and the skills untouched, though an interactive agent picker already saves your selection to `configuredAgents` before the audit gate, so that part of the record can persist even when you decline it.
 
 The conversion covers every agent directory the scope supports, not just the agents recorded in `configuredAgents`. That list holds only what you last picked in the interactive agent picker, so an agent you installed to with `-a <agent> -y` is converted along with the rest rather than being left behind on symlinks.
 
-Only the symlinks mdm created are converted, which are the ones pointing into the scope's `.agents/skills` directory. A symlink you put in an agent's skills directory yourself, pointing somewhere else, is left exactly as it is. The `.agents/skills` copy each converted link pointed at also stays: agents that read that shared directory install into it in copy mode too, so it keeps being refreshed.
+Only what mdm installed is converted. Switching to copy mode converts the symlinks pointing into the scope's `.agents/skills` directory; a symlink you put in an agent's skills directory yourself, pointing somewhere else, is left exactly as it is. The `.agents/skills` copy each converted link pointed at also stays: agents that read that shared directory install into it in copy mode too, so it keeps being refreshed. Switching back to symlink mode converts the real directories that hold a `SKILL.md`, creating the `.agents/skills` copy first when a copy install never wrote one; a directory without a `SKILL.md` is not an mdm install and is left alone.
 
 ## Examples
 

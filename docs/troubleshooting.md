@@ -98,6 +98,10 @@ skills are copied but whose lock does not record it, and points at
 `mdm migrate`. Run it afterward too, to confirm the skills are otherwise
 healthy.
 
+To go the other way, back from copies to symlinks, pass `--symlink` to the
+next `mdm skills add` in that scope. It converts the copied installs into
+links and records symlink mode, so the lock never needs editing by hand.
+
 ## A forked skill vanished after installing it to OpenClaw
 
 Installing a skill replaces the agent's `<skills dir>/<name>`, and for OpenClaw

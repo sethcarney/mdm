@@ -90,7 +90,8 @@ git URL with a `#ref`, a local path, or a well-known alias (`vercel`,
 | `--skill`, `-s` | Skill names to install (repeatable; `*` for all) |
 | `--list`, `-l` | List available skills without installing |
 | `--yes`, `-y` | Skip confirmation prompts |
-| `--copy` | Copy files instead of symlinking |
+| `--copy` | Copy files instead of symlinking; switches the scope to copy mode |
+| `--symlink` | Symlink files from `.agents/skills` (the default); switches a scope back from copy mode |
 | `--all` | Shorthand for `--skill '*' --agent '*' -y` |
 | `--full-depth` | Search all subdirectories for skills |
 | `--skip-audit` | Skip the security audit check for public skills |

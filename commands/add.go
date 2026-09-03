@@ -30,6 +30,7 @@ type AddOptions struct {
 	ListOnly          bool
 	Yes               bool // skip prompts
 	Copy              bool
+	Symlink           bool
 	All               bool // --all: skill '*', agent '*', -y
 	FullDepth         bool
 	SkipAudit         bool
@@ -94,12 +95,15 @@ To update to the latest version, run:  mdm skills update
 	f.StringArrayVarP(&opts.Skills, "skill", "s", nil, "Skill names to install (repeatable, use '*' for all)")
 	f.BoolVarP(&opts.ListOnly, "list", "l", false, "List available skills without installing")
 	f.BoolVarP(&opts.Yes, "yes", "y", false, "Skip confirmation prompts")
-	f.BoolVar(&opts.Copy, "copy", false, "Copy files instead of symlinking")
+	f.BoolVar(&opts.Copy, "copy", false, "Copy files instead of symlinking (switches the scope to copy mode)")
+	f.BoolVar(&opts.Symlink, "symlink", false, "Symlink files from .agents/skills (the default; switches a scope back from copy mode)")
 	f.BoolVar(&opts.All, "all", false, "Shorthand for --skill '*' --agent '*' -y")
 	f.BoolVar(&opts.FullDepth, "full-depth", false, "Search all subdirectories")
 	f.BoolVar(&opts.SkipAudit, "skip-audit", false, "Skip security audit check for public skills")
 	f.BoolVar(&opts.FailOnAudit, "fail-on-audit", false, "Exit non-zero when security findings are detected instead of prompting")
 	f.BoolVar(&opts.AllowHiddenChars, "allow-hidden-chars", false, "Allow markdown files with hidden Unicode characters")
+
+	cmd.MarkFlagsMutuallyExclusive("copy", "symlink")
 
 	_ = cmd.RegisterFlagCompletionFunc("agent", agentFlagCompletion)
 
@@ -906,7 +910,10 @@ func promptScopeAndAgents(opts AddOptions, cwd string) (bool, []string, bool) {
 
 // commitScopeInstallMode settles the scope's install mode and returns the mode
 // to install with. The scope's recorded mode is a single top-level switch, so
-// an install that does not ask for a mode inherits it.
+// an install that does not ask for a mode inherits it. An explicit --copy or
+// --symlink wins over the recorded mode, which is how a scope is switched
+// without editing its lock; the two flags are mutually exclusive at the
+// command line.
 //
 // Call this immediately before installing, and never earlier. Committing the
 // mode records it and re-materializes every install in the scope, which is a
@@ -917,10 +924,15 @@ func promptScopeAndAgents(opts AddOptions, cwd string) (bool, []string, bool) {
 // rather than its last few lines.
 func commitScopeInstallMode(opts AddOptions, global bool, cwd string) (InstallMode, bool) {
 	requested := InstallModeSymlink
-	if opts.Copy || lock.GetInstallMode(global, cwd) == lock.InstallModeCopy {
+	switch {
+	case opts.Copy:
+		requested = InstallModeCopy
+	case opts.Symlink:
+		// Explicit: overrides a recorded copy mode.
+	case lock.GetInstallMode(global, cwd) == lock.InstallModeCopy:
 		requested = InstallModeCopy
 	}
-	return applyScopeInstallMode(requested, global, cwd, opts.Yes)
+	return applyScopeInstallMode(requested, global, cwd)
 }
 
 // allAgentsForScope lists every agent the given scope can install to: all of
