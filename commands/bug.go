@@ -58,8 +58,8 @@ func buildBugCmd(ver string) *cobra.Command {
 		Long: fmt.Sprintf(`Open a prefilled GitHub issue form for reporting an mdm bug.
 
 Collects the mdm version, OS and architecture, shell, Go runtime, and
-the agent tools detected on this machine, then builds an issue-form URL
-with those fields already filled in. Nothing is sent anywhere - the
+the AI harnesses detected on this machine, then builds an issue-form URL
+with those fields already filled in. Nothing is sent anywhere — the
 command only constructs a URL and (when a browser is available) opens
 it; you review and submit the form yourself.
 

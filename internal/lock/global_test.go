@@ -130,7 +130,7 @@ func TestGlobalStateLegacyFallback(t *testing.T) {
 	if _, ok := s.Skills["old-skill"]; !ok {
 		t.Error("legacy global skills-lock.json not read")
 	}
-	if !s.Dismissed.FindSkillsPrompt || len(s.ConfiguredAgents) != 1 || len(s.Experimental) != 1 {
+	if !s.Dismissed.FindSkillsPrompt || len(s.ConfiguredHarnesses) != 1 || len(s.Experimental) != 1 {
 		t.Errorf("legacy sections not carried over: %+v", s)
 	}
 

@@ -82,9 +82,9 @@ func scopeSkillNames(global bool, cwd string) []string {
 
 // scopeInstallPaths lists the existing on-disk install path of every skill
 // the scope records, for each harness the scope supports, deduplicated. It
-// sweeps every harness rather than configuredAgents: that list only records
+// sweeps every harness rather than configuredHarnesses: that list only records
 // what the interactive picker last saved, so consulting it would skip harnesses
-// installed with `-a <harness> -y` and leave the scope half converted. The
+// installed with `--harness <harness> -y` and leave the scope half converted. The
 // sweep is safe because rematerializeScope converts only what mdm installed.
 func scopeInstallPaths(global bool, cwd string) []string {
 	skills := scopeSkillNames(global, cwd)

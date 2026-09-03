@@ -294,7 +294,7 @@ func refuseIfPluginOwned(canonicalDir string, global bool) error {
 func validateHarnessInstall(harnessName string, global bool, mode InstallMode) (*harness.HarnessConfig, *InstallResult) {
 	a := harness.AllHarnesses[harnessName]
 	if a == nil {
-		r := InstallResult{Success: false, Path: "", Mode: mode, Error: "unknown agent: " + harnessName}
+		r := InstallResult{Success: false, Path: "", Mode: mode, Error: "unknown harness: " + harnessName}
 		return nil, &r
 	}
 	if global && a.GlobalSkillsDir == "" {
@@ -501,7 +501,7 @@ func appendUndetectedHarnessScopes(scopes []scopeEntry, harnessesToCheck []strin
 func buildScopeEntries(harnessesToCheck []string, scopeTypes []bool, cwd string) []scopeEntry {
 	var scopes []scopeEntry
 	for _, isGlobal := range scopeTypes {
-		configured := lock.GetConfiguredAgents(isGlobal, cwd)
+		configured := lock.GetConfiguredHarnesses(isGlobal, cwd)
 		scopes = append(scopes, scopeEntry{isGlobal: isGlobal, path: getCanonicalSkillsDir(isGlobal, cwd)})
 		scopes = appendDetectedHarnessScopes(scopes, harnessesToCheck, isGlobal, cwd)
 		scopes = appendUndetectedHarnessScopes(scopes, harnessesToCheck, configured, isGlobal, cwd)

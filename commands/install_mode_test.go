@@ -94,7 +94,7 @@ func lockSkill(t *testing.T, cwd, name string) {
 
 func setConfigured(t *testing.T, cwd string, harnesses ...string) {
 	t.Helper()
-	if err := lock.SetConfiguredAgents(harnesses, false, cwd); err != nil {
+	if err := lock.SetConfiguredHarnesses(harnesses, false, cwd); err != nil {
 		t.Fatal(err)
 	}
 }

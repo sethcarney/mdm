@@ -52,7 +52,7 @@ func buildCherryPickCmd(ver string) *cobra.Command {
 		Long: fmt.Sprintf(`Copy selected skills out of someone else's repository and into your own,
 so you can edit them and ship them as yours.
 
-Unlike %smdm skills add%s - which installs a skill into each agent's skills
+Unlike %smdm skills add%s — which installs a skill into each harness's skills
 directory and tracks the upstream source so %smdm skills update%s can replace it
 - cherry-pick vendors the skill into ./%s, where it becomes part of your
 repository. Nothing overwrites it afterwards; divergence from upstream is the
@@ -104,8 +104,8 @@ find and warns when a source declares no license at all, but honouring the terms
 	f.StringVarP(&opts.Dir, "dir", "d", defaultForksDir, "Directory to fork skills into (relative to the project root)")
 	f.StringArrayVarP(&opts.Skills, "skill", "s", nil, "Skill names to fork (repeatable, use '*' for all)")
 	f.StringVar(&opts.As, "as", "", "Rename the forked skill (single skill only)")
-	f.BoolVarP(&opts.Install, "install", "i", false, "Also install the forks into your agents' skills directories")
-	f.StringArrayVarP(&opts.Harnesses, "agent", "a", nil, "Agents to install the forks to (implies --install)")
+	f.BoolVarP(&opts.Install, "install", "i", false, "Also install the forks into your harnesses' skills directories")
+	f.StringArrayVar(&opts.Harnesses, "harness", nil, "Harnesses to install the forks to (implies --install)")
 	f.BoolVarP(&opts.Global, "global", "g", false, "Install the forks globally (with --install)")
 	f.BoolVarP(&opts.Project, "project", "p", false, "Install the forks for this project only (with --install)")
 	f.BoolVar(&opts.Copy, "copy", false, "Copy files instead of symlinking (with --install; switches the scope to copy mode)")
@@ -121,7 +121,7 @@ find and warns when a source declares no license at all, but honouring the terms
 
 	cmd.MarkFlagsMutuallyExclusive("copy", "symlink")
 
-	_ = cmd.RegisterFlagCompletionFunc("agent", harnessFlagCompletion)
+	_ = cmd.RegisterFlagCompletionFunc("harness", harnessFlagCompletion)
 
 	return cmd
 }
@@ -475,7 +475,7 @@ func printCherryPickSummary(forked []string, licenses map[string]licenseInfo, op
 	fmt.Printf("  them like any other source in this repository.%s\n\n", ansiReset)
 
 	if !opts.Install {
-		fmt.Printf("  %sInstall them into your agents with:%s\n", ansiDim, ansiReset)
+		fmt.Printf("  %sInstall them into your harnesses with:%s\n", ansiDim, ansiReset)
 		fmt.Printf("  %s$%s mdm skills add %s\n\n", ansiDim, ansiReset, dir)
 	}
 	if opts.NoAttribution {

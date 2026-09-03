@@ -67,11 +67,11 @@ func (m ProjectMigration) Needed() bool { return len(m.Legacy) > 0 || m.InstallM
 // legacyFileData is one legacy file, fully decoded into the typed entry
 // structs so nothing survives planning that execution could not carry over.
 type legacyFileData struct {
-	skills           map[string]LocalSkillLockEntry
-	bundles          map[string]KnowledgeLockEntry
-	plugins          map[string]PluginLockEntry
-	configuredAgents []string
-	isTombstone      bool
+	skills              map[string]LocalSkillLockEntry
+	bundles             map[string]KnowledgeLockEntry
+	plugins             map[string]PluginLockEntry
+	configuredHarnesses []string
+	isTombstone         bool
 }
 
 func (d legacyFileData) count() int {
@@ -88,12 +88,12 @@ func strictReadLegacy(path string) (legacyFileData, error) {
 		return d, err
 	}
 	var raw struct {
-		Version          int                            `json:"version"`
-		Skills           map[string]LocalSkillLockEntry `json:"skills"`
-		Bundles          map[string]KnowledgeLockEntry  `json:"bundles"`
-		Plugins          map[string]PluginLockEntry     `json:"plugins"`
-		ConfiguredAgents []string                       `json:"configuredAgents"`
-		MovedNote        string                         `json:"_moved"`
+		Version             int                            `json:"version"`
+		Skills              map[string]LocalSkillLockEntry `json:"skills"`
+		Bundles             map[string]KnowledgeLockEntry  `json:"bundles"`
+		Plugins             map[string]PluginLockEntry     `json:"plugins"`
+		ConfiguredHarnesses []string                       `json:"configuredAgents"`
+		MovedNote           string                         `json:"_moved"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return d, fmt.Errorf("%s is not valid JSON: %w", filepath.Base(path), err)
@@ -112,7 +112,7 @@ func strictReadLegacy(path string) (legacyFileData, error) {
 	d.skills = raw.Skills
 	d.bundles = raw.Bundles
 	d.plugins = raw.Plugins
-	d.configuredAgents = raw.ConfiguredAgents
+	d.configuredHarnesses = raw.ConfiguredHarnesses
 	return d, nil
 }
 
@@ -133,7 +133,7 @@ func PlanProjectMigration(cwd string) (ProjectMigration, error) {
 			return plan, err
 		}
 		if target.InstallMode == "" {
-			plan.InstallModeBackfill = inferInstallMode(skillNames(target.Skills), target.ConfiguredAgents, false, cwd)
+			plan.InstallModeBackfill = inferInstallMode(skillNames(target.Skills), target.ConfiguredHarnesses, false, cwd)
 		}
 	}
 
@@ -160,7 +160,7 @@ func PlanProjectMigration(cwd string) (ProjectMigration, error) {
 	// A fresh migration infers its mode while planning, so --dry-run never
 	// hides a write. Only legacy files make the merged lock non-empty.
 	if !plan.TargetExists && len(plan.Legacy) > 0 {
-		plan.merged.InstallMode = inferInstallMode(skillNames(plan.merged.Skills), plan.merged.ConfiguredAgents, false, cwd)
+		plan.merged.InstallMode = inferInstallMode(skillNames(plan.merged.Skills), plan.merged.ConfiguredHarnesses, false, cwd)
 		plan.InstallModeBackfill = plan.merged.InstallMode
 	}
 	return plan, nil
@@ -199,15 +199,18 @@ func (m *ProjectMigration) absorb(d legacyFileData) {
 	for name, e := range d.plugins {
 		m.merged.Plugins[name] = e
 	}
-	if len(d.configuredAgents) > 0 {
-		m.merged.ConfiguredAgents = d.configuredAgents
+	// v1 spells this configuredAgents. v1 is frozen and in the wild, so the
+	// legacy reader above keeps that tag; the rename lives in v2 only, and
+	// this is the one place the two formats meet.
+	if len(d.configuredHarnesses) > 0 {
+		m.merged.ConfiguredHarnesses = d.configuredHarnesses
 	}
 }
 
 // scanHarnesses returns the harnesses whose install directories are worth
 // scanning: the recorded list, or every harness the scope supports when it is
-// empty. An empty list is common, since configuredAgents only records
-// interactive picks and `mdm skills add <src> -a claude-code -y` leaves it
+// empty. An empty list is common, since configuredHarnesses only records
+// interactive picks and `mdm skills add <src> --harness claude-code -y` leaves it
 // empty.
 func scanHarnesses(harnesses []string, global bool) []string {
 	if len(harnesses) > 0 {
@@ -381,11 +384,11 @@ func strictReadLegacyGlobal(path string) (GlobalState, error) {
 		return EmptyGlobalState(), err
 	}
 	var legacy struct {
-		Version          int                       `json:"version"`
-		Skills           map[string]SkillLockEntry `json:"skills"`
-		Dismissed        DismissedPrompts          `json:"dismissed"`
-		ConfiguredAgents []string                  `json:"configuredAgents"`
-		Experimental     []string                  `json:"experimental"`
+		Version             int                       `json:"version"`
+		Skills              map[string]SkillLockEntry `json:"skills"`
+		Dismissed           DismissedPrompts          `json:"dismissed"`
+		ConfiguredHarnesses []string                  `json:"configuredAgents"`
+		Experimental        []string                  `json:"experimental"`
 	}
 	if err := json.Unmarshal(data, &legacy); err != nil {
 		return EmptyGlobalState(), fmt.Errorf("%s is not valid JSON: %w", path, err)
@@ -394,11 +397,11 @@ func strictReadLegacyGlobal(path string) (GlobalState, error) {
 		return EmptyGlobalState(), nil
 	}
 	return GlobalState{
-		Version:          globalStateVersion,
-		Skills:           legacy.Skills,
-		Dismissed:        legacy.Dismissed,
-		ConfiguredAgents: legacy.ConfiguredAgents,
-		Experimental:     legacy.Experimental,
+		Version:             globalStateVersion,
+		Skills:              legacy.Skills,
+		Dismissed:           legacy.Dismissed,
+		ConfiguredHarnesses: legacy.ConfiguredHarnesses,
+		Experimental:        legacy.Experimental,
 	}, nil
 }
 
@@ -435,7 +438,7 @@ func PlanGlobalMigration() (GlobalMigration, error) {
 			sort.Strings(plan.Orphaned)
 		}
 		if target.InstallMode == "" {
-			plan.InstallModeBackfill = inferInstallMode(skillNames(target.Skills), target.ConfiguredAgents, true, "")
+			plan.InstallModeBackfill = inferInstallMode(skillNames(target.Skills), target.ConfiguredHarnesses, true, "")
 		}
 		return plan, nil
 	}
@@ -444,7 +447,7 @@ func PlanGlobalMigration() (GlobalMigration, error) {
 		return plan, nil
 	}
 	plan.merged = parsed
-	plan.merged.InstallMode = inferInstallMode(skillNames(parsed.Skills), parsed.ConfiguredAgents, true, "")
+	plan.merged.InstallMode = inferInstallMode(skillNames(parsed.Skills), parsed.ConfiguredHarnesses, true, "")
 	plan.InstallModeBackfill = plan.merged.InstallMode
 	return plan, nil
 }

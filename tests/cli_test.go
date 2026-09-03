@@ -123,7 +123,7 @@ func TestAddHelp(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("mdm skills add --help exited %d", code)
 	}
-	for _, expected := range []string{"--agent", "--skill"} {
+	for _, expected := range []string{"--harness", "--skill"} {
 		if !strings.Contains(stdout, expected) {
 			t.Errorf("expected skills add --help output to contain %q, got: %q", expected, stdout)
 		}
@@ -256,7 +256,7 @@ func TestInstallHelp(t *testing.T) {
 func TestNormalizeMultiFlags(t *testing.T) {
 	// This should NOT produce "unknown flag" or "flag needs an argument" in stderr.
 	// Uses a non-existent local path so it fails fast without any network call.
-	_, stderr, _ := runMdm(t, "skills", "add", "/nonexistent-mdm-test-path", "-a", "claude", "cursor", "--list")
+	_, stderr, _ := runMdm(t, "skills", "add", "/nonexistent-mdm-test-path", "--harness", "claude", "cursor", "--list")
 	if strings.Contains(stderr, "unknown flag") {
 		t.Errorf("unexpected 'unknown flag' in stderr: %q", stderr)
 	}
@@ -313,7 +313,7 @@ func TestLocalSkillLockUsesRelativePath(t *testing.T) {
 
 	// Install the local skill into the project scope, non-interactively.
 	stdout, stderr, code := runMdmInDir(t, projectDir, env,
-		"skills", "add", skillDir, "--agent", "claude-code", "--project", "-y")
+		"skills", "add", skillDir, "--harness", "claude-code", "--project", "-y")
 	if code != 0 {
 		t.Fatalf("mdm skills add failed (code %d):\nstdout: %s\nstderr: %s", code, stdout, stderr)
 	}
@@ -343,7 +343,7 @@ func TestSkillsAddBlocksHiddenMarkdownCharacters(t *testing.T) {
 
 	env := isolatedEnv(projectDir, stateDir)
 	stdout, stderr, code := runMdmInDir(t, projectDir, env,
-		"skills", "add", skillDir, "--agent", "claude-code", "--project", "-y")
+		"skills", "add", skillDir, "--harness", "claude-code", "--project", "-y")
 	combined := stdout + stderr
 	if code == 0 {
 		t.Fatalf("expected hidden character scan to block install, got code 0:\n%s", combined)
@@ -363,7 +363,7 @@ func TestSkillsAddAllowsHiddenMarkdownCharactersWithFlag(t *testing.T) {
 
 	env := isolatedEnv(projectDir, stateDir)
 	stdout, stderr, code := runMdmInDir(t, projectDir, env,
-		"skills", "add", skillDir, "--agent", "claude-code", "--project", "-y", "--allow-hidden-chars")
+		"skills", "add", skillDir, "--harness", "claude-code", "--project", "-y", "--allow-hidden-chars")
 	combined := stdout + stderr
 	if code != 0 {
 		t.Fatalf("expected install with --allow-hidden-chars to succeed, got code %d:\n%s", code, combined)
@@ -630,5 +630,33 @@ func TestCherryPickDryRunWritesNothing(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(f.project, "skills")); !os.IsNotExist(err) {
 		t.Error("a dry run must not create the forks directory")
+	}
+}
+
+// The rename is breaking on purpose: `mdm agents` is reclaimed for agent
+// definitions in this same release, so an alias would mean one command
+// name silently changing meaning between two commits.
+func TestHarnessesReplacesAgentsCommand(t *testing.T) {
+	out, _, code := runMdm(t, "harnesses", "--help")
+	if code != 0 {
+		t.Fatalf("`mdm harnesses` exited %d, want 0\n%s", code, out)
+	}
+	if _, _, code := runMdm(t, "agents", "--help"); code == 0 {
+		t.Error("`mdm agents` still resolves; it must not until agent definitions land")
+	}
+}
+
+// -a must be free for --agent in the agent-definition command. A shorthand
+// left on --harness would collide with it.
+func TestHarnessFlagHasNoShorthand(t *testing.T) {
+	out, _, _ := runMdm(t, "skills", "add", "--help")
+	if !strings.Contains(out, "--harness") {
+		t.Errorf("--harness missing from `skills add --help`:\n%s", out)
+	}
+	if strings.Contains(out, "-a, --harness") {
+		t.Errorf("--harness must not take the -a shorthand:\n%s", out)
+	}
+	if strings.Contains(out, "--agent ") {
+		t.Errorf("--agent must be gone in this commit:\n%s", out)
 	}
 }

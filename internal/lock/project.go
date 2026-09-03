@@ -101,16 +101,16 @@ const projectLockVersion = 2
 // unknown keys inside each entry - a per-entry field added by a newer v2
 // survives this binary rewriting the entry's known fields.
 type ProjectLockFile struct {
-	Version          int
-	InstallMode      string
-	ConfiguredAgents []string
-	Skills           map[string]LocalSkillLockEntry
-	Knowledge        map[string]KnowledgeLockEntry
-	Plugins          map[string]PluginLockEntry
-	extra            map[string]json.RawMessage
-	rawSkills        map[string]json.RawMessage
-	rawKnowledge     map[string]json.RawMessage
-	rawPlugins       map[string]json.RawMessage
+	Version             int
+	InstallMode         string
+	ConfiguredHarnesses []string
+	Skills              map[string]LocalSkillLockEntry
+	Knowledge           map[string]KnowledgeLockEntry
+	Plugins             map[string]PluginLockEntry
+	extra               map[string]json.RawMessage
+	rawSkills           map[string]json.RawMessage
+	rawKnowledge        map[string]json.RawMessage
+	rawPlugins          map[string]json.RawMessage
 }
 
 // knownJSONKeys lists a struct's json field names, so entry marshalling can
@@ -234,7 +234,7 @@ func captureRawEntries(section json.RawMessage) map[string]json.RawMessage {
 
 func (l ProjectLockFile) isEmpty() bool {
 	return len(l.Skills) == 0 && len(l.Knowledge) == 0 && len(l.Plugins) == 0 &&
-		len(l.ConfiguredAgents) == 0 && len(l.extra) == 0 && l.InstallMode == ""
+		len(l.ConfiguredHarnesses) == 0 && len(l.extra) == 0 && l.InstallMode == ""
 }
 
 // orderedObject builds a JSON object whose keys come out in the order they
@@ -308,8 +308,8 @@ func (l ProjectLockFile) MarshalJSON() ([]byte, error) {
 	if l.InstallMode != "" {
 		o.write("installMode", l.InstallMode)
 	}
-	if len(l.ConfiguredAgents) > 0 {
-		o.write("configuredAgents", l.ConfiguredAgents)
+	if len(l.ConfiguredHarnesses) > 0 {
+		o.write("configuredHarnesses", l.ConfiguredHarnesses)
 	}
 	for _, s := range sections {
 		o.write(s.key, s.value)
@@ -340,8 +340,22 @@ func (l *ProjectLockFile) UnmarshalJSON(data []byte) error {
 	if err := decode("installMode", &l.InstallMode); err != nil {
 		return err
 	}
-	if err := decode("configuredAgents", &l.ConfiguredAgents); err != nil {
-		return err
+	if _, ok := raw["configuredHarnesses"]; ok {
+		if err := decode("configuredHarnesses", &l.ConfiguredHarnesses); err != nil {
+			return err
+		}
+	} else if _, ok := raw["configuredAgents"]; ok {
+		// PR 161 shipped mdm.lock's v2 format with this key spelled
+		// configuredAgents, before this rename landed. Real locks written by
+		// that branch are on disk under that spelling, so a plain
+		// decode("configuredHarnesses", ...) would silently lose their
+		// harness list on the next read. Falling back to the old key here —
+		// through decode, which deletes it from raw — both recovers the list
+		// and consumes the key, so a round trip never leaves a lock holding
+		// both spellings at once.
+		if err := decode("configuredAgents", &l.ConfiguredHarnesses); err != nil {
+			return err
+		}
 	}
 	l.rawSkills = captureRawEntries(raw["skills"])
 	l.rawKnowledge = captureRawEntries(raw["knowledge"])
@@ -466,7 +480,7 @@ func readLegacyLocksE(cwd string) (ProjectLockFile, error) {
 		return lk, err
 	}
 	lk.Skills = legacy.Skills
-	lk.ConfiguredAgents = legacy.ConfiguredAgents
+	lk.ConfiguredHarnesses = legacy.ConfiguredHarnesses
 	lk.Knowledge = kb.Bundles
 	lk.Plugins = pl.Plugins
 	return lk, nil

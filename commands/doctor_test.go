@@ -466,7 +466,7 @@ func isolatedGlobalSkillsDir(t *testing.T) string {
 // restore; doctor is where the user learns to run `mdm migrate` first.
 func TestCheckProjectMigrationReportsPendingInstallModeBackfill(t *testing.T) {
 	cwd := t.TempDir()
-	if err := lock.SetConfiguredAgents([]string{"claude-code"}, false, cwd); err != nil {
+	if err := lock.SetConfiguredHarnesses([]string{"claude-code"}, false, cwd); err != nil {
 		t.Fatal(err)
 	}
 	if err := lock.AddSkillToLocalLock("s1", lock.LocalSkillLockEntry{Source: "o/r", SourceType: "github"}, cwd); err != nil {

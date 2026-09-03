@@ -24,7 +24,7 @@ func buildSyncCmd(ver string) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "sync",
-		Short: "Sync skills from node_modules into agent directories",
+		Short: "Sync skills from node_modules into harness directories",
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			showLogo(ver)
@@ -65,13 +65,13 @@ func syncAndLockSkill(s *skill.Skill, harnesses []string, global bool, mode Inst
 	sName := sanitizeName(s.Name)
 	fmt.Printf("%sSyncing %s%s%s...\n", ansiDim, ansiText, s.Name, ansiReset)
 
-	vlog(verboseFlag, "syncing %s from %s → agents=%v (global=%v, mode=%v)", s.Name, s.Path, harnesses, global, mode)
+	vlog(verboseFlag, "syncing %s from %s → harnesses=%v (global=%v, mode=%v)", s.Name, s.Path, harnesses, global, mode)
 	var failedHarnesses []string
 	for _, harnessName := range harnesses {
 		result := installSkillForHarness(s, harnessName, global, mode)
 		fallbacks.note(harnessName, result)
 		if !result.Success {
-			vlog(verboseFlag, "install failed for %s → agent %q", s.Name, harnessName)
+			vlog(verboseFlag, "install failed for %s → harness %q", s.Name, harnessName)
 			failedHarnesses = append(failedHarnesses, harnessName)
 		}
 	}

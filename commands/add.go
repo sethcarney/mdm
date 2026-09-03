@@ -31,7 +31,7 @@ type AddOptions struct {
 	Yes               bool // skip prompts
 	Copy              bool
 	Symlink           bool
-	All               bool // --all: skill '*', agent '*', -y
+	All               bool // --all: skill '*', harness '*', -y
 	FullDepth         bool
 	SkipAudit         bool
 	FailOnAudit       bool
@@ -48,12 +48,12 @@ func buildAddCmd(ver string) *cobra.Command {
 		Aliases: []string{"a"},
 		Long: fmt.Sprintf(`Add a skill package from GitHub, a URL, or a local path.
 
-The --agent (-a) and --skill (-s) flags accept multiple values. You can
+The --harness and --skill (-s) flags accept multiple values. You can
 pass them space-separated after the flag or repeat the flag for each value
 - both styles are equivalent:
 
-  mdm skills add owner/repo -a claude-code cursor
-  mdm skills add owner/repo -a claude-code -a cursor
+  mdm skills add owner/repo --harness claude-code cursor
+  mdm skills add owner/repo --harness claude-code --harness cursor
 
 %sVersion pinning:%s
 Skills are versioned via the "version:" field in their SKILL.md frontmatter.
@@ -67,8 +67,8 @@ To update to the latest version, run:  mdm skills update
 %sExamples:%s
   mdm skills add vercel-labs/agent-skills
   mdm skills add vercel-labs/agent-skills -g
-  mdm skills add vercel-labs/agent-skills -a claude-code cursor
-  mdm skills add vercel-labs/agent-skills --agent claude-code --agent cursor
+  mdm skills add vercel-labs/agent-skills --harness claude-code cursor
+  mdm skills add vercel-labs/agent-skills --harness claude-code --harness cursor
   mdm skills add https://github.com/owner/repo
   mdm skills add owner/repo#v1.2.0
   mdm skills add ./my-local-skill`, ansiBold, ansiReset, ansiBold, ansiReset),
@@ -91,13 +91,13 @@ To update to the latest version, run:  mdm skills update
 	f := cmd.Flags()
 	f.BoolVarP(&opts.Global, "global", "g", false, "Install skill globally (user-level)")
 	f.BoolVarP(&opts.Project, "project", "p", false, "Force project-scope install")
-	f.StringArrayVarP(&opts.Harnesses, "agent", "a", nil, "Agents to install to (repeatable, use '*' for all)")
+	f.StringArrayVar(&opts.Harnesses, "harness", nil, "Harnesses to install to (repeatable, use '*' for all)")
 	f.StringArrayVarP(&opts.Skills, "skill", "s", nil, "Skill names to install (repeatable, use '*' for all)")
 	f.BoolVarP(&opts.ListOnly, "list", "l", false, "List available skills without installing")
 	f.BoolVarP(&opts.Yes, "yes", "y", false, "Skip confirmation prompts")
 	f.BoolVar(&opts.Copy, "copy", false, "Copy files instead of symlinking (switches the scope to copy mode)")
 	f.BoolVar(&opts.Symlink, "symlink", false, "Symlink files from .agents/skills (the default; switches a scope back from copy mode)")
-	f.BoolVar(&opts.All, "all", false, "Shorthand for --skill '*' --agent '*' -y")
+	f.BoolVar(&opts.All, "all", false, "Shorthand for --skill '*' --harness '*' -y")
 	f.BoolVar(&opts.FullDepth, "full-depth", false, "Search all subdirectories")
 	f.BoolVar(&opts.SkipAudit, "skip-audit", false, "Skip security audit check for public skills")
 	f.BoolVar(&opts.FailOnAudit, "fail-on-audit", false, "Exit non-zero when security findings are detected instead of prompting")
@@ -105,7 +105,7 @@ To update to the latest version, run:  mdm skills update
 
 	cmd.MarkFlagsMutuallyExclusive("copy", "symlink")
 
-	_ = cmd.RegisterFlagCompletionFunc("agent", harnessFlagCompletion)
+	_ = cmd.RegisterFlagCompletionFunc("harness", harnessFlagCompletion)
 
 	return cmd
 }
@@ -935,7 +935,7 @@ func commitScopeInstallMode(opts AddOptions, global bool, cwd string) (InstallMo
 
 // allHarnessesForScope lists every harness the given scope can install to: all of
 // them in project scope, and in global scope only those with a user-level
-// skills directory. It backs `-a *` and scopeInstallPaths. validateNamedHarnesses
+// skills directory. It backs `--harness *` and scopeInstallPaths. validateNamedHarnesses
 // and promptHarnessesYes apply no such filter; every registry entry sets
 // GlobalSkillsDir today, so the gap cannot trigger.
 func allHarnessesForScope(global bool) []string {
@@ -956,11 +956,11 @@ func validateNamedHarnesses(names []string) ([]string, bool) {
 		if harness.AllHarnesses[a] != nil {
 			validated = append(validated, a)
 		} else {
-			ui.LogWarn("Unknown agent: " + a)
+			ui.LogWarn("Unknown harness: " + a)
 		}
 	}
 	if len(validated) == 0 {
-		fmt.Fprintf(os.Stderr, "%sNo valid agents specified.%s\n", ansiText, ansiReset)
+		fmt.Fprintf(os.Stderr, "%sNo valid harnesses specified.%s\n", ansiText, ansiReset)
 		return nil, false
 	}
 	return validated, true
@@ -1046,7 +1046,7 @@ func computeHarnessInitSel(options []ui.UIOption, detectedUnique []string, lastS
 // harnesses when available and falling back to detected harnesses.
 func promptHarnessesYes(configured []string, lockedOptions, options []ui.UIOption, detected []string) []string {
 	if len(configured) > 0 {
-		// configuredAgents only holds non-universal harnesses; always expand
+		// configuredHarnesses only holds non-universal harnesses; always expand
 		// with the locked universal harnesses for the actual installation.
 		added := make(map[string]bool)
 		var result []string
@@ -1097,14 +1097,14 @@ func promptHarnesses(opts AddOptions, global bool, cwd string) ([]string, bool) 
 
 	// If the user has a configured harness list for this scope, use it as the
 	// default — for both --yes and the interactive picker.
-	configured := lock.GetConfiguredAgents(global, cwd)
+	configured := lock.GetConfiguredHarnesses(global, cwd)
 
 	if opts.Yes {
 		return promptHarnessesYes(configured, lockedOptions, options, detected), true
 	}
 
 	if len(options) == 0 && len(lockedOptions) == 0 {
-		fmt.Fprintf(os.Stderr, "%sNo agents available.%s\n", ansiText, ansiReset)
+		fmt.Fprintf(os.Stderr, "%sNo harnesses available.%s\n", ansiText, ansiReset)
 		return nil, false
 	}
 	if len(options) == 0 {
@@ -1116,7 +1116,7 @@ func promptHarnesses(opts AddOptions, global bool, cwd string) ([]string, bool) 
 	}
 
 	initSel := computeHarnessInitSel(options, detectedUnique, configured)
-	selectedIndices, ok := ui.UiSearchMultiselect("Which agents would you like to install to?", options, lockedOptions, initSel, false)
+	selectedIndices, ok := ui.UiSearchMultiselect("Which harnesses would you like to install to?", options, lockedOptions, initSel, false)
 	if !ok {
 		return nil, false
 	}
@@ -1145,8 +1145,8 @@ func promptHarnesses(opts AddOptions, global bool, cwd string) ([]string, bool) 
 	}
 	// Only save the user's explicit non-universal selections. Universal harnesses
 	// (.agents/skills) are always supported — no need to track them.
-	if err := lock.SetConfiguredAgents(userSelected, global, cwd); err != nil {
-		ui.LogWarn(fmt.Sprintf("could not save agent preferences: %v", err))
+	if err := lock.SetConfiguredHarnesses(userSelected, global, cwd); err != nil {
+		ui.LogWarn(fmt.Sprintf("could not save harness preferences: %v", err))
 	}
 	return result, true
 }
@@ -1213,7 +1213,7 @@ func printInstallSummary(count int, global bool, harnesses []string, mode Instal
 				displayNames = append(displayNames, a)
 			}
 		}
-		fmt.Printf("%s  Agents: %s%s\n", ansiDim, strings.Join(displayNames, ", "), ansiReset)
+		fmt.Printf("%s  Harnesses: %s%s\n", ansiDim, strings.Join(displayNames, ", "), ansiReset)
 	}
 	fmt.Println()
 	fallbacks.warn()

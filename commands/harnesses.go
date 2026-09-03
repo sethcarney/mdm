@@ -18,18 +18,18 @@ import (
 
 func buildHarnessesCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "agents",
-		Short: "Manage your configured agent list",
-		Long: fmt.Sprintf(`Manage the list of AI agents mdm should support by default.
+		Use:   "harnesses",
+		Short: "Manage the AI harnesses mdm installs into",
+		Long: fmt.Sprintf(`Manage the list of AI harnesses mdm should support by default.
 
-Configured agents are used as the default selection when running
-%smdm skills add%s without an explicit %s--agent%s flag.
+Configured harnesses are used as the default selection when running
+%smdm skills add%s without an explicit %s--harness%s flag.
 
 %sExamples:%s
-  mdm agents list
-  mdm agents add claude-code cursor
-  mdm agents remove cursor
-  mdm agents add --global claude-code`, ansiBold, ansiReset, ansiBold, ansiReset, ansiBold, ansiReset),
+  mdm harnesses list
+  mdm harnesses add claude-code cursor
+  mdm harnesses remove cursor
+  mdm harnesses add --global claude-code`, ansiBold, ansiReset, ansiBold, ansiReset, ansiBold, ansiReset),
 		Run: func(cmd *cobra.Command, args []string) {
 			_ = cmd.Help()
 		},
@@ -58,14 +58,14 @@ func buildHarnessesListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
-		Short:   "List configured agents",
+		Short:   "List configured harnesses",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if available {
 				return runHarnessesListAvailable(jsonMode)
 			}
 
 			cwd, _ := os.Getwd()
-			configured := lock.GetConfiguredAgents(global, cwd)
+			configured := lock.GetConfiguredHarnesses(global, cwd)
 			scope := "project"
 			if global {
 				scope = "global"
@@ -90,11 +90,11 @@ func buildHarnessesListCmd() *cobra.Command {
 			}
 
 			if len(configured) == 0 {
-				fmt.Printf("%sNo agents configured for %s scope.%s\n", ansiDim, scope, ansiReset)
-				fmt.Printf("Run %smdm agents add%s to configure your agents.\n", ansiBold, ansiReset)
+				fmt.Printf("%sNo harnesses configured for %s scope.%s\n", ansiDim, scope, ansiReset)
+				fmt.Printf("Run %smdm harnesses add%s to configure your harnesses.\n", ansiBold, ansiReset)
 				return nil
 			}
-			fmt.Printf("%s%s scope agents:%s\n\n", ansiBold, strings.ToUpper(scope[:1])+scope[1:], ansiReset)
+			fmt.Printf("%s%s scope harnesses:%s\n\n", ansiBold, strings.ToUpper(scope[:1])+scope[1:], ansiReset)
 			for _, name := range configured {
 				cfg := harness.AllHarnesses[name]
 				if cfg == nil {
@@ -111,9 +111,9 @@ func buildHarnessesListCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVarP(&global, "global", "g", false, "List global configured agents")
+	cmd.Flags().BoolVarP(&global, "global", "g", false, "List global configured harnesses")
 	cmd.Flags().BoolVar(&jsonMode, "json", false, "Output as JSON")
-	cmd.Flags().BoolVar(&available, "available", false, "List all agents known to mdm (not just configured ones)")
+	cmd.Flags().BoolVar(&available, "available", false, "List all harnesses known to mdm (not just configured ones)")
 	return cmd
 }
 
@@ -145,7 +145,7 @@ func runHarnessesListAvailable(jsonMode bool) error {
 		return nil
 	}
 
-	fmt.Printf("%sAll available agents:%s\n\n", ansiBold, ansiReset)
+	fmt.Printf("%sAll available harnesses:%s\n\n", ansiBold, ansiReset)
 	for _, item := range items {
 		detected := ""
 		if item.Installed {
@@ -160,13 +160,13 @@ func runHarnessesListAvailable(jsonMode bool) error {
 func buildHarnessesAddCmd() *cobra.Command {
 	var global bool
 	cmd := &cobra.Command{
-		Use:     "add [agents...]",
+		Use:     "add [harnesses...]",
 		Aliases: []string{"a"},
-		Short:   "Add agents to your configured list",
-		Long: fmt.Sprintf(`Add one or more agents to your configured list.
+		Short:   "Add harnesses to your configured list",
+		Long: fmt.Sprintf(`Add one or more harnesses to your configured list.
 
-If no agent names are provided an interactive picker is shown.
-Use %s--global%s / %s-g%s to configure agents at the user level.`, ansiBold, ansiReset, ansiBold, ansiReset),
+If no harness names are provided an interactive picker is shown.
+Use %s--global%s / %s-g%s to configure harnesses at the user level.`, ansiBold, ansiReset, ansiBold, ansiReset),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cwd, _ := os.Getwd()
 
@@ -198,10 +198,10 @@ Use %s--global%s / %s-g%s to configure agents at the user level.`, ansiBold, ans
 			}
 			toAdd, ok := validateNamedHarnesses(args)
 			if !ok {
-				return fmt.Errorf("no valid agents specified")
+				return fmt.Errorf("no valid harnesses specified")
 			}
 			if err := lock.AddToConfiguredAgents(toAdd, global, cwd); err != nil {
-				ui.LogError(fmt.Sprintf("could not save agent configuration: %v", err))
+				ui.LogError(fmt.Sprintf("could not save harness configuration: %v", err))
 				return nil
 			}
 			for _, name := range toAdd {
@@ -210,14 +210,14 @@ Use %s--global%s / %s-g%s to configure agents at the user level.`, ansiBold, ans
 				if cfg != nil {
 					displayName = cfg.DisplayName
 				}
-				fmt.Printf("%s✓%s Added %s%s%s to %s configured agents\n",
+				fmt.Printf("%s✓%s Added %s%s%s to %s configured harnesses\n",
 					ansiGreen, ansiReset, ansiBold, displayName, ansiReset, scope)
 			}
 			runHarnessSetup(toAdd, cwd)
 			return nil
 		},
 	}
-	cmd.Flags().BoolVarP(&global, "global", "g", false, "Add to global configured agents")
+	cmd.Flags().BoolVarP(&global, "global", "g", false, "Add to global configured harnesses")
 	return cmd
 }
 
@@ -227,7 +227,7 @@ Use %s--global%s / %s-g%s to configure agents at the user level.`, ansiBold, ans
 // file) are excluded from the picker — they are always supported and need no
 // configuration. Returns the saved harness names so the caller can act on them.
 func pickAndSaveHarnesses(global bool, scope, cwd string) ([]string, error) {
-	current := lock.GetConfiguredAgents(global, cwd)
+	current := lock.GetConfiguredHarnesses(global, cwd)
 	currentSet := map[string]bool{}
 	for _, a := range current {
 		currentSet[a] = true
@@ -259,7 +259,7 @@ func pickAndSaveHarnesses(global bool, scope, cwd string) ([]string, error) {
 		}
 	}
 
-	selected, ok := ui.UiSearchMultiselect("Which agents do you want to configure?", options, lockedOptions, initSel, false)
+	selected, ok := ui.UiSearchMultiselect("Which harnesses do you want to configure?", options, lockedOptions, initSel, false)
 	if !ok {
 		return nil, nil
 	}
@@ -268,12 +268,12 @@ func pickAndSaveHarnesses(global bool, scope, cwd string) ([]string, error) {
 		newList = append(newList, options[i].Value)
 	}
 	if len(newList) == 0 {
-		fmt.Printf("%sNo agents selected.%s\n", ansiDim, ansiReset)
+		fmt.Printf("%sNo harnesses selected.%s\n", ansiDim, ansiReset)
 		return nil, nil
 	}
 	sort.Strings(newList)
-	if err := lock.SetConfiguredAgents(newList, global, cwd); err != nil {
-		ui.LogError(fmt.Sprintf("could not save agent configuration: %v", err))
+	if err := lock.SetConfiguredHarnesses(newList, global, cwd); err != nil {
+		ui.LogError(fmt.Sprintf("could not save harness configuration: %v", err))
 		return nil, nil
 	}
 	printHarnessesSaved(newList, scope)
@@ -294,7 +294,7 @@ func promptHarnessScope() (isGlobal bool, ok bool) {
 		{Label: "Project", Value: "project", Hint: lockName + " in this directory"},
 		{Label: "Global", Value: "global", Hint: "~/.agents/mdm-state.json"},
 	}
-	idx, ok := ui.UiSelect("Configure agents for which scope?", opts)
+	idx, ok := ui.UiSelect("Configure harnesses for which scope?", opts)
 	if !ok {
 		return false, false
 	}
@@ -305,14 +305,14 @@ func buildHarnessesRemoveCmd() *cobra.Command {
 	var global bool
 	var yes bool
 	cmd := &cobra.Command{
-		Use:     "remove [agents...]",
+		Use:     "remove [harnesses...]",
 		Aliases: []string{"rm", "r"},
-		Short:   "Remove agents from your configured list",
+		Short:   "Remove harnesses from your configured list",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runHarnessesRemove(cmd, args, global, yes)
 		},
 	}
-	cmd.Flags().BoolVarP(&global, "global", "g", false, "Remove from global configured agents")
+	cmd.Flags().BoolVarP(&global, "global", "g", false, "Remove from global configured harnesses")
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "Skip confirmation prompts")
 	return cmd
 }
@@ -333,14 +333,14 @@ func runHarnessesRemove(cmd *cobra.Command, args []string, global, yes bool) err
 		scope = "global"
 	}
 
-	configured := lock.GetConfiguredAgents(global, cwd)
+	configured := lock.GetConfiguredHarnesses(global, cwd)
 	if len(configured) == 0 {
-		fmt.Printf("%sNo agents configured for %s scope.%s\n", ansiDim, scope, ansiReset)
+		fmt.Printf("%sNo harnesses configured for %s scope.%s\n", ansiDim, scope, ansiReset)
 		return nil
 	}
 
 	if yes && len(args) == 0 {
-		return fmt.Errorf("agent names are required when using --yes")
+		return fmt.Errorf("harness names are required when using --yes")
 	}
 
 	toRemove, ok := resolveHarnessesToRemove(args, configured)
@@ -354,7 +354,7 @@ func runHarnessesRemove(cmd *cobra.Command, args []string, global, yes bool) err
 	}
 
 	if err := lock.RemoveFromConfiguredAgents(toRemove, global, cwd); err != nil {
-		ui.LogError(fmt.Sprintf("could not save agent configuration: %v", err))
+		ui.LogError(fmt.Sprintf("could not save harness configuration: %v", err))
 		return nil
 	}
 	for _, name := range toRemove {
@@ -363,7 +363,7 @@ func runHarnessesRemove(cmd *cobra.Command, args []string, global, yes bool) err
 		if cfg != nil {
 			displayName = cfg.DisplayName
 		}
-		fmt.Printf("%s✓%s Removed %s%s%s from %s configured agents\n",
+		fmt.Printf("%s✓%s Removed %s%s%s from %s configured harnesses\n",
 			ansiGreen, ansiReset, ansiBold, displayName, ansiReset, scope)
 	}
 	fmt.Println()
@@ -396,7 +396,7 @@ func confirmHarnessesRemoval(toRemove []string) bool {
 			displayNames = append(displayNames, name)
 		}
 	}
-	confirmed, ok := ui.UiConfirm(fmt.Sprintf("Remove %d agent(s): %s?", len(toRemove), strings.Join(displayNames, ", ")))
+	confirmed, ok := ui.UiConfirm(fmt.Sprintf("Remove %d harness(es): %s?", len(toRemove), strings.Join(displayNames, ", ")))
 	return ok && confirmed
 }
 
@@ -413,13 +413,13 @@ func pickHarnessesToRemove(configured []string) ([]string, bool) {
 		options = append(options, ui.UIOption{Label: label, Value: name})
 	}
 
-	indices, ok := ui.UiMultiselect("Which agents would you like to remove?", options, false, nil, nil)
+	indices, ok := ui.UiMultiselect("Which harnesses would you like to remove?", options, false, nil, nil)
 	if !ok {
 		fmt.Println("Cancelled.")
 		return nil, false
 	}
 	if len(indices) == 0 {
-		fmt.Printf("%sNo agents selected.%s\n", ansiDim, ansiReset)
+		fmt.Printf("%sNo harnesses selected.%s\n", ansiDim, ansiReset)
 		return nil, false
 	}
 	var toRemove []string
@@ -485,11 +485,11 @@ func reportHarnessSkillsDirCleanup(skillsPath, displayName string) {
 // that belong exclusively to each harness being removed. Shared resources
 // (.agents/skills, AGENTS.md) are never touched.
 func cleanUpRemovedHarnessFiles(toRemove []string, global bool, cwd string) {
-	vlog(verboseFlag, "cleaning up files for removed agent(s): %v (global=%v)", toRemove, global)
+	vlog(verboseFlag, "cleaning up files for removed harness(es): %v (global=%v)", toRemove, global)
 	for _, name := range toRemove {
 		cfg := harness.AllHarnesses[name]
 		if cfg == nil {
-			vlog(verboseFlag, "skip %q: unknown agent, no files to clean", name)
+			vlog(verboseFlag, "skip %q: unknown harness, no files to clean", name)
 			continue
 		}
 
@@ -627,11 +627,11 @@ func collectSkillLinkSpecs(targets []string, cwd string) []skillLinkSpec {
 func installLockedSkillsForHarnesses(harnessNames []string, cwd string) {
 	targets := harnessesNeedingSkillLinks(harnessNames)
 	if len(targets) == 0 {
-		vlog(verboseFlag, "no agents need explicit skill links (all use shared skills dir)")
+		vlog(verboseFlag, "no harnesses need explicit skill links (all use shared skills dir)")
 		return
 	}
 	specs := collectSkillLinkSpecs(targets, cwd)
-	vlog(verboseFlag, "linking locked skills: %d target agent(s), %d link spec(s)", len(targets), len(specs))
+	vlog(verboseFlag, "linking locked skills: %d target harness(es), %d link spec(s)", len(targets), len(specs))
 	if len(specs) == 0 {
 		return
 	}
@@ -660,7 +660,7 @@ func installLockedSkillsForHarnesses(harnessNames []string, cwd string) {
 }
 
 func printHarnessesSaved(harnesses []string, scope string) {
-	fmt.Printf("%s✓%s Configured %d agent(s) for %s scope:\n", ansiGreen, ansiReset, len(harnesses), scope)
+	fmt.Printf("%s✓%s Configured %d harness(es) for %s scope:\n", ansiGreen, ansiReset, len(harnesses), scope)
 	for _, name := range harnesses {
 		cfg := harness.AllHarnesses[name]
 		displayName := name

@@ -37,7 +37,7 @@ func TestNewerLockVersionAborts(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: my-skill\ndescription: d\n---\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	_, _, code = runMdmInDir(t, dir, env, "skills", "add", "./my-skill", "-p", "-y", "-a", "claude-code")
+	_, _, code = runMdmInDir(t, dir, env, "skills", "add", "./my-skill", "-p", "-y", "--harness", "claude-code")
 	if code == 0 {
 		t.Fatal("expected skills add to abort instead of overwriting a newer lock")
 	}

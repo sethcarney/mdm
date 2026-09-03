@@ -72,8 +72,8 @@ func assertMigratedProject(t *testing.T, cwd string) {
 	if _, ok := lk.Plugins["p1"]; !ok {
 		t.Error("plugin entry not migrated")
 	}
-	if len(lk.ConfiguredAgents) != 1 {
-		t.Errorf("configuredAgents not migrated: %v", lk.ConfiguredAgents)
+	if len(lk.ConfiguredHarnesses) != 1 {
+		t.Errorf("configuredAgents not migrated: %v", lk.ConfiguredHarnesses)
 	}
 
 	// knowledge/plugins locks are deleted; skills-lock.json is a tombstone.
@@ -385,7 +385,7 @@ func TestMigrationIgnoresSharedSkillsDirHarnesses(t *testing.T) {
 // files left, but its lock still has no mode and its skills may be copies.
 func TestMigrationBackfillsInstallModeOnExistingLock(t *testing.T) {
 	cwd := t.TempDir()
-	if err := SetConfiguredAgents([]string{"claude-code"}, false, cwd); err != nil {
+	if err := SetConfiguredHarnesses([]string{"claude-code"}, false, cwd); err != nil {
 		t.Fatal(err)
 	}
 	if err := AddSkillToLocalLock("s1", LocalSkillLockEntry{Source: "o/r", SourceType: "github"}, cwd); err != nil {
@@ -468,7 +468,7 @@ func TestGlobalMigrationBackfillsInstallMode(t *testing.T) {
 
 	state := EmptyGlobalState()
 	state.Skills = map[string]SkillLockEntry{"s1": {Source: "o/r", SourceType: "github"}}
-	state.ConfiguredAgents = []string{"mdm-test-harness"}
+	state.ConfiguredHarnesses = []string{"mdm-test-harness"}
 	if err := WriteGlobalState(state); err != nil {
 		t.Fatal(err)
 	}
@@ -549,7 +549,7 @@ func TestGlobalMigrationLeavesModeEmptyForSymlinks(t *testing.T) {
 
 	state := EmptyGlobalState()
 	state.Skills = map[string]SkillLockEntry{"s1": {Source: "o/r", SourceType: "github"}}
-	state.ConfiguredAgents = []string{"mdm-test-harness"}
+	state.ConfiguredHarnesses = []string{"mdm-test-harness"}
 	if err := WriteGlobalState(state); err != nil {
 		t.Fatal(err)
 	}
@@ -566,7 +566,7 @@ func TestGlobalMigrationLeavesModeEmptyForSymlinks(t *testing.T) {
 	}
 }
 
-// `mdm skills add <src> -a claude-code -y` leaves configuredAgents empty,
+// `mdm skills add <src> --harness claude-code -y` leaves configuredHarnesses empty,
 // so inference has to sweep every harness to find that install.
 func TestMigrationInfersCopyWithoutConfiguredAgents(t *testing.T) {
 	cwd := t.TempDir()
@@ -608,5 +608,36 @@ func TestMigrationWithoutConfiguredAgentsStillHonorsSymlinks(t *testing.T) {
 	}
 	if got := ReadProjectLock(cwd).InstallMode; got != "" {
 		t.Errorf("InstallMode = %q, want empty", got)
+	}
+}
+
+// The v1 format is frozen and in the wild, so its key stays configuredAgents.
+// v2 is unreleased, so its key is free to say what it means. Migration is
+// where the two formats meet, and it must carry the list across.
+func TestMigrationMapsConfiguredAgentsOntoHarnesses(t *testing.T) {
+	cwd := t.TempDir()
+	legacy := `{"version":1,"skills":{"s1":{"source":"o/r","sourceType":"github"}},` +
+		`"configuredAgents":["claude-code","codex"]}`
+	if err := os.WriteFile(filepath.Join(cwd, "skills-lock.json"), []byte(legacy), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := PlanProjectMigration(cwd); err != nil {
+		t.Fatal(err)
+	}
+	if err := ExecuteProjectMigration(cwd, true); err != nil {
+		t.Fatal(err)
+	}
+
+	got := ReadLocalLock(cwd).ConfiguredHarnesses
+	if len(got) != 2 || got[0] != "claude-code" || got[1] != "codex" {
+		t.Errorf("ConfiguredHarnesses = %v, want [claude-code codex]", got)
+	}
+	raw, err := os.ReadFile(filepath.Join(cwd, "mdm.lock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"configuredHarnesses"`) {
+		t.Errorf("mdm.lock does not use the v2 key:\n%s", raw)
 	}
 }

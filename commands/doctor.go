@@ -63,15 +63,15 @@ func buildDoctorCmd() *cobra.Command {
 
 Checks performed:
   • Missing skill directories or SKILL.md files
-  • Broken symlinks in agent skill directories
+  • Broken symlinks in harness skill directories
   • Skills modified since install (hash mismatch; global installs with a recorded hash only)
   • Markdown files inside skill directories that are too large
-  • Oversized agent instruction files (CLAUDE.md, AGENTS.md, .cursorrules, etc.)
-  • Configured agents whose instruction file is not yet linked to AGENTS.md
-  • Configured agents with linked rules but missing skill symlinks
+  • Oversized harness instruction files (CLAUDE.md, AGENTS.md, .cursorrules, etc.)
+  • Configured harnesses whose instruction file is not yet linked to AGENTS.md
+  • Configured harnesses with linked rules but missing skill symlinks
   • Missing README in the project root
   • Legacy v1 lock files, and an install mode a scope uses but has not recorded
-  • All other .md files in the project that may strain agent context windows
+  • All other .md files in the project that may strain harness context windows
 
 Exits 1 when any error-level issue is found (warnings alone exit 0), so
 doctor can gate CI.
@@ -375,12 +375,12 @@ func checkLargeMarkdown(r *doctorResult) {
 		case size >= fileSizeErrorBytes:
 			r.Issues = append(r.Issues, doctorIssue{
 				Level:   "error",
-				Message: fmt.Sprintf("%s is %s - likely too large for agent context windows", rel, formatFileSize(size)),
+				Message: fmt.Sprintf("%s is %s — likely too large for harness context windows", rel, formatFileSize(size)),
 			})
 		case size >= fileSizeWarnBytes:
 			r.Issues = append(r.Issues, doctorIssue{
 				Level:   "warn",
-				Message: fmt.Sprintf("%s is %s - may strain agent context windows", rel, formatFileSize(size)),
+				Message: fmt.Sprintf("%s is %s — may strain harness context windows", rel, formatFileSize(size)),
 			})
 		}
 		return nil
@@ -389,10 +389,10 @@ func checkLargeMarkdown(r *doctorResult) {
 
 // checkUnlinkedRulesHarnesses finds configured harnesses that have a unique
 // instructions file (e.g. CLAUDE.md, .cursorrules) which is not yet symlinked
-// to AGENTS.md. This means the harness has been added via skills add or agents
-// add but mdm rules link has not been run for it yet.
+// to AGENTS.md. This means the harness has been added via skills add or
+// harnesses add but mdm rules link has not been run for it yet.
 func checkUnlinkedRulesHarnesses(cwd string) []doctorIssue {
-	configured := lock.GetConfiguredAgents(false, cwd)
+	configured := lock.GetConfiguredHarnesses(false, cwd)
 	if len(configured) == 0 {
 		return nil
 	}
@@ -435,7 +435,7 @@ func checkUnlinkedRulesHarnesses(cwd string) []doctorIssue {
 // for one or more installed project skills. This catches the case where rules
 // link was run but skills add was never run for that harness.
 func checkMissingHarnessSkillLinks(cwd string) []doctorIssue {
-	configured := lock.GetConfiguredAgents(false, cwd)
+	configured := lock.GetConfiguredHarnesses(false, cwd)
 	if len(configured) == 0 {
 		return nil
 	}
@@ -516,12 +516,12 @@ func checkInstructionFiles(cwd string) []doctorIssue {
 		case size >= fileSizeErrorBytes:
 			issues = append(issues, doctorIssue{
 				Level:   "error",
-				Message: fmt.Sprintf("%s is %s - likely too large for agent context windows", fname, formatFileSize(size)),
+				Message: fmt.Sprintf("%s is %s — likely too large for harness context windows", fname, formatFileSize(size)),
 			})
 		case size >= fileSizeWarnBytes:
 			issues = append(issues, doctorIssue{
 				Level:   "warn",
-				Message: fmt.Sprintf("%s is %s - may strain agent context windows", fname, formatFileSize(size)),
+				Message: fmt.Sprintf("%s is %s — may strain harness context windows", fname, formatFileSize(size)),
 			})
 		}
 	}
@@ -588,12 +588,12 @@ func checkProjectMarkdown(cwd string, skipDirs map[string]bool, skipFiles map[st
 		case size >= fileSizeErrorBytes:
 			issues = append(issues, doctorIssue{
 				Level:   "error",
-				Message: fmt.Sprintf("%s is %s - likely too large for agent context windows", rel, formatFileSize(size)),
+				Message: fmt.Sprintf("%s is %s — likely too large for harness context windows", rel, formatFileSize(size)),
 			})
 		case size >= fileSizeWarnBytes:
 			issues = append(issues, doctorIssue{
 				Level:   "warn",
-				Message: fmt.Sprintf("%s is %s - may strain agent context windows", rel, formatFileSize(size)),
+				Message: fmt.Sprintf("%s is %s — may strain harness context windows", rel, formatFileSize(size)),
 			})
 		}
 		return nil

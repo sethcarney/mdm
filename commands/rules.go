@@ -20,17 +20,17 @@ const agentsMDFile = "AGENTS.md"
 func buildRulesCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "rules",
-		Short: "Manage agent instruction files",
-		Long: fmt.Sprintf(`Manage project-level instruction files for AI agents.
+		Short: "Manage harness instruction files",
+		Long: fmt.Sprintf(`Manage project-level instruction files for AI harnesses.
 
-%sAGENTS.md%s is the universal source of truth - read natively by Codex, Gemini CLI,
-OpenCode, and Replit. Use %smdm rules link%s to symlink agent-specific files
+%sAGENTS.md%s is the universal source of truth — read natively by Codex, Gemini CLI,
+OpenCode, and Replit. Use %smdm rules link%s to symlink harness-specific files
 (CLAUDE.md, .cursorrules, .windsurfrules, etc.) to it so every tool sees the
 same instructions.
 
 %sSubcommands:%s
-  link    Set up AGENTS.md as the source of truth and symlink agent files to it
-  status  Show the current state of all agent instruction files
+  link    Set up AGENTS.md as the source of truth and symlink harness files to it
+  status  Show the current state of all harness instruction files
   unlink  Remove symlinks created by mdm rules link`, ansiBold, ansiReset, ansiBold, ansiReset, ansiBold, ansiReset),
 		Run: func(cmd *cobra.Command, args []string) {
 			fmt.Println()
@@ -55,21 +55,21 @@ func buildRulesLinkCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "link",
-		Short: "Set up AGENTS.md as the source of truth for all agent rules",
+		Short: "Set up AGENTS.md as the source of truth for all harness rules",
 		Long: fmt.Sprintf(`Interactively set up AGENTS.md as the single source of truth.
 
 You will be prompted to select which AI tools you use. The command then:
 
-  1. Checks whether any of your agent instruction files already have content
-  2. If one does - promotes its content into AGENTS.md
-  3. If several do - asks which one to use as the source
-  4. Symlinks all agent-specific files (CLAUDE.md, .cursorrules, etc.) → AGENTS.md
+  1. Checks whether any of your harness instruction files already have content
+  2. If one does — promotes its content into AGENTS.md
+  3. If several do — asks which one to use as the source
+  4. Symlinks all harness-specific files (CLAUDE.md, .cursorrules, etc.) → AGENTS.md
 
 Existing real files are replaced with symlinks only after confirmation (or with -y).
 
 %sExamples:%s
   mdm rules link
-  mdm rules link --agent claude-code cursor
+  mdm rules link --harness claude-code cursor
   mdm rules link -y`, ansiBold, ansiReset),
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
@@ -78,10 +78,10 @@ Existing real files are replaced with symlinks only after confirmation (or with 
 	}
 
 	f := cmd.Flags()
-	f.StringArrayVarP(&harnessFilter, "agent", "a", nil, "Skip prompt and link specific agents (repeatable)")
+	f.StringArrayVar(&harnessFilter, "harness", nil, "Skip prompt and link specific harnesses (repeatable)")
 	f.BoolVarP(&yes, "yes", "y", false, "Replace existing real files without prompting")
 
-	_ = cmd.RegisterFlagCompletionFunc("agent", harnessFlagCompletion)
+	_ = cmd.RegisterFlagCompletionFunc("harness", harnessFlagCompletion)
 
 	return cmd
 }
@@ -235,7 +235,7 @@ func selectHarnessesToLink(harnessFilter []string, linkable []harnessCandidate, 
 			}
 		}
 		if len(selected) == 0 {
-			fmt.Printf("%sNo matching agents found.%s\n", ansiDim, ansiReset)
+			fmt.Printf("%sNo matching harnesses found.%s\n", ansiDim, ansiReset)
 			return nil, false
 		}
 		return selected, true
@@ -245,10 +245,10 @@ func selectHarnessesToLink(harnessFilter []string, linkable []harnessCandidate, 
 	// If the user has explicitly configured their harnesses, pre-select only those;
 	// otherwise fall back to whatever is detected as installed.
 	configuredSet := make(map[string]bool)
-	for _, a := range lock.GetConfiguredAgents(false, cwd) {
+	for _, a := range lock.GetConfiguredHarnesses(false, cwd) {
 		configuredSet[a] = true
 	}
-	for _, a := range lock.GetConfiguredAgents(true, cwd) {
+	for _, a := range lock.GetConfiguredHarnesses(true, cwd) {
 		configuredSet[a] = true
 	}
 
@@ -364,20 +364,20 @@ func runRulesLink(harnessFilter []string, yes bool) {
 		return
 	}
 	if len(selected) == 0 {
-		fmt.Printf("%sNo agents selected.%s\n", ansiDim, ansiReset)
+		fmt.Printf("%sNo harnesses selected.%s\n", ansiDim, ansiReset)
 		return
 	}
 
-	// Persist the selection into configuredAgents so skills add and other
+	// Persist the selection into configuredHarnesses so skills add and other
 	// commands default to the same set. Only applies when the user went
-	// through the interactive picker (not --agent flag).
+	// through the interactive picker (not --harness flag).
 	if len(harnessFilter) == 0 {
 		var names []string
 		for _, c := range selected {
 			names = append(names, c.name)
 		}
 		if err := lock.AddToConfiguredAgents(names, false, cwd); err != nil {
-			ui.LogWarn(fmt.Sprintf("could not save agent preferences: %v", err))
+			ui.LogWarn(fmt.Sprintf("could not save harness preferences: %v", err))
 		}
 	}
 
@@ -400,13 +400,13 @@ func buildRulesStatusCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "status",
-		Short: "Show the state of agent instruction files",
-		Long: fmt.Sprintf(`Show whether each agent's instruction file exists, is a symlink,
+		Short: "Show the state of harness instruction files",
+		Long: fmt.Sprintf(`Show whether each harness's instruction file exists, is a symlink,
 or is missing.
 
 %sExamples:%s
   mdm rules status
-  mdm rules status --agent claude-code cursor
+  mdm rules status --harness claude-code cursor
   mdm rules status --json`, ansiBold, ansiReset),
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
@@ -414,9 +414,9 @@ or is missing.
 		},
 	}
 
-	cmd.Flags().StringArrayVarP(&harnessFilter, "agent", "a", nil, "Limit to specific agents (repeatable)")
+	cmd.Flags().StringArrayVar(&harnessFilter, "harness", nil, "Limit to specific harnesses (repeatable)")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output status as a JSON array")
-	_ = cmd.RegisterFlagCompletionFunc("agent", harnessFlagCompletion)
+	_ = cmd.RegisterFlagCompletionFunc("harness", harnessFlagCompletion)
 
 	return cmd
 }
@@ -482,7 +482,7 @@ func printRulesStatusTable(cwd string, files []string, fileDisplayHarnesses map[
 		}
 
 		fmt.Printf("  %-38s %-22s %s\n", file, stateLabel, hint)
-		fmt.Printf("  %sagents: %s%s\n\n", ansiDim, harnessList, ansiReset)
+		fmt.Printf("  %sharnesses: %s%s\n\n", ansiDim, harnessList, ansiReset)
 	}
 }
 
@@ -509,7 +509,7 @@ func runRulesStatus(harnessFilter []string, jsonOutput bool) {
 		if jsonOutput {
 			fmt.Println("[]")
 		} else {
-			fmt.Printf("%sNo agents with known instruction files.%s\n", ansiDim, ansiReset)
+			fmt.Printf("%sNo harnesses with known instruction files.%s\n", ansiDim, ansiReset)
 		}
 		return
 	}
@@ -535,13 +535,13 @@ func buildRulesUnlinkCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "unlink",
-		Short: "Remove symlinks from agent instruction files",
+		Short: "Remove symlinks from harness instruction files",
 		Long: fmt.Sprintf(`Remove symlinks that were created by %smdm rules link%s.
 Only symlinks are removed - real files are never touched.
 
 %sExamples:%s
   mdm rules unlink
-  mdm rules unlink --agent cursor windsurf
+  mdm rules unlink --harness cursor windsurf
   mdm rules unlink -y`, ansiBold, ansiReset, ansiBold, ansiReset),
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
@@ -550,10 +550,10 @@ Only symlinks are removed - real files are never touched.
 	}
 
 	f := cmd.Flags()
-	f.StringArrayVarP(&harnessFilter, "agent", "a", nil, "Limit to specific agents (repeatable)")
+	f.StringArrayVar(&harnessFilter, "harness", nil, "Limit to specific harnesses (repeatable)")
 	f.BoolVarP(&yes, "yes", "y", false, "Skip confirmation prompt")
 
-	_ = cmd.RegisterFlagCompletionFunc("agent", harnessFlagCompletion)
+	_ = cmd.RegisterFlagCompletionFunc("harness", harnessFlagCompletion)
 
 	return cmd
 }
@@ -600,7 +600,7 @@ func runRulesUnlink(harnessFilter []string, yes bool) {
 
 	sort.Slice(found, func(i, j int) bool { return found[i].file < found[j].file })
 
-	// When no --agent filter and not --yes, let the user pick which symlinks to remove.
+	// When no --harness filter and not --yes, let the user pick which symlinks to remove.
 	var toRemove []symlinkedFile
 	if len(harnessFilter) == 0 && !yes {
 		options := make([]ui.UIOption, len(found))

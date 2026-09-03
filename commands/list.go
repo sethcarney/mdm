@@ -47,10 +47,10 @@ func buildListCmd() *cobra.Command {
 	f := cmd.Flags()
 	f.BoolVarP(&globalFlag, "global", "g", false, "List global skills")
 	f.BoolVarP(&projectFlag, "project", "p", false, "List project skills")
-	f.StringArrayVarP(&harnessFilter, "agent", "a", nil, "Filter by specific agents")
+	f.StringArrayVar(&harnessFilter, "harness", nil, "Filter by specific harnesses")
 	f.BoolVar(&jsonMode, "json", false, "Output as JSON")
 
-	_ = cmd.RegisterFlagCompletionFunc("agent", harnessFlagCompletion)
+	_ = cmd.RegisterFlagCompletionFunc("harness", harnessFlagCompletion)
 
 	return cmd
 }
@@ -134,7 +134,7 @@ func printSkillsForScope(scopeSkills []*InstalledSkill, scope, cwd string) {
 					displayNames = append(displayNames, a)
 				}
 			}
-			fmt.Printf("    %sagents: %s%s\n", ansiDim, strings.Join(displayNames, ", "), ansiReset)
+			fmt.Printf("    %sharnesses: %s%s\n", ansiDim, strings.Join(displayNames, ", "), ansiReset)
 		}
 		if s.License != "" {
 			fmt.Printf("    %slicense: %s%s\n", ansiDim, s.License, ansiReset)

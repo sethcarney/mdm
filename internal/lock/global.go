@@ -48,14 +48,14 @@ type DismissedPrompts struct {
 // keys are captured on read and re-emitted on write, and so are unknown
 // keys inside each skill entry (see ProjectLockFile).
 type GlobalState struct {
-	Version          int
-	InstallMode      string
-	Skills           map[string]SkillLockEntry
-	Dismissed        DismissedPrompts
-	ConfiguredAgents []string
-	Experimental     []string
-	extra            map[string]json.RawMessage
-	rawSkills        map[string]json.RawMessage
+	Version             int
+	InstallMode         string
+	Skills              map[string]SkillLockEntry
+	Dismissed           DismissedPrompts
+	ConfiguredHarnesses []string
+	Experimental        []string
+	extra               map[string]json.RawMessage
+	rawSkills           map[string]json.RawMessage
 }
 
 // MarshalJSON emits known keys in a fixed order, then unknown keys sorted.
@@ -69,8 +69,8 @@ func (s GlobalState) MarshalJSON() ([]byte, error) {
 	if s.InstallMode != "" {
 		o.write("installMode", s.InstallMode)
 	}
-	if len(s.ConfiguredAgents) > 0 {
-		o.write("configuredAgents", s.ConfiguredAgents)
+	if len(s.ConfiguredHarnesses) > 0 {
+		o.write("configuredHarnesses", s.ConfiguredHarnesses)
 	}
 	o.write("skills", mergedSkills)
 	if s.Dismissed != (DismissedPrompts{}) {
@@ -105,8 +105,22 @@ func (s *GlobalState) UnmarshalJSON(data []byte) error {
 	if err := decode("installMode", &s.InstallMode); err != nil {
 		return err
 	}
-	if err := decode("configuredAgents", &s.ConfiguredAgents); err != nil {
-		return err
+	if _, ok := raw["configuredHarnesses"]; ok {
+		if err := decode("configuredHarnesses", &s.ConfiguredHarnesses); err != nil {
+			return err
+		}
+	} else if _, ok := raw["configuredAgents"]; ok {
+		// PR 161 shipped mdm-state.json's v2 format with this key spelled
+		// configuredAgents, before this rename landed. Real state files
+		// written by that branch are on disk under that spelling, so a
+		// plain decode("configuredHarnesses", ...) would silently lose
+		// their harness list on the next read. Falling back to the old key
+		// here — through decode, which deletes it from raw — both recovers
+		// the list and consumes the key, so a round trip never leaves the
+		// file holding both spellings at once.
+		if err := decode("configuredAgents", &s.ConfiguredHarnesses); err != nil {
+			return err
+		}
 	}
 	s.rawSkills = captureRawEntries(raw["skills"])
 	if err := decode("skills", &s.Skills); err != nil {
@@ -199,11 +213,11 @@ func readLegacyGlobalLock() GlobalState {
 		return EmptyGlobalState()
 	}
 	var legacy struct {
-		Version          int                       `json:"version"`
-		Skills           map[string]SkillLockEntry `json:"skills"`
-		Dismissed        DismissedPrompts          `json:"dismissed"`
-		ConfiguredAgents []string                  `json:"configuredAgents"`
-		Experimental     []string                  `json:"experimental"`
+		Version             int                       `json:"version"`
+		Skills              map[string]SkillLockEntry `json:"skills"`
+		Dismissed           DismissedPrompts          `json:"dismissed"`
+		ConfiguredHarnesses []string                  `json:"configuredAgents"`
+		Experimental        []string                  `json:"experimental"`
 	}
 	if err := json.Unmarshal(data, &legacy); err != nil {
 		return EmptyGlobalState()
@@ -212,11 +226,11 @@ func readLegacyGlobalLock() GlobalState {
 		return EmptyGlobalState()
 	}
 	return GlobalState{
-		Version:          globalStateVersion,
-		Skills:           legacy.Skills,
-		Dismissed:        legacy.Dismissed,
-		ConfiguredAgents: legacy.ConfiguredAgents,
-		Experimental:     legacy.Experimental,
+		Version:             globalStateVersion,
+		Skills:              legacy.Skills,
+		Dismissed:           legacy.Dismissed,
+		ConfiguredHarnesses: legacy.ConfiguredHarnesses,
+		Experimental:        legacy.Experimental,
 	}
 }
 

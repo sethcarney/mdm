@@ -52,15 +52,15 @@ func buildPluginsAddCmd() *cobra.Command {
 		Aliases: []string{"a"},
 		Long: fmt.Sprintf(`Install a plugin into ./%s/%s/ and record it in %s.
 
-The plugin's skills are linked into the agent skill directories, and its
-MCP servers are wired into the agents' MCP config files.
+The plugin's skills are linked into the harness skill directories, and its
+MCP servers are wired into the harnesses' MCP config files.
 
 Sources use the same forms as skills: owner/repo shorthand, full URLs,
 and local paths, with an optional #ref for version pinning.
 
 %sExamples:%s
   mdm plugins add acme/toolkit
-  mdm plugins add acme/toolkit#v1.2.0 -a claude-code
+  mdm plugins add acme/toolkit#v1.2.0 --harness claude-code
   mdm plugins add ./local-plugin --skip-mcp`, harness.SharedRootDir, pluginsSubdir, lockName, ansiBold, ansiReset),
 		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
@@ -70,13 +70,13 @@ and local paths, with an optional #ref for version pinning.
 
 	f := cmd.Flags()
 	f.StringArrayVarP(&opts.Plugins, "plugin", "p", nil, "Plugin names to install (repeatable, use '*' for all)")
-	f.StringArrayVarP(&opts.Harnesses, "agent", "a", nil, "Agents to install for (repeatable)")
+	f.StringArrayVar(&opts.Harnesses, "harness", nil, "Harnesses to install for (repeatable)")
 	f.BoolVarP(&opts.Yes, "yes", "y", false, "Skip confirmation prompts and install all discovered plugins")
 	f.BoolVar(&opts.DryRun, "dry-run", false, "Show what would be installed without writing anything")
 	f.BoolVar(&opts.AllowHiddenChars, "allow-hidden-chars", false, "Allow markdown files with hidden Unicode characters")
 	f.BoolVar(&opts.SkipMCP, "skip-mcp", false, "Install skills only; do not write MCP server config")
 
-	_ = cmd.RegisterFlagCompletionFunc("agent", harnessFlagCompletion)
+	_ = cmd.RegisterFlagCompletionFunc("harness", harnessFlagCompletion)
 
 	return cmd
 }
@@ -263,25 +263,25 @@ func scanPluginCandidates(selected []pluginCandidate, allow bool) bool {
 	return ok
 }
 
-// resolvePluginHarnesses picks the harnesses to install for: the --agent flag,
+// resolvePluginHarnesses picks the harnesses to install for: the --harness flag,
 // then the project's configured harnesses, then detected harnesses.
 func resolvePluginHarnesses(opts PluginsAddOptions, cwd string) ([]string, bool) {
 	if len(opts.Harnesses) > 0 {
 		for _, name := range opts.Harnesses {
 			if harness.AllHarnesses[name] == nil {
-				fmt.Fprintf(os.Stderr, "%sError:%s unknown agent %q\n", ansiText, ansiReset, name)
+				fmt.Fprintf(os.Stderr, "%sError:%s unknown harness %q\n", ansiText, ansiReset, name)
 				return nil, false
 			}
 		}
 		return opts.Harnesses, true
 	}
-	if configured := lock.GetConfiguredAgents(false, cwd); len(configured) > 0 {
+	if configured := lock.GetConfiguredHarnesses(false, cwd); len(configured) > 0 {
 		return configured, true
 	}
 	if detected := harness.DetectInstalledHarnesses(); len(detected) > 0 {
 		return detected, true
 	}
-	fmt.Fprintf(os.Stderr, "%sError:%s no agents detected - pass --agent (e.g. -a claude-code)\n", ansiText, ansiReset)
+	fmt.Fprintf(os.Stderr, "%sError:%s no harnesses detected — pass --harness (e.g. --harness claude-code)\n", ansiText, ansiReset)
 	return nil, false
 }
 

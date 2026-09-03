@@ -29,15 +29,15 @@ func buildRemoveCmd() *cobra.Command {
 		Use:     "remove [skills...]",
 		Short:   "Remove installed skills",
 		Aliases: []string{"rm", "r"},
-		Long: fmt.Sprintf(`Remove installed skills from agents.
+		Long: fmt.Sprintf(`Remove installed skills from harnesses.
 
 If no skill names are provided an interactive selection menu is shown.
 
-The --agent (-a) and --skill (-s) flags accept multiple values - space-
+The --harness and --skill (-s) flags accept multiple values — space-
 separated after the flag or repeated:
 
-  mdm skills remove -a claude-code cursor
-  mdm skills remove -a claude-code -a cursor
+  mdm skills remove --harness claude-code cursor
+  mdm skills remove --harness claude-code --harness cursor
 
 %sExamples:%s
   mdm skills remove
@@ -58,12 +58,12 @@ separated after the flag or repeated:
 
 	f := cmd.Flags()
 	f.BoolVarP(&opts.Global, "global", "g", false, "Remove from global scope")
-	f.StringArrayVarP(&opts.Harnesses, "agent", "a", nil, "Remove from specific agents (repeatable)")
+	f.StringArrayVar(&opts.Harnesses, "harness", nil, "Remove from specific harnesses (repeatable)")
 	f.StringArrayVarP(&opts.Skills, "skill", "s", nil, "Skill names to remove (repeatable)")
 	f.BoolVarP(&opts.Yes, "yes", "y", false, "Skip confirmation prompts")
-	f.BoolVar(&opts.All, "all", false, "Shorthand for --skill '*' --agent '*' -y")
+	f.BoolVar(&opts.All, "all", false, "Shorthand for --skill '*' --harness '*' -y")
 
-	_ = cmd.RegisterFlagCompletionFunc("agent", harnessFlagCompletion)
+	_ = cmd.RegisterFlagCompletionFunc("harness", harnessFlagCompletion)
 
 	return cmd
 }
@@ -176,12 +176,12 @@ func isCherryPickedSource(dir string) bool {
 func removeSkillFromDisk(sk *InstalledSkill, harnessesToRemove []string, global bool, cwd string) error {
 	sName := sanitizeName(sk.Name)
 	localSourceAbs := resolveLocalSourceAbs(sName, global, cwd)
-	vlog(verboseFlag, "removing %q from agents=%v (localSource=%q)", sk.Name, harnessesToRemove, localSourceAbs)
+	vlog(verboseFlag, "removing %q from harnesses=%v (localSource=%q)", sk.Name, harnessesToRemove, localSourceAbs)
 
 	for _, harnessName := range harnessesToRemove {
 		harnessBase := getHarnessBaseDir(harnessName, global, cwd)
 		if harnessBase == "" {
-			vlog(verboseFlag, "skip agent %q: no base dir resolved", harnessName)
+			vlog(verboseFlag, "skip harness %q: no base dir resolved", harnessName)
 			continue
 		}
 		for _, name := range []string{sName, filepath.Base(sk.Path)} {
@@ -270,7 +270,7 @@ func runRemove(positional []string, opts RemoveOptions) {
 	if !ok {
 		return
 	}
-	vlog(verboseFlag, "remove: global=%v filter=%v agents=%v", global, skillFilter, opts.Harnesses)
+	vlog(verboseFlag, "remove: global=%v filter=%v harnesses=%v", global, skillFilter, opts.Harnesses)
 
 	scopeGlobal := &global
 	installed, err := listInstalledSkills(scopeGlobal, opts.Harnesses)

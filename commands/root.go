@@ -37,16 +37,19 @@ func showLogo(ver string) {
 }
 
 // multiValueFlags are flags that accept multiple space-separated values after a
-// single flag instance (-a claude cursor) in addition to the repeated-flag form
-// (-a claude -a cursor). Both styles are supported.
+// single flag instance (--harness claude cursor) in addition to the repeated-flag
+// form (--harness claude --harness cursor). Both styles are supported.
+//
+// --harness has no shorthand — -a is deliberately left free for --agent in the
+// agent-definition command — so only its long form is listed here.
 var multiValueFlags = map[string]bool{
-	"agent": true, "a": true,
-	"skill": true, "s": true,
+	"harness": true,
+	"skill":   true, "s": true,
 }
 
 // normalizeMultiFlags rewrites space-separated multi-value flags into the
 // repeated-flag form that cobra/pflag expects.
-// e.g. ["-a", "claude", "cursor"] → ["-a", "claude", "-a", "cursor"]
+// e.g. ["--harness", "claude", "cursor"] → ["--harness", "claude", "--harness", "cursor"]
 func normalizeMultiFlags(args []string) []string {
 	result := make([]string, 0, len(args))
 	i := 0
