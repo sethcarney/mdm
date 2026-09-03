@@ -120,7 +120,7 @@ func TestProjectLockPreservesUnknownEntryKeys(t *testing.T) {
 }
 
 func TestGlobalStatePreservesUnknownEntryKeys(t *testing.T) {
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	isolateGlobal(t)
 	path := GetGlobalStatePath()
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		t.Fatal(err)
@@ -342,5 +342,123 @@ func TestProjectLockToleratesLegacyTombstone(t *testing.T) {
 	lk, err := readProjectLockE(cwd)
 	if err != nil || !lk.isEmpty() {
 		t.Errorf("tombstone-only project should read as empty, got %+v err=%v", lk, err)
+	}
+}
+
+func TestProjectLockRoundTripsInstallMode(t *testing.T) {
+	cwd := t.TempDir()
+	content := `{
+  "version": 1,
+  "installMode": "copy",
+  "skills": {
+    "my-skill": {"source": "o/r", "sourceType": "github"}
+  },
+  "futureFlag": true
+}
+`
+	if err := os.WriteFile(GetProjectLockPath(cwd), []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if got := ReadProjectLock(cwd).InstallMode; got != InstallModeCopy {
+		t.Fatalf("InstallMode = %q, want %q", got, InstallModeCopy)
+	}
+
+	// A write that touches only the skills section must not drop the mode,
+	// and must still preserve keys the codec does not understand.
+	if err := AddSkillToLocalLock("other", LocalSkillLockEntry{Source: "a/b", SourceType: "github"}, cwd); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(GetProjectLockPath(cwd))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatal(err)
+	}
+	if string(raw["installMode"]) != `"copy"` {
+		t.Errorf("installMode not persisted: %s", raw["installMode"])
+	}
+	if string(raw["futureFlag"]) != "true" {
+		t.Errorf("futureFlag not preserved: %s", raw["futureFlag"])
+	}
+}
+
+func TestProjectLockOmitsEmptyInstallMode(t *testing.T) {
+	cwd := t.TempDir()
+	if err := AddSkillToLocalLock("s", LocalSkillLockEntry{Source: "a/b", SourceType: "github"}, cwd); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(GetProjectLockPath(cwd))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "installMode") {
+		t.Errorf("empty install mode should not be written:\n%s", data)
+	}
+}
+
+func TestGlobalStateRoundTripsInstallMode(t *testing.T) {
+	isolateGlobal(t)
+	s := EmptyGlobalState()
+	s.InstallMode = InstallModeCopy
+	s.Skills["g"] = SkillLockEntry{Source: "o/r", SourceType: "github"}
+	if err := WriteGlobalState(s); err != nil {
+		t.Fatal(err)
+	}
+	if got := ReadGlobalState().InstallMode; got != InstallModeCopy {
+		t.Fatalf("InstallMode = %q, want %q", got, InstallModeCopy)
+	}
+}
+
+func TestProjectLockUpgradesV1InPlace(t *testing.T) {
+	cwd := t.TempDir()
+	v1 := `{"version":1,"skills":{"s1":{"source":"o/r","sourceType":"github"}},"configuredAgents":["claude-code"]}`
+	if err := os.WriteFile(GetProjectLockPath(cwd), []byte(v1), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	lk := ReadProjectLock(cwd)
+	if _, ok := lk.Skills["s1"]; !ok {
+		t.Fatal("a version 1 lock must not read as empty after the bump")
+	}
+	if len(lk.ConfiguredAgents) != 1 {
+		t.Errorf("configuredAgents lost on upgrade: %v", lk.ConfiguredAgents)
+	}
+	if lk.InstallMode != "" {
+		t.Errorf("upgrade must not infer a mode on read, got %q", lk.InstallMode)
+	}
+
+	// The next write persists it as version 2.
+	if err := AddSkillToLocalLock("s2", LocalSkillLockEntry{Source: "a/b", SourceType: "github"}, cwd); err != nil {
+		t.Fatal(err)
+	}
+	if got := ReadProjectLock(cwd).Version; got != projectLockVersion {
+		t.Errorf("Version = %d, want %d", got, projectLockVersion)
+	}
+}
+
+func TestProjectLockUnversionedStillReadsEmpty(t *testing.T) {
+	cwd := t.TempDir()
+	if err := os.WriteFile(GetProjectLockPath(cwd), []byte(`{"skills":{"s":{"source":"o/r","sourceType":"github"}}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if len(ReadProjectLock(cwd).Skills) != 0 {
+		t.Error("a lock with no version key must still read as empty")
+	}
+}
+
+func TestGlobalStateUpgradesV1InPlace(t *testing.T) {
+	isolateGlobal(t)
+	path := GetGlobalStatePath()
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatal(err)
+	}
+	v1 := `{"version":1,"skills":{"g1":{"source":"o/r","sourceType":"github"}}}`
+	if err := os.WriteFile(path, []byte(v1), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := ReadGlobalState().Skills["g1"]; !ok {
+		t.Fatal("a version 1 global state must not read as empty after the bump")
 	}
 }

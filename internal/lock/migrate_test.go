@@ -3,8 +3,11 @@ package lock
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
+
+	"github.com/sethcarney/mdm/internal/agent"
 )
 
 func writeLegacyProjectLocks(t *testing.T, cwd string) {
@@ -150,8 +153,7 @@ func TestPlanReportsOrphanedEntries(t *testing.T) {
 
 func writeLegacyGlobalLock(t *testing.T, content string) string {
 	t.Helper()
-	stateDir := t.TempDir()
-	t.Setenv("XDG_STATE_HOME", stateDir)
+	stateDir := isolateGlobal(t)
 	legacy := filepath.Join(stateDir, "skills", "skills-lock.json")
 	if err := os.MkdirAll(filepath.Dir(legacy), 0755); err != nil {
 		t.Fatal(err)
@@ -252,5 +254,359 @@ func TestProjectMigrationPreservesEntryFields(t *testing.T) {
 	}
 	if p := lk.Plugins["p1"]; p.DataDir != ".agents/plugins-data/p1" || p.SpecVersion != "1.0.0" || p.UpdatedAt != "t" {
 		t.Errorf("plugin fields not preserved: %+v", p)
+	}
+}
+
+// legacySkillsLock writes a v1 skills-lock.json naming skill s1 and the
+// agents the project had configured, if any. Inference reads the per-agent
+// install paths, so the agent list is part of the fixture.
+func legacySkillsLock(t *testing.T, cwd string, agents ...string) {
+	t.Helper()
+	legacy := `{"version":1,"skills":{"s1":{"source":"o/r","sourceType":"github"}}`
+	if len(agents) > 0 {
+		legacy += `,"configuredAgents":["` + strings.Join(agents, `","`) + `"]`
+	}
+	legacy += "}"
+	if err := os.WriteFile(filepath.Join(cwd, "skills-lock.json"), []byte(legacy), 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeSkillDir(t *testing.T, dir string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("# s1\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// linkSkill lays out a symlink-mode install of s1 for Claude Code: a real
+// canonical directory and .claude/skills/s1 pointing at it.
+func linkSkill(t *testing.T, cwd string) {
+	t.Helper()
+	canonical := filepath.Join(cwd, ".agents", "skills", "s1")
+	writeSkillDir(t, canonical)
+	link := filepath.Join(cwd, ".claude", "skills", "s1")
+	if err := os.MkdirAll(filepath.Dir(link), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(canonical, link); err != nil {
+		t.Skipf("symlinks unavailable on this host: %v", err)
+	}
+}
+
+// migratedMode runs the project migration and returns the mode it recorded.
+func migratedMode(t *testing.T, cwd string) string {
+	t.Helper()
+	if err := ExecuteProjectMigration(cwd, true); err != nil {
+		t.Fatal(err)
+	}
+	return ReadProjectLock(cwd).InstallMode
+}
+
+// A real directory at the agent's own install path, and no canonical
+// directory, is the shape --copy leaves.
+func TestMigrationInfersCopyModeFromRealDirectories(t *testing.T) {
+	cwd := t.TempDir()
+	legacySkillsLock(t, cwd, "claude-code")
+	writeSkillDir(t, filepath.Join(cwd, ".claude", "skills", "s1"))
+
+	plan, err := PlanProjectMigration(cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The plan names the mode it will write, so --dry-run can report it.
+	if plan.InstallModeBackfill != InstallModeCopy {
+		t.Errorf("planned InstallModeBackfill = %q, want %q", plan.InstallModeBackfill, InstallModeCopy)
+	}
+
+	if got := migratedMode(t, cwd); got != InstallModeCopy {
+		t.Errorf("InstallMode = %q, want %q", got, InstallModeCopy)
+	}
+}
+
+func TestMigrationLeavesModeEmptyWithoutEvidence(t *testing.T) {
+	cwd := t.TempDir()
+	legacySkillsLock(t, cwd, "claude-code")
+	if err := ExecuteProjectMigration(cwd, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := ReadProjectLock(cwd).InstallMode; got != "" {
+		t.Errorf("InstallMode = %q, want empty", got)
+	}
+}
+
+// A symlink install creates the canonical directory as a REAL directory, so
+// reading it as evidence would flip every symlink project to copy. Only the
+// per-agent paths count.
+func TestMigrationLeavesModeEmptyForSymlinkedSkills(t *testing.T) {
+	cwd := t.TempDir()
+	legacySkillsLock(t, cwd, "claude-code")
+
+	linkSkill(t, cwd)
+
+	if got := migratedMode(t, cwd); got != "" {
+		t.Errorf("InstallMode = %q, want empty for a symlinked skill", got)
+	}
+}
+
+// A canonical directory with no per-agent path beside it is not evidence.
+func TestMigrationIgnoresCanonicalDirectoryAlone(t *testing.T) {
+	cwd := t.TempDir()
+	legacySkillsLock(t, cwd, "claude-code")
+	writeSkillDir(t, filepath.Join(cwd, ".agents", "skills", "s1"))
+
+	if err := ExecuteProjectMigration(cwd, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := ReadProjectLock(cwd).InstallMode; got != "" {
+		t.Errorf("InstallMode = %q, want empty: the canonical directory is not an install location", got)
+	}
+}
+
+// An agent that reads the shared directory has the canonical directory as
+// its install path, real in both modes, so it is never evidence.
+func TestMigrationIgnoresSharedSkillsDirAgents(t *testing.T) {
+	if !agent.UsesSharedSkillsDir("amp") {
+		t.Skip("fixture agent no longer uses the shared skills directory")
+	}
+	cwd := t.TempDir()
+	legacySkillsLock(t, cwd, "amp")
+	writeSkillDir(t, filepath.Join(cwd, ".agents", "skills", "s1"))
+
+	if got := migratedMode(t, cwd); got != "" {
+		t.Errorf("InstallMode = %q, want empty for a shared-skills-dir agent", got)
+	}
+}
+
+// A project that migrated to v2 before the switch existed has no legacy
+// files left, but its lock still has no mode and its skills may be copies.
+func TestMigrationBackfillsInstallModeOnExistingLock(t *testing.T) {
+	cwd := t.TempDir()
+	if err := SetConfiguredAgents([]string{"claude-code"}, false, cwd); err != nil {
+		t.Fatal(err)
+	}
+	if err := AddSkillToLocalLock("s1", LocalSkillLockEntry{Source: "o/r", SourceType: "github"}, cwd); err != nil {
+		t.Fatal(err)
+	}
+	if got := ReadProjectLock(cwd).InstallMode; got != "" {
+		t.Fatalf("precondition failed: InstallMode = %q, want empty before backfill", got)
+	}
+	writeSkillDir(t, filepath.Join(cwd, ".claude", "skills", "s1"))
+
+	plan, err := PlanProjectMigration(cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plan.Needed() {
+		t.Fatal("plan should report a pending install-mode backfill even with no legacy files")
+	}
+	if plan.InstallModeBackfill != InstallModeCopy {
+		t.Fatalf("InstallModeBackfill = %q, want %q", plan.InstallModeBackfill, InstallModeCopy)
+	}
+
+	if got := migratedMode(t, cwd); got != InstallModeCopy {
+		t.Errorf("InstallMode = %q, want %q", got, InstallModeCopy)
+	}
+
+	// A second run must be a no-op: nothing left to migrate or backfill.
+	plan, err = PlanProjectMigration(cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Needed() {
+		t.Errorf("plan should report nothing pending once the mode is recorded: %+v", plan)
+	}
+}
+
+// injectedTestAgents holds the agents registerTestAgent has put into the
+// registry, so isolateGlobal can fail loudly if a reload would drop one.
+// Shared mutable state: not parallel-safe.
+var injectedTestAgents = map[string]*agent.AgentConfig{}
+
+// injectedTestAgentNames lists them sorted, so the failure message is stable.
+func injectedTestAgentNames() []string {
+	names := make([]string, 0, len(injectedTestAgents))
+	for name := range injectedTestAgents {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// registerTestAgent injects a throwaway agent whose install directories sit
+// under temp dirs, so global-scope inference never touches real ones. Call
+// isolateGlobal BEFORE this: agent.Reload rebuilds the registry and would
+// silently drop the injected agent. The cleanup fails the test if that
+// happened. Not parallel-safe.
+func registerTestAgent(t *testing.T, name, projectDir, globalDir string) {
+	t.Helper()
+	cfg := &agent.AgentConfig{
+		Name:            name,
+		DisplayName:     name,
+		SkillsDir:       projectDir,
+		GlobalSkillsDir: globalDir,
+	}
+	agent.AllAgents[name] = cfg
+	injectedTestAgents[name] = cfg
+	t.Cleanup(func() {
+		if agent.AllAgents[name] != cfg {
+			t.Errorf("test agent %q was dropped from the registry mid-test (agent.Reload after registerTestAgent?), so the test asserted against the real registry", name)
+		}
+		delete(injectedTestAgents, name)
+		delete(agent.AllAgents, name)
+	})
+}
+
+// The global equivalent of the project backfill.
+func TestGlobalMigrationBackfillsInstallMode(t *testing.T) {
+	isolateGlobal(t)
+	globalSkills := t.TempDir()
+	registerTestAgent(t, "mdm-test-agent", ".mdm-test/skills", globalSkills)
+
+	state := EmptyGlobalState()
+	state.Skills = map[string]SkillLockEntry{"s1": {Source: "o/r", SourceType: "github"}}
+	state.ConfiguredAgents = []string{"mdm-test-agent"}
+	if err := WriteGlobalState(state); err != nil {
+		t.Fatal(err)
+	}
+	writeSkillDir(t, filepath.Join(globalSkills, "s1"))
+
+	plan, err := PlanGlobalMigration()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plan.Needed() {
+		t.Fatal("plan should report a pending global install-mode backfill")
+	}
+	if plan.InstallModeBackfill != InstallModeCopy {
+		t.Fatalf("InstallModeBackfill = %q, want %q", plan.InstallModeBackfill, InstallModeCopy)
+	}
+
+	if err := ExecuteGlobalMigration(); err != nil {
+		t.Fatal(err)
+	}
+	if got := ReadGlobalState().InstallMode; got != InstallModeCopy {
+		t.Errorf("global InstallMode = %q, want %q", got, InstallModeCopy)
+	}
+
+	// A second run must be a no-op: nothing left to migrate or backfill.
+	plan, err = PlanGlobalMigration()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Needed() {
+		t.Errorf("plan should report nothing pending once the global mode is recorded: %+v", plan)
+	}
+}
+
+// With no agents recorded the global sweep walks every agent's directory
+// under the home, so this asserts the redirect reached the registry.
+func TestGlobalMigrationInfersCopyWithoutConfiguredAgents(t *testing.T) {
+	isolateGlobal(t)
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := agent.AllAgents["claude-code"]
+	if cfg == nil || cfg.GlobalSkillsDir == "" {
+		t.Skip("fixture agent no longer supports global installs")
+	}
+	if !strings.HasPrefix(cfg.GlobalSkillsDir, home) {
+		t.Fatalf("agent registry not isolated: global skills dir %q is outside the test home %q", cfg.GlobalSkillsDir, home)
+	}
+	writeSkillDir(t, filepath.Join(cfg.GlobalSkillsDir, "s1"))
+
+	state := EmptyGlobalState()
+	state.Skills = map[string]SkillLockEntry{"s1": {Source: "o/r", SourceType: "github"}}
+	if err := WriteGlobalState(state); err != nil {
+		t.Fatal(err)
+	}
+
+	plan, err := PlanGlobalMigration()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.InstallModeBackfill != InstallModeCopy {
+		t.Errorf("InstallModeBackfill = %q, want %q with no configuredAgents recorded", plan.InstallModeBackfill, InstallModeCopy)
+	}
+}
+
+// A symlinked global install is not copy evidence, and leaves the key
+// absent rather than writing the literal "symlink".
+func TestGlobalMigrationLeavesModeEmptyForSymlinks(t *testing.T) {
+	isolateGlobal(t)
+	globalSkills := t.TempDir()
+	registerTestAgent(t, "mdm-test-agent", ".mdm-test/skills", globalSkills)
+
+	canonical := filepath.Join(t.TempDir(), "s1")
+	writeSkillDir(t, canonical)
+	if err := os.Symlink(canonical, filepath.Join(globalSkills, "s1")); err != nil {
+		t.Skipf("symlinks unavailable on this host: %v", err)
+	}
+
+	state := EmptyGlobalState()
+	state.Skills = map[string]SkillLockEntry{"s1": {Source: "o/r", SourceType: "github"}}
+	state.ConfiguredAgents = []string{"mdm-test-agent"}
+	if err := WriteGlobalState(state); err != nil {
+		t.Fatal(err)
+	}
+
+	plan, err := PlanGlobalMigration()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.InstallModeBackfill != "" {
+		t.Errorf("InstallModeBackfill = %q, want empty for a symlinked global install", plan.InstallModeBackfill)
+	}
+	if plan.Needed() {
+		t.Errorf("nothing should be pending: %+v", plan)
+	}
+}
+
+// `mdm skills add <src> -a claude-code -y` leaves configuredAgents empty,
+// so inference has to sweep every agent to find that install.
+func TestMigrationInfersCopyWithoutConfiguredAgents(t *testing.T) {
+	cwd := t.TempDir()
+	legacySkillsLock(t, cwd)
+	writeSkillDir(t, filepath.Join(cwd, ".claude", "skills", "s1"))
+
+	if got := migratedMode(t, cwd); got != InstallModeCopy {
+		t.Errorf("InstallMode = %q, want %q with no configuredAgents recorded", got, InstallModeCopy)
+	}
+}
+
+// The all-agents sweep would otherwise read any unrelated directory at
+// <agent skills dir>/<locked name> as a copy install; requiring a SKILL.md
+// removes that false positive.
+func TestMigrationIgnoresDirectoriesWithoutSkillMd(t *testing.T) {
+	cwd := t.TempDir()
+	legacySkillsLock(t, cwd)
+	notASkill := filepath.Join(cwd, ".roo", "skills", "s1")
+	if err := os.MkdirAll(notASkill, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(notASkill, "notes.md"), []byte("# mine\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := migratedMode(t, cwd); got != "" {
+		t.Errorf("InstallMode = %q, want empty: a directory with no SKILL.md is not an mdm install", got)
+	}
+}
+
+// The wider sweep still only reports a mode for a real directory.
+func TestMigrationWithoutConfiguredAgentsStillHonorsSymlinks(t *testing.T) {
+	cwd := t.TempDir()
+	legacySkillsLock(t, cwd)
+	linkSkill(t, cwd)
+
+	if err := ExecuteProjectMigration(cwd, true); err != nil {
+		t.Fatal(err)
+	}
+	if got := ReadProjectLock(cwd).InstallMode; got != "" {
+		t.Errorf("InstallMode = %q, want empty", got)
 	}
 }

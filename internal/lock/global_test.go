@@ -5,14 +5,47 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/sethcarney/mdm/internal/agent"
 )
 
-// isolateGlobal points the global state at a fresh temp dir so tests never
-// read or write the developer's real state file.
+// isolateGlobal points the global state AND every user-level directory the
+// agent registry resolves at a fresh temp home, so a test that touches
+// global scope can never read or write the developer's real files.
+//
+// The state file alone is not enough: global install paths are built from
+// the user's home directory, so install-mode inference walking every agent
+// the scope supports would otherwise Lstat (and a conversion would rewrite)
+// real directories under the developer's home. That has already happened
+// once during development, which is why this is not left to each test.
+//
+// agent.Reload is what makes the redirect stick: the registry resolves every
+// global path once, at package init. Its cleanup is registered before the
+// t.Setenv calls so it runs after them, rebuilding the registry from the
+// restored environment. Tests using this must not run in parallel.
 func isolateGlobal(t *testing.T) string {
 	t.Helper()
+	// agent.Reload below replaces AllAgents wholesale, so calling this after
+	// registerTestAgent would discard the injected agent and leave the test
+	// asserting against the real registry. Say so here rather than let the
+	// test pass for the wrong reason.
+	if len(injectedTestAgents) > 0 {
+		t.Fatalf("isolateGlobal called after registerTestAgent registered %v: reloading the registry would discard them, so isolate the home first", injectedTestAgentNames())
+	}
+	t.Cleanup(agent.Reload)
+
 	dir := t.TempDir()
+	home := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", dir)
+	// os.UserHomeDir reads USERPROFILE on Windows and HOME elsewhere; set
+	// both so the isolation does not depend on which platform runs the test.
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude"))
+	agent.Reload()
+
 	return dir
 }
 

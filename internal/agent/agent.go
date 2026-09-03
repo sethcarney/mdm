@@ -95,6 +95,15 @@ func pathExists(p string) bool {
 var AllAgents map[string]*AgentConfig
 
 func init() {
+	Reload()
+}
+
+// Reload rebuilds AllAgents from the current environment. Global install
+// paths are resolved once at init from the home directory and the XDG and
+// agent-specific variables, so a test that redirects those must call this.
+// AllAgents is replaced wholesale, so inject test agents after the last
+// call, and never run such tests in parallel.
+func Reload() {
 	home, _ := os.UserHomeDir()
 	configHome := getXDGConfigHome()
 	codexHome := getCodexHome()
@@ -597,6 +606,59 @@ func DetectInstalledAgents() []string {
 func UsesSharedSkillsDir(name string) bool {
 	a, ok := AllAgents[name]
 	return ok && a.SharedSkillsDir
+}
+
+// CanonicalSkillsDir returns the shared .agents/skills directory for a scope:
+// under the user's home in global scope, under cwd in project scope. An empty
+// cwd means the current working directory.
+func CanonicalSkillsDir(global bool, cwd string) string {
+	if cwd == "" {
+		cwd, _ = os.Getwd()
+	}
+	baseDir := cwd
+	if global {
+		baseDir, _ = os.UserHomeDir()
+	}
+	return filepath.Join(baseDir, AgentsDir, SkillsSubdir)
+}
+
+// SkillsInstallDir returns the directory an agent reads its skills from in the
+// given scope, or "" when the agent is unknown or has no directory for that
+// scope. An empty cwd means the current working directory. Installing,
+// re-materializing, and migration inference all resolve the path here so they
+// cannot drift. Callers that treat the shared .agents/skills directory
+// specially must still check UsesSharedSkillsDir.
+//
+// TODO: four older callers still build the path themselves and do not handle
+// SharedSkillsDir this way: agentDirForScope and isSkillInstalled in
+// commands/installer.go, checkAgentLinks in commands/doctor.go, and
+// cleanUpRemovedAgentFiles in commands/agents.go. Check a new agent layout
+// against them too.
+func SkillsInstallDir(name string, global bool, cwd string) string {
+	a := AllAgents[name]
+	if a == nil {
+		return ""
+	}
+	if a.SharedSkillsDir {
+		return CanonicalSkillsDir(global, cwd)
+	}
+	if global {
+		if a.GlobalSkillsDir != "" {
+			return a.GlobalSkillsDir
+		}
+		if a.SkillsDir == "" {
+			return ""
+		}
+		home, _ := os.UserHomeDir()
+		return filepath.Join(home, a.SkillsDir)
+	}
+	if a.SkillsDir == "" {
+		return ""
+	}
+	if cwd == "" {
+		cwd, _ = os.Getwd()
+	}
+	return filepath.Join(cwd, a.SkillsDir)
 }
 
 // NeedsNoTracking reports whether an agent requires no entry in configuredAgents.

@@ -114,6 +114,76 @@ Skill installs run a deterministic local hidden-character scan over markdown fil
 
 When installing from a git source, mdm restricts git to the **https** and **ssh** transports. This blocks git's `ext::`/`fd::` local-command transports, which would otherwise let a repository source string — including one replayed from a checked-in `mdm.lock` — execute arbitrary commands. See [docs/security/git-transport-restrictions.md](docs/security/git-transport-restrictions.md) for the rationale and the full allow/deny list.
 
+## How skills land in your repo, and what to commit
+
+`mdm skills add` writes one canonical copy of each skill to `.agents/skills/<name>`
+and gives every agent you install to a relative symlink from its own skills
+directory (`.claude/skills/<name>`, `.cursor/skills/<name>`, and so on) back to
+that copy. Agents that read `.agents/skills` natively get no link at all.
+
+**Symlink is the default** because the canonical directory is the only place
+the content lives. Installing to five agents does not mean five copies of the
+same files, an update touches one directory and every agent sees it at once, and
+there is never a question of which agent's copy is the current one.
+
+**Copy mode** exists for tools that do not follow symlinks, such as sandboxed
+agents that refuse to traverse links, or a machine where symlinks cannot be
+created. Pass `--copy` once:
+
+```bash
+mdm skills add owner/repo --copy
+```
+
+The mode is a switch on the whole scope, not a property of one skill. `--copy`
+records `installMode: copy` in `mdm.lock` (or in the global state file with
+`-g`), converts the installs already in that scope to real directories, and
+every later `add`, `update`, and `install` in the scope copies without the flag.
+`--symlink` switches back the same way: it turns the copied installs into links
+again and records symlink mode, so the lock never needs editing by hand.
+
+**If a symlink cannot be created**, mdm copies that install instead of failing,
+on the spot and per install. The usual cause is Windows without Developer Mode
+or the symlink privilege. Nothing is recorded: the scope stays in symlink mode,
+so the next `mdm skills install` or `mdm skills update` tries to link again.
+The install summary says which agents got copies and prints a warning to that
+effect. If copies are what you want on that machine, run with `--copy` once to
+record it; `mdm doctor` also reports a scope whose files are copies while its
+lock does not say so.
+
+**Do not commit the skills mdm manages.** Commit `mdm.lock` and let
+`mdm skills install` regenerate the rest, the way a package lock is committed
+and the package directory is not:
+
+- **The content is duplicated.** One skill is the canonical directory plus a
+  link or a full copy per agent. Committing it puts the same files into your
+  repository at two or more paths, and in copy mode that is a complete copy per
+  agent, all of which have to agree.
+- **Remote skills drift.** A skill from a GitHub, GitLab, or URL source is
+  pinned by source and ref in `mdm.lock`. Once its files are committed, the
+  repository has its own copy that nothing keeps in step with that ref: an
+  update rewrites the files under a reviewer who cannot tell a local edit from
+  an upstream change, and a local edit is silently lost on the next update.
+  The lock is the record of what was installed; the files are its output.
+- **Symlinks do not travel well.** Git stores a symlink as a path, and a
+  checkout on a machine that cannot create symlinks leaves a text file where
+  the link was. Regenerating from the lock on each machine avoids the problem.
+
+Ignore the canonical directory and each agent's skills directory. This
+repository's own `.gitignore` is the shape to follow:
+
+```gitignore
+.agents
+.claude/*
+!.claude/settings.json
+```
+
+Add a line per agent you install to; `mdm agents list` shows the configured
+ones. Two things do belong in the repository: skills you write yourself, and
+forks made with `mdm skills cherry-pick`, which land in `./skills/` precisely so
+they can be committed and edited as your own. See
+[docs/skills/add.md](docs/skills/add.md) for the full install-mode rules and
+[docs/skills/cherry-pick.md](docs/skills/cherry-pick.md) for forks.
+
 ## Development
 
 ```bash

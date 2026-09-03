@@ -26,6 +26,8 @@ With `--yes`, the project lock is preferred and no prompts are shown.
 Skills are re-installed by calling `mdm skills add` for each recorded source, grouped by origin so repos are only fetched once.
 Each restored skill is scanned for hidden Unicode characters before files are copied or symlinked.
 
+Restores happen in whatever mode the scope's lock records. A project installed with `--copy` restores as real files, not symlinks.
+
 ## Flags
 
 | Flag | Description |

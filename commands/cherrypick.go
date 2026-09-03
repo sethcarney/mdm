@@ -31,6 +31,7 @@ type CherryPickOptions struct {
 	Global           bool
 	Project          bool
 	Copy             bool
+	Symlink          bool
 	Yes              bool
 	Force            bool
 	DryRun           bool
@@ -107,7 +108,8 @@ find and warns when a source declares no license at all, but honouring the terms
 	f.StringArrayVarP(&opts.Agents, "agent", "a", nil, "Agents to install the forks to (implies --install)")
 	f.BoolVarP(&opts.Global, "global", "g", false, "Install the forks globally (with --install)")
 	f.BoolVarP(&opts.Project, "project", "p", false, "Install the forks for this project only (with --install)")
-	f.BoolVar(&opts.Copy, "copy", false, "Copy files instead of symlinking (with --install)")
+	f.BoolVar(&opts.Copy, "copy", false, "Copy files instead of symlinking (with --install; switches the scope to copy mode)")
+	f.BoolVar(&opts.Symlink, "symlink", false, "Symlink files from .agents/skills (with --install; the default, switches a scope back from copy mode)")
 	f.BoolVarP(&opts.Yes, "yes", "y", false, "Skip confirmation prompts")
 	f.BoolVar(&opts.Force, "force", false, "Replace an existing fork, discarding local edits")
 	f.BoolVar(&opts.DryRun, "dry-run", false, "Show what would be forked without writing anything")
@@ -116,6 +118,8 @@ find and warns when a source declares no license at all, but honouring the terms
 	f.BoolVar(&opts.FullDepth, "full-depth", false, "Search all subdirectories")
 	f.BoolVar(&opts.AllowHiddenChars, "allow-hidden-chars", false, "Allow markdown files with hidden Unicode characters")
 	f.BoolVar(&opts.NoAttribution, "no-attribution", false, "Do not write "+fork.AttributionFileName+" (you remain responsible for the license terms)")
+
+	cmd.MarkFlagsMutuallyExclusive("copy", "symlink")
 
 	_ = cmd.RegisterFlagCompletionFunc("agent", agentFlagCompletion)
 
@@ -546,13 +550,15 @@ func installForks(forked []string, opts CherryPickOptions, cwd string) {
 		return
 	}
 
-	global, mode, agents, ok := promptScopeAndAgents(AddOptions{
+	addOpts := AddOptions{
 		Global:  opts.Global,
 		Project: opts.Project,
 		Agents:  opts.Agents,
 		Yes:     opts.Yes,
 		Copy:    opts.Copy,
-	}, cwd)
+		Symlink: opts.Symlink,
+	}
+	global, agents, ok := promptScopeAndAgents(addOpts, cwd)
 	if !ok {
 		return
 	}
@@ -562,6 +568,14 @@ func installForks(forked []string, opts CherryPickOptions, cwd string) {
 	// local sources entirely, so nothing upstream can overwrite your edits.
 	forksRoot := filepath.Join(cwd, opts.Dir)
 	if agents = dropClobberingAgents(agents, global, cwd, forksRoot); len(agents) == 0 {
+		return
+	}
+
+	// After the clobber filter: an agent list it empties means nothing gets
+	// installed, and a scope converted for an install that never happens is
+	// exactly the mix this switch exists to avoid.
+	mode, ok := commitScopeInstallMode(addOpts, global, cwd)
+	if !ok {
 		return
 	}
 

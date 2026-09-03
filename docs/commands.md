@@ -90,7 +90,8 @@ git URL with a `#ref`, a local path, or a well-known alias (`vercel`,
 | `--skill`, `-s` | Skill names to install (repeatable; `*` for all) |
 | `--list`, `-l` | List available skills without installing |
 | `--yes`, `-y` | Skip confirmation prompts |
-| `--copy` | Copy files instead of symlinking |
+| `--copy` | Copy files instead of symlinking; switches the scope to copy mode |
+| `--symlink` | Symlink files from `.agents/skills` (the default); switches a scope back from copy mode |
 | `--all` | Shorthand for `--skill '*' --agent '*' -y` |
 | `--full-depth` | Search all subdirectories for skills |
 | `--skip-audit` | Skip the security audit check for public skills |
@@ -390,6 +391,24 @@ Commit the new lock and the removals together. v2 reads the v1 files
 transparently until you migrate, but only ever writes the new ones, and
 `mdm doctor` flags projects that still carry v1 files. `mdm upgrade` offers
 to run this for you when an upgrade crosses a major version.
+
+Migration also records the install mode, for the project and for this
+machine's global state. It reads the skills sitting at each configured
+agent's install directory, or, when no agents are recorded (which is what
+a non-interactive `mdm skills add -a <agent> -y` leaves behind), at the
+install directory of every agent the scope supports. A real directory
+holding a `SKILL.md` means the scope was installed with `--copy`, so
+migrating sets `installMode: copy` in `mdm.lock` (or `mdm-state.json`) and
+later restores preserve them. Symlinks there mean the default mode, and
+nothing is recorded; so does a directory with no `SKILL.md`, which is
+someone else's, not an mdm install. The shared `.agents/skills` directory
+is deliberately not consulted: symlink installs create it as a real
+directory too, so it cannot tell the two modes apart.
+
+This also covers a scope that already migrated before this existed: if its
+lock has no install mode recorded yet, `mdm migrate` backfills it from
+what's on disk, even when there are no legacy files left to retire.
+`--dry-run` names the mode it would record before anything is written.
 
 | Flag | Description |
 | --- | --- |

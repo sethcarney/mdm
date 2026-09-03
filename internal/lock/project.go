@@ -83,10 +83,18 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 // retiring them.
 // ──────────────────────────────────────────────────────────
 
+// Install mode is a single top-level switch per scope, not a per-asset
+// value. It governs every install, update, and restore in that scope.
+// An empty value means symlink.
+const (
+	InstallModeSymlink = "symlink"
+	InstallModeCopy    = "copy"
+)
+
 // ProjectLockName is the unified project lock file at the project root.
 const ProjectLockName = "mdm.lock"
 
-const projectLockVersion = 1
+const projectLockVersion = 2
 
 // ProjectLockFile is the in-memory form of mdm.lock. Unknown
 // top-level keys are captured on read and re-emitted on write, and so are
@@ -94,6 +102,7 @@ const projectLockVersion = 1
 // survives this binary rewriting the entry's known fields.
 type ProjectLockFile struct {
 	Version          int
+	InstallMode      string
 	ConfiguredAgents []string
 	Skills           map[string]LocalSkillLockEntry
 	Knowledge        map[string]KnowledgeLockEntry
@@ -225,59 +234,88 @@ func captureRawEntries(section json.RawMessage) map[string]json.RawMessage {
 
 func (l ProjectLockFile) isEmpty() bool {
 	return len(l.Skills) == 0 && len(l.Knowledge) == 0 && len(l.Plugins) == 0 &&
-		len(l.ConfiguredAgents) == 0 && len(l.extra) == 0
+		len(l.ConfiguredAgents) == 0 && len(l.extra) == 0 && l.InstallMode == ""
+}
+
+// orderedObject builds a JSON object whose keys come out in the order they
+// were written, which encoding/json's map marshalling cannot do. The first
+// marshal error is kept and every later write is a no-op, so callers write
+// their keys in a straight line and check once at the end.
+type orderedObject struct {
+	buf bytes.Buffer
+	err error
+}
+
+func newOrderedObject() *orderedObject {
+	o := &orderedObject{}
+	o.buf.WriteByte('{')
+	return o
+}
+
+// write appends key: value. It does nothing once an error has occurred.
+func (o *orderedObject) write(key string, v any) {
+	if o.err != nil {
+		return
+	}
+	k, err := json.Marshal(key)
+	if err != nil {
+		o.err = err
+		return
+	}
+	val, err := json.Marshal(v)
+	if err != nil {
+		o.err = err
+		return
+	}
+	if o.buf.Len() > 1 {
+		o.buf.WriteByte(',')
+	}
+	o.buf.Write(k)
+	o.buf.WriteByte(':')
+	o.buf.Write(val)
+}
+
+// writeExtra appends every unknown top-level key in sorted order, so a
+// rewrite of the file is stable.
+func (o *orderedObject) writeExtra(extra map[string]json.RawMessage) {
+	keys := make([]string, 0, len(extra))
+	for k := range extra {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		o.write(k, extra[k])
+	}
+}
+
+// bytes closes the object and returns it, or the first error any write hit.
+func (o *orderedObject) bytes() ([]byte, error) {
+	if o.err != nil {
+		return nil, o.err
+	}
+	o.buf.WriteByte('}')
+	return o.buf.Bytes(), nil
 }
 
 // MarshalJSON emits known keys in a fixed order, then unknown keys sorted.
 func (l ProjectLockFile) MarshalJSON() ([]byte, error) {
-	var buf bytes.Buffer
-	buf.WriteByte('{')
-	writeKey := func(key string, v any) error {
-		if buf.Len() > 1 {
-			buf.WriteByte(',')
-		}
-		k, err := json.Marshal(key)
-		if err != nil {
-			return err
-		}
-		val, err := json.Marshal(v)
-		if err != nil {
-			return err
-		}
-		buf.Write(k)
-		buf.WriteByte(':')
-		buf.Write(val)
-		return nil
-	}
-	if err := writeKey("version", l.Version); err != nil {
-		return nil, err
-	}
-	if len(l.ConfiguredAgents) > 0 {
-		if err := writeKey("configuredAgents", l.ConfiguredAgents); err != nil {
-			return nil, err
-		}
-	}
 	sections, err := l.mergedSections()
 	if err != nil {
 		return nil, err
 	}
+	o := newOrderedObject()
+	o.write("version", l.Version)
+	if l.InstallMode != "" {
+		o.write("installMode", l.InstallMode)
+	}
+	if len(l.ConfiguredAgents) > 0 {
+		o.write("configuredAgents", l.ConfiguredAgents)
+	}
 	for _, s := range sections {
-		if err := writeKey(s.key, s.value); err != nil {
-			return nil, err
-		}
+		o.write(s.key, s.value)
 	}
-	extraKeys := make([]string, 0, len(l.extra))
-	for k := range l.extra {
-		extraKeys = append(extraKeys, k)
-	}
-	sort.Strings(extraKeys)
-	for _, k := range extraKeys {
-		if err := writeKey(k, l.extra[k]); err != nil {
-			return nil, err
-		}
-	}
-	buf.WriteByte('}')
-	return buf.Bytes(), nil
+	o.writeExtra(l.extra)
+	return o.bytes()
 }
 
 // UnmarshalJSON decodes the known sections and preserves every other
@@ -297,6 +335,9 @@ func (l *ProjectLockFile) UnmarshalJSON(data []byte) error {
 		return json.Unmarshal(v, dst)
 	}
 	if err := decode("version", &l.Version); err != nil {
+		return err
+	}
+	if err := decode("installMode", &l.InstallMode); err != nil {
 		return err
 	}
 	if err := decode("configuredAgents", &l.ConfiguredAgents); err != nil {
@@ -358,6 +399,13 @@ func readProjectLockE(cwd string) (ProjectLockFile, error) {
 	}
 	if lk.Version > projectLockVersion {
 		return EmptyProjectLock(), errNewerLock(path, lk.Version, projectLockVersion)
+	}
+	// A version 1 lock predates the install-mode switch: upgrade it in
+	// memory and let the next write persist the version. The mode stays
+	// empty; `mdm migrate` infers it from disk. A range, not `== 1`, so the
+	// next bump does not reintroduce the read-as-empty bug.
+	if lk.Version >= 1 && lk.Version < projectLockVersion {
+		lk.Version = projectLockVersion
 	}
 	if lk.Version < projectLockVersion {
 		return EmptyProjectLock(), nil

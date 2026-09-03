@@ -71,37 +71,14 @@ func isInsideOrEqual(target, root string) bool {
 }
 
 func getCanonicalSkillsDir(global bool, cwd string) string {
-	if cwd == "" {
-		cwd, _ = os.Getwd()
-	}
-	var baseDir string
-	if global {
-		baseDir, _ = os.UserHomeDir()
-	} else {
-		baseDir = cwd
-	}
-	return filepath.Join(baseDir, agent.AgentsDir, agent.SkillsSubdir)
+	return agent.CanonicalSkillsDir(global, cwd)
 }
 
+// getAgentBaseDir resolves where an agent's skills live for a scope. The
+// resolution itself lives in the agent package so that install-mode inference
+// in internal/lock computes exactly the same paths; see agent.SkillsInstallDir.
 func getAgentBaseDir(agentName string, global bool, cwd string) string {
-	if cwd == "" {
-		cwd, _ = os.Getwd()
-	}
-	a := agent.AllAgents[agentName]
-	if a == nil {
-		return ""
-	}
-	if agent.UsesSharedSkillsDir(agentName) {
-		return getCanonicalSkillsDir(global, cwd)
-	}
-	if global {
-		if a.GlobalSkillsDir == "" {
-			home, _ := os.UserHomeDir()
-			return filepath.Join(home, a.SkillsDir)
-		}
-		return a.GlobalSkillsDir
-	}
-	return filepath.Join(cwd, a.SkillsDir)
+	return agent.SkillsInstallDir(agentName, global, cwd)
 }
 
 func cleanAndCreateDir(path string) error {
@@ -122,6 +99,13 @@ func resolveParentSymlinks(path string) string {
 	}
 	return filepath.Join(real, base)
 }
+
+// symlinkFn creates the link in createSymlink. It is a package-level variable
+// only so a test can force the symlink-to-copy fallback deterministically;
+// production code always goes through os.Symlink. Like the other test seams
+// in this package it is shared mutable state, so no test may swap it while
+// running in parallel with another test that installs.
+var symlinkFn = os.Symlink
 
 func createSymlink(target, linkPath string) bool {
 	resolvedTarget, _ := filepath.Abs(target)
@@ -171,7 +155,7 @@ func createSymlink(target, linkPath string) bool {
 		}
 	}
 
-	if err := os.Symlink(relPath, linkPath); err != nil {
+	if err := symlinkFn(relPath, linkPath); err != nil {
 		return false
 	}
 	return true

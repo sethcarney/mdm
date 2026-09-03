@@ -41,7 +41,8 @@ mdm skills cherry-pick <source>
 | `--install`, `-i` | Also install the forks into your agents' skills directories |
 | `--agent`, `-a` | Agents to install the forks to (repeatable; implies `--install`) |
 | `--global`, `-g` / `--project`, `-p` | Install scope, with `--install` |
-| `--copy` | Copy instead of symlinking, with `--install` |
+| `--copy` | Copy instead of symlinking, with `--install`; switches the scope to copy mode |
+| `--symlink` | Symlink instead of copying, with `--install`; the default, and switches a scope back from copy mode |
 | `--yes`, `-y` | Skip confirmation prompts |
 | `--force` | Replace an existing fork, discarding local edits |
 | `--dry-run` | Show what would be forked without writing anything |

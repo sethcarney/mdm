@@ -30,6 +30,7 @@ type AddOptions struct {
 	ListOnly          bool
 	Yes               bool // skip prompts
 	Copy              bool
+	Symlink           bool
 	All               bool // --all: skill '*', agent '*', -y
 	FullDepth         bool
 	SkipAudit         bool
@@ -94,12 +95,15 @@ To update to the latest version, run:  mdm skills update
 	f.StringArrayVarP(&opts.Skills, "skill", "s", nil, "Skill names to install (repeatable, use '*' for all)")
 	f.BoolVarP(&opts.ListOnly, "list", "l", false, "List available skills without installing")
 	f.BoolVarP(&opts.Yes, "yes", "y", false, "Skip confirmation prompts")
-	f.BoolVar(&opts.Copy, "copy", false, "Copy files instead of symlinking")
+	f.BoolVar(&opts.Copy, "copy", false, "Copy files instead of symlinking (switches the scope to copy mode)")
+	f.BoolVar(&opts.Symlink, "symlink", false, "Symlink files from .agents/skills (the default; switches a scope back from copy mode)")
 	f.BoolVar(&opts.All, "all", false, "Shorthand for --skill '*' --agent '*' -y")
 	f.BoolVar(&opts.FullDepth, "full-depth", false, "Search all subdirectories")
 	f.BoolVar(&opts.SkipAudit, "skip-audit", false, "Skip security audit check for public skills")
 	f.BoolVar(&opts.FailOnAudit, "fail-on-audit", false, "Exit non-zero when security findings are detected instead of prompting")
 	f.BoolVar(&opts.AllowHiddenChars, "allow-hidden-chars", false, "Allow markdown files with hidden Unicode characters")
+
+	cmd.MarkFlagsMutuallyExclusive("copy", "symlink")
 
 	_ = cmd.RegisterFlagCompletionFunc("agent", agentFlagCompletion)
 
@@ -212,13 +216,15 @@ func selectWellKnownSkills(filtered []*registry.WellKnownSkill, opts AddOptions)
 	return selected, true
 }
 
-func installWellKnownForAgents(selectedSkills []*registry.WellKnownSkill, agents []string, global bool, mode InstallMode, sourceID string, parsed source.ParsedSource, cwd string) {
+func installWellKnownForAgents(selectedSkills []*registry.WellKnownSkill, agents []string, global bool, mode InstallMode, sourceID string, parsed source.ParsedSource, cwd string) *symlinkFallbacks {
+	var fallbacks symlinkFallbacks
 	for _, s := range selectedSkills {
 		sName := sanitizeName(s.InstallName)
 		fmt.Printf("%sInstalling %s%s%s...\n", ansiDim, ansiText, s.Name, ansiReset)
 		var failedAgents []string
 		for _, agentName := range agents {
 			result := installWellKnownSkillForAgent(s, agentName, global, mode)
+			fallbacks.note(agentName, result)
 			if !result.Success {
 				failedAgents = append(failedAgents, agentName)
 			}
@@ -246,6 +252,7 @@ func installWellKnownForAgents(selectedSkills []*registry.WellKnownSkill, agents
 			}
 		}
 	}
+	return &fallbacks
 }
 
 func runAddWellKnown(parsed source.ParsedSource, opts AddOptions, cwd string) {
@@ -279,16 +286,21 @@ func runAddWellKnown(parsed source.ParsedSource, opts AddOptions, cwd string) {
 		os.Exit(1)
 	}
 
-	global, mode, agents, ok := promptScopeAndAgents(opts, cwd)
+	global, agents, ok := promptScopeAndAgents(opts, cwd)
+	if !ok {
+		return
+	}
+
+	mode, ok := commitScopeInstallMode(opts, global, cwd)
 	if !ok {
 		return
 	}
 
 	sourceID := registry.GetWellKnownSourceIdentifier(parsed.URL)
 	fmt.Println()
-	installWellKnownForAgents(selectedSkills, agents, global, mode, sourceID, parsed, cwd)
+	fallbacks := installWellKnownForAgents(selectedSkills, agents, global, mode, sourceID, parsed, cwd)
 	fmt.Println()
-	printInstallSummary(len(selectedSkills), global, agents, mode)
+	printInstallSummary(len(selectedSkills), global, agents, mode, fallbacks)
 	maybeShowFindPrompt(cwd)
 }
 
@@ -328,7 +340,12 @@ func runAddLocal(parsed source.ParsedSource, opts AddOptions, cwd string) {
 		os.Exit(1)
 	}
 
-	global, mode, agents, ok := promptScopeAndAgents(opts, cwd)
+	global, agents, ok := promptScopeAndAgents(opts, cwd)
+	if !ok {
+		return
+	}
+
+	mode, ok := commitScopeInstallMode(opts, global, cwd)
 	if !ok {
 		return
 	}
@@ -471,12 +488,19 @@ func runAddGitOrHub(parsed source.ParsedSource, opts AddOptions, cwd, sourceInpu
 	// Start audit concurrently while scope/agent prompts run
 	auditCh := startInstallAudit(ownerRepo, parsed.Type, opts.SkipAudit, selectedSkills)
 
-	global, mode, agents, ok := promptScopeAndAgents(opts, cwd)
+	global, agents, ok := promptScopeAndAgents(opts, cwd)
 	if !ok {
 		return
 	}
 
 	if !confirmInstallAfterAudit(<-auditCh, opts.Yes, opts.FailOnAudit) {
+		return
+	}
+
+	// After the audit gate: declining there must not leave a converted scope
+	// with nothing installed.
+	mode, ok := commitScopeInstallMode(opts, global, cwd)
+	if !ok {
 		return
 	}
 
@@ -565,7 +589,8 @@ func selectBlobSkills(skills []*blob.BlobSkill, opts AddOptions) ([]*blob.BlobSk
 	return selected, true
 }
 
-func installBlobSkillsForAgents(selectedBlob []*blob.BlobSkill, agents []string, global bool, mode InstallMode, result *blob.BlobInstallResult, ref, sourceInput string, parsed source.ParsedSource, cwd string) {
+func installBlobSkillsForAgents(selectedBlob []*blob.BlobSkill, agents []string, global bool, mode InstallMode, result *blob.BlobInstallResult, ref, sourceInput string, parsed source.ParsedSource, cwd string) *symlinkFallbacks {
+	var fallbacks symlinkFallbacks
 	for _, bSkill := range selectedBlob {
 		sName := sanitizeName(bSkill.Name)
 		fmt.Printf("%sInstalling %s%s%s...\n", ansiDim, ansiText, bSkill.Name, ansiReset)
@@ -576,6 +601,7 @@ func installBlobSkillsForAgents(selectedBlob []*blob.BlobSkill, agents []string,
 		var failedAgents []string
 		for _, agentName := range agents {
 			r := installSkillFilesForAgent(sName, files, agentName, global, mode)
+			fallbacks.note(agentName, r)
 			if !r.Success {
 				failedAgents = append(failedAgents, agentName)
 			}
@@ -607,6 +633,7 @@ func installBlobSkillsForAgents(selectedBlob []*blob.BlobSkill, agents []string,
 			}
 		}
 	}
+	return &fallbacks
 }
 
 func runAddBlob(result *blob.BlobInstallResult, parsed source.ParsedSource, opts AddOptions, cwd, ownerRepo, sourceInput string) {
@@ -647,11 +674,18 @@ func runAddBlob(result *blob.BlobInstallResult, parsed source.ParsedSource, opts
 	}
 
 	auditCh := startBlobInstallAudit(ownerRepo, opts.SkipAudit, selectedBlob)
-	global, mode, agents, ok := promptScopeAndAgents(opts, cwd)
+	global, agents, ok := promptScopeAndAgents(opts, cwd)
 	if !ok {
 		return
 	}
 	if !confirmInstallAfterAudit(<-auditCh, opts.Yes, opts.FailOnAudit) {
+		return
+	}
+
+	// After the audit gate: declining there must not leave a converted scope
+	// with nothing installed.
+	mode, ok := commitScopeInstallMode(opts, global, cwd)
+	if !ok {
 		return
 	}
 
@@ -661,15 +695,16 @@ func runAddBlob(result *blob.BlobInstallResult, parsed source.ParsedSource, opts
 	}
 
 	fmt.Println()
-	installBlobSkillsForAgents(selectedBlob, agents, global, mode, result, ref, sourceInput, parsed, cwd)
+	fallbacks := installBlobSkillsForAgents(selectedBlob, agents, global, mode, result, ref, sourceInput, parsed, cwd)
 	fmt.Println()
-	printInstallSummary(len(selectedBlob), global, agents, mode)
+	printInstallSummary(len(selectedBlob), global, agents, mode, fallbacks)
 	maybeShowFindPrompt(cwd)
 }
 
 // ─── Shared install logic ──────────────────────────────────────────────────────
 
 func installSkillsForAgents(skills []*skill.Skill, agents []string, global bool, mode InstallMode, baseLockEntry lock.SkillLockEntry, cwd string, cloneDir string) {
+	var fallbacks symlinkFallbacks
 	for _, s := range skills {
 		sName := sanitizeName(s.Name)
 		fmt.Printf("%sInstalling %s%s%s...\n", ansiDim, ansiText, s.Name, ansiReset)
@@ -677,6 +712,7 @@ func installSkillsForAgents(skills []*skill.Skill, agents []string, global bool,
 		var failedAgents []string
 		for _, agentName := range agents {
 			result := installSkillForAgent(s, agentName, global, mode)
+			fallbacks.note(agentName, result)
 			if !result.Success {
 				failedAgents = append(failedAgents, agentName)
 			}
@@ -715,7 +751,7 @@ func installSkillsForAgents(skills []*skill.Skill, agents []string, global bool,
 	}
 
 	fmt.Println()
-	printInstallSummary(len(skills), global, agents, mode)
+	printInstallSummary(len(skills), global, agents, mode, &fallbacks)
 }
 
 // skillMdRepoPath returns the repo-relative path to the SKILL.md file for a
@@ -851,8 +887,10 @@ func selectSkillsWithPrompt(skills []*skill.Skill, opts AddOptions, message stri
 }
 
 // promptScopeAndAgents asks for global/project scope and agent selection.
-// Returns (global bool, mode InstallMode, agents []string, ok bool).
-func promptScopeAndAgents(opts AddOptions, cwd string) (bool, InstallMode, []string, bool) {
+// Returns (global bool, agents []string, ok bool). It does not settle the
+// install mode: callers run commitScopeInstallMode last, after anything
+// that can still abort the install.
+func promptScopeAndAgents(opts AddOptions, cwd string) (bool, []string, bool) {
 	// Determine scope
 	global := opts.Global
 	if !global && !opts.Project && !opts.Yes {
@@ -861,26 +899,45 @@ func promptScopeAndAgents(opts AddOptions, cwd string) (bool, InstallMode, []str
 			{Label: "Global", Hint: "installs for your user account"},
 		})
 		if !ok {
-			return false, "", nil, false
+			return false, nil, false
 		}
 		global = idx == 1
-	}
-
-	// Determine install mode
-	mode := InstallModeSymlink
-	if opts.Copy {
-		mode = InstallModeCopy
 	}
 
 	// Determine agents
 	agents, ok := promptAgents(opts, global, cwd)
 	if !ok {
-		return false, "", nil, false
+		return false, nil, false
 	}
 
-	return global, mode, agents, true
+	return global, agents, true
 }
 
+// commitScopeInstallMode settles the scope's install mode and returns the mode
+// to install with: an explicit --copy or --symlink wins, otherwise the
+// recorded mode is inherited, and symlink is the default. Call it immediately
+// before installing and never earlier: committing re-materializes every
+// install in the scope, and doing that while the user can still back out
+// (the agent picker, the audit confirmation, an emptied agent list) leaves a
+// converted scope with nothing installed.
+func commitScopeInstallMode(opts AddOptions, global bool, cwd string) (InstallMode, bool) {
+	requested := InstallModeSymlink
+	switch {
+	case opts.Copy:
+		requested = InstallModeCopy
+	case opts.Symlink:
+		// Explicit: overrides a recorded copy mode.
+	case lock.GetInstallMode(global, cwd) == lock.InstallModeCopy:
+		requested = InstallModeCopy
+	}
+	return applyScopeInstallMode(requested, global, cwd)
+}
+
+// allAgentsForScope lists every agent the given scope can install to: all of
+// them in project scope, and in global scope only those with a user-level
+// skills directory. It backs `-a *` and scopeInstallPaths. validateNamedAgents
+// and promptAgentsYes apply no such filter; every registry entry sets
+// GlobalSkillsDir today, so the gap cannot trigger.
 func allAgentsForScope(global bool) []string {
 	var all []string
 	for name := range agent.AllAgents {
@@ -1127,7 +1184,11 @@ func reorderSkillsPreselectedFirst(skills []*skill.Skill, preselected []string) 
 	return reordered, initSel
 }
 
-func printInstallSummary(count int, global bool, agents []string, mode InstallMode) {
+// printInstallSummary prints the closing line of an install run. fallbacks
+// may be nil; when it records installs that were copied because a symlink
+// could not be created, the summary says so and a warning follows, so the
+// mode on the summary line never contradicts what is on disk.
+func printInstallSummary(count int, global bool, agents []string, mode InstallMode, fallbacks *symlinkFallbacks) {
 	scope := "project"
 	if global {
 		scope = "global"
@@ -1136,7 +1197,13 @@ func printInstallSummary(count int, global bool, agents []string, mode InstallMo
 	if count != 1 {
 		noun = "skills"
 	}
-	fmt.Printf("%s✓ Installed %d %s (%s scope, %s mode)%s\n", ansiText, count, noun, scope, string(mode), ansiReset)
+	modeNote := string(mode)
+	if fallbacks.any() {
+		modeNote += " mode, copied where symlinks failed"
+	} else {
+		modeNote += " mode"
+	}
+	fmt.Printf("%s✓ Installed %d %s (%s scope, %s)%s\n", ansiText, count, noun, scope, modeNote, ansiReset)
 	if len(agents) > 0 {
 		var displayNames []string
 		for _, a := range agents {
@@ -1149,6 +1216,7 @@ func printInstallSummary(count int, global bool, agents []string, mode InstallMo
 		fmt.Printf("%s  Agents: %s%s\n", ansiDim, strings.Join(displayNames, ", "), ansiReset)
 	}
 	fmt.Println()
+	fallbacks.warn()
 }
 
 func maybeShowFindPrompt(cwd string) {
