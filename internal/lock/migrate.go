@@ -337,19 +337,32 @@ func ExecuteProjectMigration(cwd string, tombstone bool) error {
 	// may still have no InstallMode recorded. Backfill that independent of
 	// whether any legacy file was absorbed above.
 	if plan.TargetExists && plan.InstallModeBackfill != "" {
-		target, err := readProjectLockE(cwd)
-		if err != nil {
+		if err := backfillProjectInstallMode(cwd, plan.InstallModeBackfill); err != nil {
 			return err
 		}
-		if target.InstallMode == "" {
-			target.InstallMode = plan.InstallModeBackfill
-			if err := WriteProjectLock(target, cwd); err != nil {
-				return err
-			}
-		}
 	}
+	return retireLegacyProjectFiles(cwd, plan.Legacy, tombstone)
+}
+
+// backfillProjectInstallMode records mode on an existing mdm.lock that has
+// none. A lock that gained a mode since the plan was made is left alone.
+func backfillProjectInstallMode(cwd, mode string) error {
+	target, err := readProjectLockE(cwd)
+	if err != nil {
+		return err
+	}
+	if target.InstallMode != "" {
+		return nil
+	}
+	target.InstallMode = mode
+	return WriteProjectLock(target, cwd)
+}
+
+// retireLegacyProjectFiles removes the legacy lock files the plan absorbed,
+// leaving a tombstone in place of skills-lock.json when asked to.
+func retireLegacyProjectFiles(cwd string, legacy map[string]int, tombstone bool) error {
 	for _, fname := range LegacyProjectLockNames {
-		if _, ok := plan.Legacy[fname]; !ok {
+		if _, ok := legacy[fname]; !ok {
 			continue
 		}
 		path := filepath.Join(cwd, fname)

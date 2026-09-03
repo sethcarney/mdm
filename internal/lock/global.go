@@ -1,11 +1,9 @@
 package lock
 
 import (
-	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"sort"
 	"time"
 
 	"github.com/sethcarney/mdm/internal/agent"
@@ -62,67 +60,27 @@ type GlobalState struct {
 
 // MarshalJSON emits known keys in a fixed order, then unknown keys sorted.
 func (s GlobalState) MarshalJSON() ([]byte, error) {
-	var buf bytes.Buffer
-	buf.WriteByte('{')
-	writeKey := func(key string, v any) error {
-		if buf.Len() > 1 {
-			buf.WriteByte(',')
-		}
-		k, err := json.Marshal(key)
-		if err != nil {
-			return err
-		}
-		val, err := json.Marshal(v)
-		if err != nil {
-			return err
-		}
-		buf.Write(k)
-		buf.WriteByte(':')
-		buf.Write(val)
-		return nil
-	}
-	if err := writeKey("version", s.Version); err != nil {
-		return nil, err
-	}
-	if s.InstallMode != "" {
-		if err := writeKey("installMode", s.InstallMode); err != nil {
-			return nil, err
-		}
-	}
-	if len(s.ConfiguredAgents) > 0 {
-		if err := writeKey("configuredAgents", s.ConfiguredAgents); err != nil {
-			return nil, err
-		}
-	}
 	mergedSkills, err := marshalSection(s.Skills, s.rawSkills, knownGlobalSkillEntryKeys)
 	if err != nil {
 		return nil, err
 	}
-	if err := writeKey("skills", mergedSkills); err != nil {
-		return nil, err
+	o := newOrderedObject()
+	o.write("version", s.Version)
+	if s.InstallMode != "" {
+		o.write("installMode", s.InstallMode)
 	}
+	if len(s.ConfiguredAgents) > 0 {
+		o.write("configuredAgents", s.ConfiguredAgents)
+	}
+	o.write("skills", mergedSkills)
 	if s.Dismissed != (DismissedPrompts{}) {
-		if err := writeKey("dismissed", s.Dismissed); err != nil {
-			return nil, err
-		}
+		o.write("dismissed", s.Dismissed)
 	}
 	if len(s.Experimental) > 0 {
-		if err := writeKey("experimental", s.Experimental); err != nil {
-			return nil, err
-		}
+		o.write("experimental", s.Experimental)
 	}
-	extraKeys := make([]string, 0, len(s.extra))
-	for k := range s.extra {
-		extraKeys = append(extraKeys, k)
-	}
-	sort.Strings(extraKeys)
-	for _, k := range extraKeys {
-		if err := writeKey(k, s.extra[k]); err != nil {
-			return nil, err
-		}
-	}
-	buf.WriteByte('}')
-	return buf.Bytes(), nil
+	o.writeExtra(s.extra)
+	return o.bytes()
 }
 
 // UnmarshalJSON decodes the known sections and preserves every other
