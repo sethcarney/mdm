@@ -144,10 +144,11 @@ again and records symlink mode, so the lock never needs editing by hand.
 **If a symlink cannot be created**, mdm copies that install instead of failing,
 on the spot and per install. The usual cause is Windows without Developer Mode
 or the symlink privilege. Nothing is recorded: the scope stays in symlink mode,
-and the install summary still says so. If that is the permanent state of the
-machine, pass `--copy` so the mode is recorded and the lock says what is on
-disk; `mdm doctor` reports a scope whose files are copies while its lock does
-not say so.
+so the next `mdm skills install` or `mdm skills update` tries to link again.
+The install summary says which agents got copies and prints a warning to that
+effect. If copies are what you want on that machine, run with `--copy` once to
+record it; `mdm doctor` also reports a scope whose files are copies while its
+lock does not say so.
 
 **Do not commit the skills mdm manages.** Commit `mdm.lock` and let
 `mdm skills install` regenerate the rest, the way a package lock is committed

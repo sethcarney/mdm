@@ -61,7 +61,7 @@ func selectSkillsToSync(skills []*skill.Skill, yes bool) ([]*skill.Skill, bool) 
 	return selected, true
 }
 
-func syncAndLockSkill(s *skill.Skill, agents []string, global bool, mode InstallMode, cwd string) {
+func syncAndLockSkill(s *skill.Skill, agents []string, global bool, mode InstallMode, cwd string, fallbacks *symlinkFallbacks) {
 	sName := sanitizeName(s.Name)
 	fmt.Printf("%sSyncing %s%s%s...\n", ansiDim, ansiText, s.Name, ansiReset)
 
@@ -69,6 +69,7 @@ func syncAndLockSkill(s *skill.Skill, agents []string, global bool, mode Install
 	var failedAgents []string
 	for _, agentName := range agents {
 		result := installSkillForAgent(s, agentName, global, mode)
+		fallbacks.note(agentName, result)
 		if !result.Success {
 			vlog(verboseFlag, "install failed for %s → agent %q", s.Name, agentName)
 			failedAgents = append(failedAgents, agentName)
@@ -157,10 +158,11 @@ func runSync(opts SyncOptions) {
 	}
 
 	fmt.Println()
+	var fallbacks symlinkFallbacks
 	for _, s := range selectedSkills {
-		syncAndLockSkill(s, agents, global, mode, cwd)
+		syncAndLockSkill(s, agents, global, mode, cwd, &fallbacks)
 	}
 
 	fmt.Println()
-	printInstallSummary(len(selectedSkills), global, agents, mode)
+	printInstallSummary(len(selectedSkills), global, agents, mode, &fallbacks)
 }

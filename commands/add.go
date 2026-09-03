@@ -216,13 +216,15 @@ func selectWellKnownSkills(filtered []*registry.WellKnownSkill, opts AddOptions)
 	return selected, true
 }
 
-func installWellKnownForAgents(selectedSkills []*registry.WellKnownSkill, agents []string, global bool, mode InstallMode, sourceID string, parsed source.ParsedSource, cwd string) {
+func installWellKnownForAgents(selectedSkills []*registry.WellKnownSkill, agents []string, global bool, mode InstallMode, sourceID string, parsed source.ParsedSource, cwd string) *symlinkFallbacks {
+	var fallbacks symlinkFallbacks
 	for _, s := range selectedSkills {
 		sName := sanitizeName(s.InstallName)
 		fmt.Printf("%sInstalling %s%s%s...\n", ansiDim, ansiText, s.Name, ansiReset)
 		var failedAgents []string
 		for _, agentName := range agents {
 			result := installWellKnownSkillForAgent(s, agentName, global, mode)
+			fallbacks.note(agentName, result)
 			if !result.Success {
 				failedAgents = append(failedAgents, agentName)
 			}
@@ -250,6 +252,7 @@ func installWellKnownForAgents(selectedSkills []*registry.WellKnownSkill, agents
 			}
 		}
 	}
+	return &fallbacks
 }
 
 func runAddWellKnown(parsed source.ParsedSource, opts AddOptions, cwd string) {
@@ -295,9 +298,9 @@ func runAddWellKnown(parsed source.ParsedSource, opts AddOptions, cwd string) {
 
 	sourceID := registry.GetWellKnownSourceIdentifier(parsed.URL)
 	fmt.Println()
-	installWellKnownForAgents(selectedSkills, agents, global, mode, sourceID, parsed, cwd)
+	fallbacks := installWellKnownForAgents(selectedSkills, agents, global, mode, sourceID, parsed, cwd)
 	fmt.Println()
-	printInstallSummary(len(selectedSkills), global, agents, mode)
+	printInstallSummary(len(selectedSkills), global, agents, mode, fallbacks)
 	maybeShowFindPrompt(cwd)
 }
 
@@ -586,7 +589,8 @@ func selectBlobSkills(skills []*blob.BlobSkill, opts AddOptions) ([]*blob.BlobSk
 	return selected, true
 }
 
-func installBlobSkillsForAgents(selectedBlob []*blob.BlobSkill, agents []string, global bool, mode InstallMode, result *blob.BlobInstallResult, ref, sourceInput string, parsed source.ParsedSource, cwd string) {
+func installBlobSkillsForAgents(selectedBlob []*blob.BlobSkill, agents []string, global bool, mode InstallMode, result *blob.BlobInstallResult, ref, sourceInput string, parsed source.ParsedSource, cwd string) *symlinkFallbacks {
+	var fallbacks symlinkFallbacks
 	for _, bSkill := range selectedBlob {
 		sName := sanitizeName(bSkill.Name)
 		fmt.Printf("%sInstalling %s%s%s...\n", ansiDim, ansiText, bSkill.Name, ansiReset)
@@ -597,6 +601,7 @@ func installBlobSkillsForAgents(selectedBlob []*blob.BlobSkill, agents []string,
 		var failedAgents []string
 		for _, agentName := range agents {
 			r := installSkillFilesForAgent(sName, files, agentName, global, mode)
+			fallbacks.note(agentName, r)
 			if !r.Success {
 				failedAgents = append(failedAgents, agentName)
 			}
@@ -628,6 +633,7 @@ func installBlobSkillsForAgents(selectedBlob []*blob.BlobSkill, agents []string,
 			}
 		}
 	}
+	return &fallbacks
 }
 
 func runAddBlob(result *blob.BlobInstallResult, parsed source.ParsedSource, opts AddOptions, cwd, ownerRepo, sourceInput string) {
@@ -689,15 +695,16 @@ func runAddBlob(result *blob.BlobInstallResult, parsed source.ParsedSource, opts
 	}
 
 	fmt.Println()
-	installBlobSkillsForAgents(selectedBlob, agents, global, mode, result, ref, sourceInput, parsed, cwd)
+	fallbacks := installBlobSkillsForAgents(selectedBlob, agents, global, mode, result, ref, sourceInput, parsed, cwd)
 	fmt.Println()
-	printInstallSummary(len(selectedBlob), global, agents, mode)
+	printInstallSummary(len(selectedBlob), global, agents, mode, fallbacks)
 	maybeShowFindPrompt(cwd)
 }
 
 // ─── Shared install logic ──────────────────────────────────────────────────────
 
 func installSkillsForAgents(skills []*skill.Skill, agents []string, global bool, mode InstallMode, baseLockEntry lock.SkillLockEntry, cwd string, cloneDir string) {
+	var fallbacks symlinkFallbacks
 	for _, s := range skills {
 		sName := sanitizeName(s.Name)
 		fmt.Printf("%sInstalling %s%s%s...\n", ansiDim, ansiText, s.Name, ansiReset)
@@ -705,6 +712,7 @@ func installSkillsForAgents(skills []*skill.Skill, agents []string, global bool,
 		var failedAgents []string
 		for _, agentName := range agents {
 			result := installSkillForAgent(s, agentName, global, mode)
+			fallbacks.note(agentName, result)
 			if !result.Success {
 				failedAgents = append(failedAgents, agentName)
 			}
@@ -743,7 +751,7 @@ func installSkillsForAgents(skills []*skill.Skill, agents []string, global bool,
 	}
 
 	fmt.Println()
-	printInstallSummary(len(skills), global, agents, mode)
+	printInstallSummary(len(skills), global, agents, mode, &fallbacks)
 }
 
 // skillMdRepoPath returns the repo-relative path to the SKILL.md file for a
@@ -1193,7 +1201,11 @@ func reorderSkillsPreselectedFirst(skills []*skill.Skill, preselected []string) 
 	return reordered, initSel
 }
 
-func printInstallSummary(count int, global bool, agents []string, mode InstallMode) {
+// printInstallSummary prints the closing line of an install run. fallbacks
+// may be nil; when it records installs that were copied because a symlink
+// could not be created, the summary says so and a warning follows, so the
+// mode on the summary line never contradicts what is on disk.
+func printInstallSummary(count int, global bool, agents []string, mode InstallMode, fallbacks *symlinkFallbacks) {
 	scope := "project"
 	if global {
 		scope = "global"
@@ -1202,7 +1214,13 @@ func printInstallSummary(count int, global bool, agents []string, mode InstallMo
 	if count != 1 {
 		noun = "skills"
 	}
-	fmt.Printf("%s✓ Installed %d %s (%s scope, %s mode)%s\n", ansiText, count, noun, scope, string(mode), ansiReset)
+	modeNote := string(mode)
+	if fallbacks.any() {
+		modeNote += " mode, copied where symlinks failed"
+	} else {
+		modeNote += " mode"
+	}
+	fmt.Printf("%s✓ Installed %d %s (%s scope, %s)%s\n", ansiText, count, noun, scope, modeNote, ansiReset)
 	if len(agents) > 0 {
 		var displayNames []string
 		for _, a := range agents {
@@ -1215,6 +1233,7 @@ func printInstallSummary(count int, global bool, agents []string, mode InstallMo
 		fmt.Printf("%s  Agents: %s%s\n", ansiDim, strings.Join(displayNames, ", "), ansiReset)
 	}
 	fmt.Println()
+	fallbacks.warn()
 }
 
 func maybeShowFindPrompt(cwd string) {

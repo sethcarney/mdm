@@ -100,6 +100,13 @@ func resolveParentSymlinks(path string) string {
 	return filepath.Join(real, base)
 }
 
+// symlinkFn creates the link in createSymlink. It is a package-level variable
+// only so a test can force the symlink-to-copy fallback deterministically;
+// production code always goes through os.Symlink. Like the other test seams
+// in this package it is shared mutable state, so no test may swap it while
+// running in parallel with another test that installs.
+var symlinkFn = os.Symlink
+
 func createSymlink(target, linkPath string) bool {
 	resolvedTarget, _ := filepath.Abs(target)
 	resolvedLink, _ := filepath.Abs(linkPath)
@@ -148,7 +155,7 @@ func createSymlink(target, linkPath string) bool {
 		}
 	}
 
-	if err := os.Symlink(relPath, linkPath); err != nil {
+	if err := symlinkFn(relPath, linkPath); err != nil {
 		return false
 	}
 	return true
