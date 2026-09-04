@@ -189,13 +189,93 @@ type DiscoverOptions struct {
 	FullDepth       bool
 }
 
+// isSafeRelDir reports whether d is a source-relative directory that cannot
+// escape the search root, judged purely from the path STRING. Every directory
+// a plugin manifest declares goes through it, because the manifest lives
+// inside the source being installed and that source is third-party.
+//
+// This is a cheap first pass only. It cannot see that a directory entry which
+// lexically looks fine (e.g. "extra-skills") is actually a symlink pointing
+// somewhere else on disk; the callers additionally resolve every candidate
+// against the real search root, see resolvedContains. filepath.IsAbs alone is
+// not enough here either: on Windows it reports false for a rooted-but-
+// driveless path like "/Users/victim", so a naive absolute check would let
+// that through. filepath.IsLocal covers that, plus "..", empty, and (on
+// Windows) reserved device names in one lexical pass; "." is rejected on top
+// because a source declaring "." would make the search root scan itself as a
+// "declared" subdirectory, which is harmless but not what skillDirs means.
+func isSafeRelDir(d string) bool {
+	if d == "" || d == "." {
+		return false
+	}
+	return filepath.IsLocal(d)
+}
+
+// resolvedContains reports whether candidate, once symlinks are resolved,
+// still lies inside resolvedRoot (itself already resolved by the caller).
+//
+// The manifest comes from the source being installed, which is untrusted: a
+// directory inside that source can be a symlink whose target lies anywhere on
+// the victim's disk (e.g. an "extra-skills" entry that is really a link to the
+// user's Documents folder), and mdm would then scan it and install whatever it
+// found there as skills. isSafeRelDir only inspects the declared path string
+// and cannot see that; only resolving the entry on disk and comparing it with
+// the real root closes that gap. Any resolution error, including a broken or
+// looping symlink, is treated as unsafe rather than followed.
+//
+// Two things this deliberately does not close. First, a check-then-use window:
+// the candidate is resolved here and then reopened by its unresolved name
+// (os.ReadFile / os.ReadDir), so an attacker who swaps a real entry for a
+// symlink between the two defeats it. Closing that needs handle-based
+// open-then-verify APIs Go does not expose portably, and an attacker able to
+// write into the source tree mid-install can simply drop a hostile skill
+// directly into it instead. Second, this guards manifest-declared paths only;
+// the conventional directories DiscoverSkills always scans are still opened by
+// name, so a symlinked "skills" directory inside a source remains a way out.
+func resolvedContains(resolvedRoot, candidate string) bool {
+	resolved, err := filepath.EvalSymlinks(candidate)
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(resolvedRoot, resolved)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return false
+	}
+	return true
+}
+
+// readPluginManifest returns the raw .claude-plugin/marketplace.json bytes for
+// searchPath together with the resolved search root its declared directories
+// must stay inside.
+//
+// The manifest path gets the same containment check as the directories it
+// declares: .claude-plugin, or marketplace.json itself, can be a symlink
+// pointing outside the source, and it is read before anything else has a
+// chance to check where it came from.
+func readPluginManifest(searchPath string) (data []byte, resolvedRoot string, ok bool) {
+	resolvedRoot, err := filepath.EvalSymlinks(searchPath)
+	if err != nil {
+		// The search root itself cannot be resolved (missing, or a broken
+		// symlink). There is nothing safe to scan relative to it.
+		return nil, "", false
+	}
+	manifestPath := filepath.Join(searchPath, ".claude-plugin", "marketplace.json")
+	if !resolvedContains(resolvedRoot, manifestPath) {
+		return nil, "", false
+	}
+	data, err = os.ReadFile(manifestPath)
+	if err != nil {
+		return nil, "", false
+	}
+	return data, resolvedRoot, true
+}
+
 // GetPluginGroupings returns a map of skill dir path -> plugin name, based on
 // plugin-manifest files (.claude-plugin/marketplace.json) in the search path.
 func GetPluginGroupings(searchPath string) map[string]string {
 	result := map[string]string{}
-	manifestPath := filepath.Join(searchPath, ".claude-plugin", "marketplace.json")
-	data, err := os.ReadFile(manifestPath)
-	if err != nil {
+	data, resolvedRoot, ok := readPluginManifest(searchPath)
+	if !ok {
 		return result
 	}
 	var manifest struct {
@@ -215,14 +295,22 @@ func GetPluginGroupings(searchPath string) map[string]string {
 	// If plugins list provided, each plugin's skillDir maps to its own name or parent
 	if len(manifest.Plugins) > 0 {
 		for _, p := range manifest.Plugins {
-			if p.SkillDir != "" {
-				abs, _ := filepath.Abs(filepath.Join(searchPath, p.SkillDir))
-				name := p.Name
-				if name == "" {
-					name = pluginName
-				}
-				result[abs] = name
+			// An unsafe skillDir is dropped silently, the same treatment an
+			// unparsable SKILL.md gets: this is untrusted input to filter,
+			// not a fault of the user running mdm.
+			if !isSafeRelDir(p.SkillDir) {
+				continue
 			}
+			dir := filepath.Join(searchPath, p.SkillDir)
+			if !resolvedContains(resolvedRoot, dir) {
+				continue
+			}
+			abs, _ := filepath.Abs(dir)
+			name := p.Name
+			if name == "" {
+				name = pluginName
+			}
+			result[abs] = name
 		}
 	}
 	return result
@@ -231,9 +319,8 @@ func GetPluginGroupings(searchPath string) map[string]string {
 // GetPluginSkillPaths returns extra skill search dirs from plugin manifests.
 func GetPluginSkillPaths(searchPath string) []string {
 	var result []string
-	manifestPath := filepath.Join(searchPath, ".claude-plugin", "marketplace.json")
-	data, err := os.ReadFile(manifestPath)
-	if err != nil {
+	data, resolvedRoot, ok := readPluginManifest(searchPath)
+	if !ok {
 		return result
 	}
 	var manifest struct {
@@ -243,7 +330,16 @@ func GetPluginSkillPaths(searchPath string) []string {
 		return result
 	}
 	for _, d := range manifest.SkillDirs {
-		result = append(result, filepath.Join(searchPath, d))
+		// Silently dropped rather than reported, for the same reason as an
+		// unsafe skillDir in GetPluginGroupings.
+		if !isSafeRelDir(d) {
+			continue
+		}
+		dir := filepath.Join(searchPath, d)
+		if !resolvedContains(resolvedRoot, dir) {
+			continue
+		}
+		result = append(result, dir)
 	}
 	return result
 }
