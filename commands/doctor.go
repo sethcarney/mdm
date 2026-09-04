@@ -149,12 +149,21 @@ func runDoctor(opts DoctorOptions) {
 	var mdTruncated bool
 
 	var readmeIssue *doctorIssue
+	var agentIssues []doctorIssue
 	if checkProject {
 		instrIssues = checkInstructionFiles(cwd)
 		unlinkedRulesIssues = checkUnlinkedRulesHarnesses(cwd)
 		missingSkillLinkIssues = checkMissingHarnessSkillLinks(cwd)
 		knowledgeIssues = checkKnowledgeBundles(cwd)
 		pluginIssues = checkInstalledPlugins(cwd)
+		// Project scope only, alongside checkKnowledgeBundles and
+		// checkInstalledPlugins above: global agent installs would need
+		// lock.ReadGlobalState(), which aborts the whole process on an
+		// unreadable global state file, and `mdm doctor -p` must never fail
+		// over a problem outside the project it was asked to check (see
+		// checkGlobalMigration's own checkGlobal-gated error/warn split for
+		// the same rule applied to the migration check).
+		agentIssues = checkAgentInstalls(cwd)
 		migrationIssues = checkProjectMigration(cwd)
 		mdIssues, mdTruncated = checkProjectMarkdown(cwd, skipDirs, skipFiles)
 		if mdTruncated {
@@ -172,7 +181,7 @@ func runDoctor(opts DoctorOptions) {
 
 	migrationIssues = append(migrationIssues, checkGlobalMigration(checkGlobal)...)
 
-	errs := printDoctorResults(results, instrIssues, unlinkedRulesIssues, missingSkillLinkIssues, knowledgeIssues, pluginIssues, migrationIssues, mdIssues, mdTruncated, readmeIssue, checkProject, cwd)
+	errs := printDoctorResults(results, instrIssues, unlinkedRulesIssues, missingSkillLinkIssues, knowledgeIssues, pluginIssues, agentIssues, migrationIssues, mdIssues, mdTruncated, readmeIssue, checkProject, cwd)
 	if errs > 0 {
 		os.Exit(1)
 	}
@@ -489,6 +498,89 @@ func checkMissingHarnessSkillLinks(cwd string) []doctorIssue {
 	return issues
 }
 
+// checkAgentInstalls reports the health of every project-scoped locked
+// agent definition. Project scope only, mirroring checkKnowledgeBundles and
+// checkInstalledPlugins: see the checkProject call site for why global
+// scope is out of reach here.
+//
+// Two distinct problems get two distinct messages:
+//
+//   - the definition is not installed in any harness at all (nothing to
+//     report on disk beyond the canonical file, if that even exists), and
+//   - a harness DOES have an entry for it, but that entry is a symlink
+//     whose target is gone.
+//
+// This distinction matters because agentInstalledSomewhere (used by `mdm
+// agents list` and by `mdm agents remove`) deliberately uses os.Lstat, so a
+// dangling symlink counts as "installed" there — that is what stops remove
+// from stranding the canonical file when a harness copy still exists in
+// name only. It also means `mdm agents list` reports a broken install as
+// healthy. Doctor is where that gets surfaced instead of silently trusted.
+func checkAgentInstalls(cwd string) []doctorIssue {
+	var issues []doctorIssue
+	names, agents := agentLockEntries(false, cwd)
+	for _, name := range names {
+		issues = append(issues, diagnoseAgentInstall(name, agents[name], cwd)...)
+	}
+	sort.Slice(issues, func(i, j int) bool { return issues[i].Message < issues[j].Message })
+	return issues
+}
+
+// diagnoseAgentInstall checks one locked project-scoped agent definition:
+// the canonical file, and every harness with an agent concept that
+// currently has something on disk for it.
+func diagnoseAgentInstall(name string, _ lock.AgentLockEntry, cwd string) []doctorIssue {
+	var issues []doctorIssue
+
+	canonical := filepath.Join(harness.CanonicalAgentsDir(false, cwd), name+".md")
+	if _, err := os.Stat(canonical); err != nil {
+		issues = append(issues, doctorIssue{
+			Level:   "error",
+			Message: fmt.Sprintf("agent %q: canonical file missing — run `mdm agents install` to restore", name),
+		})
+	}
+
+	installedAnywhere := false
+	for harnessName := range harness.AllHarnesses {
+		dir := harness.AgentsInstallDirFor(harnessName, false, cwd)
+		if dir == "" {
+			continue
+		}
+		target := filepath.Join(dir, name+harness.AgentFileExt(harnessName))
+		info, err := os.Lstat(target)
+		if err != nil {
+			// Not installed in this harness — not inherently a problem: a
+			// definition need not be installed to every harness that could
+			// take it.
+			continue
+		}
+		installedAnywhere = true
+		if info.Mode()&os.ModeSymlink == 0 {
+			continue // a real file (copy-mode install) — healthy
+		}
+		if _, statErr := os.Stat(target); statErr != nil {
+			cfg := harness.AllHarnesses[harnessName]
+			displayName := harnessName
+			if cfg != nil {
+				displayName = cfg.DisplayName
+			}
+			issues = append(issues, doctorIssue{
+				Level:   "error",
+				Message: fmt.Sprintf("agent %q: broken symlink in %s — target missing, run `mdm agents update %s` to repair", name, displayName, name),
+			})
+		}
+	}
+
+	if !installedAnywhere {
+		issues = append(issues, doctorIssue{
+			Level:   "warn",
+			Message: fmt.Sprintf("agent %q is not installed in any harness — run `mdm agents install` to restore", name),
+		})
+	}
+
+	return issues
+}
+
 // checkInstructionFiles scans the project root for known harness instruction
 // files (CLAUDE.md, AGENTS.md, .cursorrules, .github/copilot-instructions.md,
 // etc.) and flags oversized ones.
@@ -607,7 +699,7 @@ func checkProjectMarkdown(cwd string, skipDirs map[string]bool, skipFiles map[st
 
 // ── Output ─────────────────────────────────────────────────────────────────────
 
-func printDoctorResults(results []doctorResult, instrIssues, unlinkedRulesIssues, missingSkillLinkIssues, knowledgeIssues, pluginIssues, migrationIssues, mdIssues []doctorIssue, mdTruncated bool, readmeIssue *doctorIssue, scannedProject bool, cwd string) int {
+func printDoctorResults(results []doctorResult, instrIssues, unlinkedRulesIssues, missingSkillLinkIssues, knowledgeIssues, pluginIssues, agentIssues, migrationIssues, mdIssues []doctorIssue, mdTruncated bool, readmeIssue *doctorIssue, scannedProject bool, cwd string) int {
 	fmt.Println()
 
 	byScope := map[string][]doctorResult{}
@@ -662,6 +754,14 @@ func printDoctorResults(results []doctorResult, instrIssues, unlinkedRulesIssues
 	if len(pluginIssues) > 0 {
 		fmt.Printf("%sPlugins:%s\n\n", ansiText, ansiReset)
 		e, w := printAndCountDoctorIssues(pluginIssues)
+		totalErrors += e
+		totalWarnings += w
+		fmt.Println()
+	}
+
+	if len(agentIssues) > 0 {
+		fmt.Printf("%sAgent definitions:%s\n\n", ansiText, ansiReset)
+		e, w := printAndCountDoctorIssues(agentIssues)
 		totalErrors += e
 		totalWarnings += w
 		fmt.Println()

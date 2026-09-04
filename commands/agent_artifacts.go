@@ -49,6 +49,8 @@ reusable prompt libraries %smdm skills%s installs.
 		buildAgentAddCmd(),
 		buildAgentListCmd(),
 		buildAgentRemoveCmd(),
+		buildAgentsUpdateCmd(),
+		buildAgentsInstallCmd(),
 	)
 
 	return cmd
@@ -710,5 +712,320 @@ func runAgentRemove(positional []string, opts AgentOptions) {
 			ui.LogWarn(fmt.Sprintf("%s: removed from the given harness(es), but it is still installed elsewhere — keeping the definition and its lock entry", name))
 		}
 	}
+	fmt.Println()
+}
+
+// ─── install (restore from lock) ───────────────────────────────────────────────
+
+func buildAgentsInstallCmd() *cobra.Command {
+	var opts restoreOptions
+
+	cmd := &cobra.Command{
+		Use:   "install",
+		Short: "Restore agent definitions from " + lockName,
+		Args:  cobra.NoArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			restoreAgentsFromLock(opts)
+		},
+	}
+
+	cmd.Flags().BoolVarP(&opts.yes, "yes", "y", false, "Skip confirmation prompts")
+	return cmd
+}
+
+// restoreAgentsFromLock installs every agent definition recorded in the
+// local and global locks. It mirrors restoreSkillsFromCurrentLock in
+// install.go: same local-vs-global resolution, and the same "which lock
+// file" prompt when both are populated. `mdm install` calls it after the
+// skill restore; `mdm agents install` calls it directly.
+func restoreAgentsFromLock(opts restoreOptions) {
+	cwd, _ := os.Getwd()
+
+	localAgents := lock.ReadProjectLock(cwd).Agents
+	globalAgents := lock.ReadGlobalState().Agents
+
+	hasLocal := len(localAgents) > 0
+	hasGlobal := len(globalAgents) > 0
+	vlog(verboseFlag, "install from lock: local=%d agent(s) global=%d agent(s)", len(localAgents), len(globalAgents))
+
+	switch {
+	case !hasLocal && !hasGlobal:
+		// Nothing recorded — this is a normal outcome for a project with no
+		// agent definitions, so stay quiet rather than repeat the skills
+		// "nothing found" message for a concept this project may not use.
+		return
+
+	case hasLocal && !hasGlobal:
+		restoreAgentsMap(localAgents, false, opts, cwd)
+
+	case !hasLocal && hasGlobal:
+		if !opts.yes {
+			msg := fmt.Sprintf("Found %d agent definition(s) in the global state file (%s). Install them?", len(globalAgents), lock.GetGlobalStatePath())
+			confirmed, ok := ui.UiConfirm(msg)
+			if !ok || !confirmed {
+				return
+			}
+		}
+		restoreAgentsMap(globalAgents, true, opts, cwd)
+
+	default: // both scopes have agent definitions
+		if opts.yes {
+			restoreAgentsMap(localAgents, false, opts, cwd)
+		} else {
+			idx, ok := ui.UiSelect("Restore agent definitions from which lock file?", []ui.UIOption{
+				{Label: fmt.Sprintf("Local  — %d agent definition(s)", len(localAgents)), Hint: lock.GetProjectLockPath(cwd)},
+				{Label: fmt.Sprintf("Global — %d agent definition(s)", len(globalAgents)), Hint: lock.GetGlobalStatePath()},
+			})
+			if !ok {
+				return
+			}
+			if idx == 1 {
+				restoreAgentsMap(globalAgents, true, opts, cwd)
+			} else {
+				restoreAgentsMap(localAgents, false, opts, cwd)
+			}
+		}
+	}
+}
+
+// restoreAgentsMap groups entries by source (groupBySourceRef, shared with
+// restoreSkills) and calls runAgentAdd once per group, exactly the economy
+// restoreSkills applies for skills: a repo holding many agent definitions is
+// cloned once per restore, not once per definition.
+func restoreAgentsMap(entries map[string]lock.AgentLockEntry, global bool, opts restoreOptions, cwd string) {
+	fmt.Printf("\n%sRestoring %d agent definition(s)...%s\n\n", ansiText, len(entries), ansiReset)
+
+	refs := make(map[string]sourceRef, len(entries))
+	for name, e := range entries {
+		refs[name] = sourceRef{source: e.Source, ref: e.Ref}
+	}
+	groups := groupBySourceRef(refs)
+
+	baseOpts := AgentOptions{Yes: opts.yes}
+	if global {
+		baseOpts.Global = true
+	} else {
+		baseOpts.Project = true
+	}
+
+	// Resolve harnesses once so the user is not prompted for each source group.
+	harnesses, ok := promptHarnesses(baseOpts.asAddOptions(), global, cwd)
+	if !ok {
+		fmt.Println("Cancelled.")
+		return
+	}
+	baseOpts.Harnesses = harnesses
+
+	vlog(verboseFlag, "grouped %d agent definition(s) into %d source group(s)", len(entries), len(groups))
+	for _, group := range groups {
+		vlog(verboseFlag, "restoring agent definitions from %q (ref=%q): %v", group.source, group.ref, group.names)
+		fmt.Printf("%sInstalling from %s...%s\n", ansiDim, group.source, ansiReset)
+		groupOpts := baseOpts
+		groupOpts.Agents = group.names
+		src := group.source
+		if group.ref != "" && !strings.Contains(src, "#") {
+			src = src + "#" + group.ref
+		}
+		runAgentAdd(src, groupOpts)
+	}
+
+	fmt.Printf("%sDone.%s\n\n", ansiText, ansiReset)
+}
+
+// ─── update ─────────────────────────────────────────────────────────────────────
+
+func buildAgentsUpdateCmd() *cobra.Command {
+	var opts UpdateOptions
+
+	cmd := &cobra.Command{
+		Use:   "update [names...]",
+		Short: "Update installed agent definitions",
+		Long: fmt.Sprintf(`Update installed agent definitions to their latest versions.
+
+Definitions that share a source repository and target ref are re-fetched
+together, so a repo holding many agent definitions is cloned once per
+update run rather than once per definition. Every harness a definition is
+currently installed to is refreshed — not just the canonical copy — so a
+copy-mode harness install picks up the change too, instead of going stale.
+
+%sExamples:%s
+  mdm agents update
+  mdm agents update code-reviewer
+  mdm agents update -g`, ansiBold, ansiReset),
+		Args: cobra.ArbitraryArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			runAgentsUpdateWithOpts(args, opts)
+		},
+	}
+
+	f := cmd.Flags()
+	f.BoolVarP(&opts.Global, "global", "g", false, "Update global agent definitions only")
+	f.BoolVarP(&opts.Project, "project", "p", false, "Update project agent definitions only")
+	f.BoolVarP(&opts.Yes, "yes", "y", false, "Skip scope prompt")
+
+	return cmd
+}
+
+// currentInstallMode reads the scope's recorded install mode without
+// reconciling it. An update refreshes existing installs in whatever mode
+// they are already in — it never switches modes, that is `mdm ... install
+// --copy`'s job via commitScopeInstallMode.
+func currentInstallMode(global bool, cwd string) InstallMode {
+	if lock.GetInstallMode(global, cwd) == lock.InstallModeCopy {
+		return InstallModeCopy
+	}
+	return InstallModeSymlink
+}
+
+// collectAgentCandidates adapts one scope's agent lock entries to
+// updateCandidate, the same normalized shape collectProjectCandidates and
+// collectGlobalCandidates build for skills, so planUpdates (the semver
+// up-to-date check and source grouping) is shared rather than reimplemented.
+func collectAgentCandidates(global bool, filter []string, cwd string) []updateCandidate {
+	names, agents := agentLockEntries(global, cwd)
+
+	var candidates []updateCandidate
+	for _, name := range names {
+		entry := agents[name]
+		if !matchesFilter(name, "", filter) {
+			continue
+		}
+		candidates = append(candidates, updateCandidate{
+			lockName:   name,
+			filterName: name,
+			source:     entry.Source,
+			sourceType: entry.SourceType,
+			ref:        entry.Ref,
+		})
+	}
+	return candidates
+}
+
+// runAgentUpdateGroups re-fetches each group once (the same clone-sharing
+// planUpdates buys skills) and reinstalls every selected definition into
+// every harness it is CURRENTLY installed to, per agentInstalledHarnesses —
+// not the scope's configured-harness list, which can differ from where a
+// given definition actually lives. Sourcing the harness list this way is
+// what keeps a copy-mode harness's own file from going stale while only the
+// canonical file moves forward: installAgentFile is called again for each
+// of those harnesses, not skipped in favor of just refreshing the canonical
+// copy.
+func runAgentUpdateGroups(groups []updateGroup, global bool, cwd string, stats *updateStats) {
+	mode := currentInstallMode(global, cwd)
+	for _, g := range groups {
+		if len(g.skills) > 1 {
+			fmt.Printf("%sFetching %d agent definition(s) from %s in one pass...%s\n", ansiDim, len(g.skills), g.source, ansiReset)
+		}
+		vlog(verboseFlag, "updating agent definition(s) from %q: %v", g.source, g.names)
+
+		parsed := source.ParseSource(g.source)
+		searchRoot, cloneDir, cleanup := fetchAgentSource(parsed, verboseFlag)
+
+		found, err := agentfile.DiscoverAgentFiles(searchRoot, parsed.Subpath)
+		if err != nil {
+			ui.LogWarn(fmt.Sprintf("could not fetch %s: %v", g.source, err))
+			cleanup()
+			continue
+		}
+		selected := filterAgentsByName(found, g.skills)
+		baseEntry := agentLockEntry(parsed, g.source)
+
+		// A name the lock records but that no longer parses out of the
+		// source is left exactly as installed — there is nothing to
+		// reinstall it from — but the user asked to update it and deserves
+		// a signal that it has vanished upstream, not silence.
+		for _, filterName := range g.skills {
+			matched := false
+			for _, a := range selected {
+				if skillNameMatches(a.Name, filterName) {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				ui.LogWarn(fmt.Sprintf("%s: not found in %s, leaving the existing install alone", filterName, g.source))
+			}
+		}
+
+		for _, a := range selected {
+			name := sanitizeName(a.Name)
+			installedHarnesses := agentInstalledHarnesses(name, global, cwd)
+			if len(installedHarnesses) == 0 {
+				ui.LogWarn(fmt.Sprintf("%s: not installed in any harness, skipping", a.Name))
+				continue
+			}
+
+			var failedHarnesses []string
+			installedAny := false
+			for _, harnessName := range installedHarnesses {
+				result := installAgentFile(a, harnessName, global, cwd, mode)
+				if result.Success {
+					installedAny = true
+				} else {
+					failedHarnesses = append(failedHarnesses, harnessName)
+				}
+			}
+
+			// The lock must always describe the disk: if every harness
+			// install failed, nothing changed on disk, so nothing changes
+			// in the lock either. Mirrors installAgentsForHarnesses' own
+			// `if !installedAny { continue }` guard on the add path — the
+			// update path was written later and had not gotten it.
+			if !installedAny {
+				ui.LogWarn(fmt.Sprintf("%s: update failed for every installed harness (%s) — lock entry left unchanged", a.Name, strings.Join(failedHarnesses, ", ")))
+				continue
+			}
+			if len(failedHarnesses) == 0 {
+				ui.LogSuccess(a.Name)
+			} else {
+				ui.LogWarn(fmt.Sprintf("%s (failed for: %s)", a.Name, strings.Join(failedHarnesses, ", ")))
+			}
+
+			entry := baseEntry
+			entry.AgentPath = agentFileRepoPath(a.Path, cloneDir)
+			if global {
+				if err := lock.AddAgentToGlobalState(name, entry); err != nil {
+					ui.LogWarn(fmt.Sprintf("could not update lock file: %v", err))
+				}
+			} else {
+				if err := lock.AddAgentToLocalLock(name, entry, cwd); err != nil {
+					ui.LogWarn(fmt.Sprintf("could not update lock file: %v", err))
+				}
+			}
+			stats.updated++
+		}
+		cleanup()
+	}
+}
+
+func runAgentsUpdateWithOpts(filter []string, opts UpdateOptions) {
+	global, project, ok := resolveUpdateScope(opts)
+	if !ok {
+		return
+	}
+	vlog(verboseFlag, "agents update scope: global=%v project=%v filter=%v", global, project, filter)
+
+	tags := newRemoteTagCache()
+	check := func(c updateCandidate) (bool, string, error) { return checkCandidateUpToDate(c, tags) }
+	var stats updateStats
+
+	cwd, _ := os.Getwd()
+	if global {
+		groups := planUpdates(collectAgentCandidates(true, filter, cwd), check, &stats)
+		vlog(verboseFlag, "global: %d source group(s) to fetch", len(groups))
+		runAgentUpdateGroups(groups, true, cwd, &stats)
+	}
+	if project {
+		groups := planUpdates(collectAgentCandidates(false, filter, cwd), check, &stats)
+		vlog(verboseFlag, "project: %d source group(s) to fetch", len(groups))
+		runAgentUpdateGroups(groups, false, cwd, &stats)
+	}
+
+	fmt.Println()
+	if stats.updated == 0 && stats.skipped == 0 {
+		fmt.Printf("%sNo agent definitions to update.%s\n", ansiDim, ansiReset)
+		return
+	}
+	fmt.Printf("%sUpdate complete:%s %d updated, %d already up to date\n", ansiText, ansiReset, stats.updated, stats.skipped)
 	fmt.Println()
 }

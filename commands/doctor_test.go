@@ -631,3 +631,89 @@ func TestCheckGlobalMigrationWarnsOnCopyModeWithLegacyState(t *testing.T) {
 		t.Errorf("issues = %v, want a warning that names copy mode and `mdm migrate`", issues)
 	}
 }
+
+// ── Agent install checks ──────────────────────────────────────────────────────
+
+// A broken agent symlink is the same class of problem as a broken skill
+// symlink and gets the same report.
+func TestDoctorReportsABrokenAgentSymlink(t *testing.T) {
+	cwd := t.TempDir()
+	installDir := filepath.Join(cwd, ".claude", "agents")
+	if err := os.MkdirAll(installDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(installDir, "critic.md")
+	if err := os.Symlink(filepath.Join(cwd, ".agents", "agents", "gone.md"), target); err != nil {
+		t.Skipf("symlinks unavailable on this host: %v", err)
+	}
+	if err := lock.AddAgentToLocalLock("critic", lock.AgentLockEntry{Source: "o/r", SourceType: "github", AgentPath: "agents/critic.md"}, cwd); err != nil {
+		t.Fatal(err)
+	}
+
+	issues := checkAgentInstalls(cwd)
+	if len(issues) == 0 {
+		t.Fatal("doctor reported nothing for a broken agent symlink")
+	}
+}
+
+// Mutation this test catches: reporting a broken symlink and a definition
+// that is not installed anywhere with the same message (or the same
+// message for both), which would make it impossible for the user to tell
+// "run `mdm agents install`" from "run `mdm agents update` to repair a
+// harness copy" apart. agentInstalledSomewhere deliberately counts a
+// dangling symlink as installed (so `remove` never strands the canonical
+// file); this test pins down that doctor still tells the two situations
+// apart instead of collapsing them into one report.
+func TestDoctorDistinguishesMissingAgentFromBrokenSymlink(t *testing.T) {
+	cwd := t.TempDir()
+
+	// "vanished": recorded in the lock, but nothing on disk in any harness —
+	// not even a broken link.
+	if err := lock.AddAgentToLocalLock("vanished", lock.AgentLockEntry{Source: "o/r", SourceType: "github", AgentPath: "agents/vanished.md"}, cwd); err != nil {
+		t.Fatal(err)
+	}
+
+	// "critic": one harness has a dangling symlink — installed, but broken.
+	installDir := filepath.Join(cwd, ".claude", "agents")
+	if err := os.MkdirAll(installDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(installDir, "critic.md")
+	if err := os.Symlink(filepath.Join(cwd, ".agents", "agents", "gone.md"), target); err != nil {
+		t.Skipf("symlinks unavailable on this host: %v", err)
+	}
+	if err := lock.AddAgentToLocalLock("critic", lock.AgentLockEntry{Source: "o/r", SourceType: "github", AgentPath: "agents/critic.md"}, cwd); err != nil {
+		t.Fatal(err)
+	}
+
+	issues := checkAgentInstalls(cwd)
+
+	var vanishedMissing, vanishedBroken, criticMissing, criticBroken bool
+	for _, iss := range issues {
+		named := strings.Contains(iss.Message, `"vanished"`)
+		other := strings.Contains(iss.Message, `"critic"`)
+		notInstalled := strings.Contains(iss.Message, "not installed in any harness")
+		broken := strings.Contains(iss.Message, "broken symlink")
+		if named {
+			vanishedMissing = vanishedMissing || notInstalled
+			vanishedBroken = vanishedBroken || broken
+		}
+		if other {
+			criticMissing = criticMissing || notInstalled
+			criticBroken = criticBroken || broken
+		}
+	}
+
+	if !vanishedMissing {
+		t.Errorf("expected a 'not installed in any harness' issue for vanished; issues=%v", issues)
+	}
+	if vanishedBroken {
+		t.Errorf("vanished was never installed anywhere; it must not be reported as a broken symlink; issues=%v", issues)
+	}
+	if !criticBroken {
+		t.Errorf("expected a 'broken symlink' issue for critic; issues=%v", issues)
+	}
+	if criticMissing {
+		t.Errorf("critic has a (broken) install on disk; it must not also be reported as 'not installed in any harness'; issues=%v", issues)
+	}
+}

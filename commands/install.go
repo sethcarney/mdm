@@ -55,10 +55,36 @@ func hintPluginsInstall(cwd string) {
 	fmt.Printf("%sThis project also has plugins - restore them with 'mdm plugins install'.%s\n", ansiDim, ansiReset)
 }
 
+// restoreSkillsHook and restoreAgentsHook are runInstallFromLock's two
+// restore steps, extracted into swappable vars purely for testing. `mdm
+// install` restores skills, then agent definitions — but neither step
+// leaves an isolated on-disk trace a unit test can assert on without a
+// real network fetch or an interactive prompt, so tests swap these for
+// recorders instead of calling the real thing to pin down the order (and
+// that both actually run).
+var (
+	restoreSkillsHook = restoreSkillsFromCurrentLock
+	restoreAgentsHook = restoreAgentsFromLock
+)
+
 func runInstallFromLock(opts restoreOptions) {
 	cwd, _ := os.Getwd()
 	hintPluginsInstall(cwd)
 
+	restoreSkillsHook(opts, cwd)
+	// Agent definitions restore after skills: skills are the older, larger
+	// piece of `mdm install`, and agent restore reuses the same
+	// scope/harness/mode machinery, so running it second keeps a single
+	// command doing both without a second, earlier decision point.
+	restoreAgentsHook(opts)
+}
+
+// restoreSkillsFromCurrentLock is `mdm install`'s skill-restore step:
+// local-vs-global resolution, and the same "which lock file" prompt when
+// both are populated. Unchanged in behavior from before agent definitions
+// existed — only extracted into its own function so runInstallFromLock
+// could gain a second, ordered step.
+func restoreSkillsFromCurrentLock(opts restoreOptions, cwd string) {
 	localL := lock.ReadLocalLock(cwd)
 	globalL := lock.ReadGlobalState()
 
@@ -140,13 +166,20 @@ type sourceRef struct {
 	ref    string
 }
 
-// restoreSkills groups lock entries by source and calls runAdd for each group.
-func restoreSkills(entries map[string]sourceRef, baseOpts AddOptions) {
-	type sourceGroup struct {
-		source string
-		ref    string
-		skills []string
-	}
+// sourceGroup is a set of lock entries (names only — skill names, agent
+// definition names, whatever the caller is restoring) that resolve to the
+// same source at the same target ref. Every group costs exactly one fetch.
+type sourceGroup struct {
+	source string
+	ref    string
+	names  []string
+}
+
+// groupBySourceRef buckets entries by normalized source+ref, so restoring
+// (or updating) several names that share a repository fetches it once
+// instead of once per name. Shared by restoreSkills and the agent-restore
+// path in agent_artifacts.go — this is the one copy of that logic.
+func groupBySourceRef(entries map[string]sourceRef) []sourceGroup {
 	sourceMap := map[string]*sourceGroup{}
 	for name, e := range entries {
 		// Normalize: strip a trailing #fragment from the source when it duplicates
@@ -162,11 +195,31 @@ func restoreSkills(entries map[string]sourceRef, baseOpts AddOptions) {
 		}
 		key := normalizedSource + "|" + e.ref
 		if g, ok := sourceMap[key]; ok {
-			g.skills = append(g.skills, name)
+			g.names = append(g.names, name)
 		} else {
-			sourceMap[key] = &sourceGroup{source: normalizedSource, ref: e.ref, skills: []string{name}}
+			sourceMap[key] = &sourceGroup{source: normalizedSource, ref: e.ref, names: []string{name}}
 		}
 	}
+
+	// Iterate groups (and each group's names) in sorted order so restores are
+	// deterministic rather than following map iteration order.
+	keys := make([]string, 0, len(sourceMap))
+	for key := range sourceMap {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	groups := make([]sourceGroup, 0, len(keys))
+	for _, key := range keys {
+		g := sourceMap[key]
+		sort.Strings(g.names)
+		groups = append(groups, *g)
+	}
+	return groups
+}
+
+// restoreSkills groups lock entries by source and calls runAdd for each group.
+func restoreSkills(entries map[string]sourceRef, baseOpts AddOptions) {
+	groups := groupBySourceRef(entries)
 
 	// Resolve harnesses once so the user is not prompted for each source group.
 	if len(baseOpts.Harnesses) == 0 {
@@ -179,21 +232,12 @@ func restoreSkills(entries map[string]sourceRef, baseOpts AddOptions) {
 		baseOpts.Harnesses = harnesses
 	}
 
-	vlog(verboseFlag, "grouped %d skill(s) into %d source group(s)", len(entries), len(sourceMap))
-	// Iterate groups (and each group's skills) in sorted order so restores are
-	// deterministic rather than following map iteration order.
-	keys := make([]string, 0, len(sourceMap))
-	for key := range sourceMap {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	for _, key := range keys {
-		group := sourceMap[key]
-		sort.Strings(group.skills)
-		vlog(verboseFlag, "restoring from %q (ref=%q): %v", group.source, group.ref, group.skills)
+	vlog(verboseFlag, "grouped %d skill(s) into %d source group(s)", len(entries), len(groups))
+	for _, group := range groups {
+		vlog(verboseFlag, "restoring from %q (ref=%q): %v", group.source, group.ref, group.names)
 		fmt.Printf("%sInstalling from %s...%s\n", ansiDim, group.source, ansiReset)
 		opts := baseOpts
-		opts.Skills = group.skills
+		opts.Skills = group.names
 		src := group.source
 		if group.ref != "" && !strings.Contains(src, "#") {
 			src = src + "#" + group.ref
