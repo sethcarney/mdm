@@ -28,6 +28,14 @@ type InstallResult struct {
 	Mode          InstallMode
 	SymlinkFailed bool
 	Error         string
+
+	// Skipped marks a not-installed result that is nobody's fault: the
+	// target simply has nothing to install into, e.g. an agent definition
+	// aimed at a harness with no agent concept. Error still carries the
+	// reason, but a caller must report it as a skip, not a failure —
+	// otherwise "install this to every harness" looks broken every time it
+	// touches a harness that does not have the feature.
+	Skipped bool
 }
 
 func sanitizeName(name string) string {

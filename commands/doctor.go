@@ -532,7 +532,7 @@ func checkAgentInstalls(cwd string) []doctorIssue {
 func diagnoseAgentInstall(name string, _ lock.AgentLockEntry, cwd string) []doctorIssue {
 	var issues []doctorIssue
 
-	canonical := filepath.Join(harness.CanonicalAgentsDir(false, cwd), name+".md")
+	canonical := agentCanonicalPath(name, false, cwd)
 	if _, err := os.Stat(canonical); err != nil {
 		issues = append(issues, doctorIssue{
 			Level:   "error",
@@ -542,11 +542,10 @@ func diagnoseAgentInstall(name string, _ lock.AgentLockEntry, cwd string) []doct
 
 	installedAnywhere := false
 	for harnessName := range harness.AllHarnesses {
-		dir := harness.AgentsInstallDirFor(harnessName, false, cwd)
-		if dir == "" {
+		target := agentHarnessPath(name, harnessName, false, cwd)
+		if target == "" {
 			continue
 		}
-		target := filepath.Join(dir, name+harness.AgentFileExt(harnessName))
 		info, err := os.Lstat(target)
 		if err != nil {
 			// Not installed in this harness — not inherently a problem: a

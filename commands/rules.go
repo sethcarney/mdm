@@ -376,7 +376,7 @@ func runRulesLink(harnessFilter []string, yes bool) {
 		for _, c := range selected {
 			names = append(names, c.name)
 		}
-		if err := lock.AddToConfiguredAgents(names, false, cwd); err != nil {
+		if err := lock.AddToConfiguredHarnesses(names, false, cwd); err != nil {
 			ui.LogWarn(fmt.Sprintf("could not save harness preferences: %v", err))
 		}
 	}

@@ -223,8 +223,8 @@ func SetInstallMode(mode string, global bool, cwd string) error {
 	return WriteProjectLock(lk, cwd)
 }
 
-// AddToConfiguredAgents appends harnesses that aren't already in the list.
-func AddToConfiguredAgents(toAdd []string, global bool, cwd string) error {
+// AddToConfiguredHarnesses appends harnesses that aren't already in the list.
+func AddToConfiguredHarnesses(toAdd []string, global bool, cwd string) error {
 	current := GetConfiguredHarnesses(global, cwd)
 	existing := map[string]bool{}
 	for _, a := range current {
@@ -240,8 +240,8 @@ func AddToConfiguredAgents(toAdd []string, global bool, cwd string) error {
 	return SetConfiguredHarnesses(current, global, cwd)
 }
 
-// RemoveFromConfiguredAgents removes the given harnesses from the configured list.
-func RemoveFromConfiguredAgents(toRemove []string, global bool, cwd string) error {
+// RemoveFromConfiguredHarnesses removes the given harnesses from the configured list.
+func RemoveFromConfiguredHarnesses(toRemove []string, global bool, cwd string) error {
 	current := GetConfiguredHarnesses(global, cwd)
 	removeSet := map[string]bool{}
 	for _, a := range toRemove {

@@ -200,7 +200,7 @@ Use %s--global%s / %s-g%s to configure harnesses at the user level.`, ansiBold, 
 			if !ok {
 				return fmt.Errorf("no valid harnesses specified")
 			}
-			if err := lock.AddToConfiguredAgents(toAdd, global, cwd); err != nil {
+			if err := lock.AddToConfiguredHarnesses(toAdd, global, cwd); err != nil {
 				ui.LogError(fmt.Sprintf("could not save harness configuration: %v", err))
 				return nil
 			}
@@ -353,7 +353,7 @@ func runHarnessesRemove(cmd *cobra.Command, args []string, global, yes bool) err
 		return nil
 	}
 
-	if err := lock.RemoveFromConfiguredAgents(toRemove, global, cwd); err != nil {
+	if err := lock.RemoveFromConfiguredHarnesses(toRemove, global, cwd); err != nil {
 		ui.LogError(fmt.Sprintf("could not save harness configuration: %v", err))
 		return nil
 	}

@@ -33,18 +33,18 @@ func applyScopeInstallMode(requested InstallMode, global bool, cwd string) (Inst
 	// The mode is changing. Gate on that, not on a recorded string: a scope
 	// that predates the switch has symlinked installs and no recorded mode,
 	// and is the usual --copy case. Nothing installed means nothing to convert.
-	installed := scopeInstallPaths(global, cwd)
-	if len(installed) > 0 {
+	groups := scopeConversionGroups(global, cwd)
+	if conversionGroupsCount(groups) > 0 {
 		from := current
 		if from == "" {
 			from = string(InstallModeSymlink)
 		}
-		fmt.Printf("\n%sThis scope installs in %s mode. Switching it to %s mode re-materializes every skill already installed here.%s\n",
+		fmt.Printf("\n%sThis scope installs in %s mode. Switching it to %s mode re-materializes every skill and agent definition already installed here.%s\n",
 			ansiDim, from, requested, ansiReset)
 
 		// Convert before recording, so a partial failure leaves the recorded
 		// mode exactly as it was.
-		n, err := rematerializeScope(requested, getCanonicalSkillsDir(global, cwd), installed)
+		n, err := rematerializeGroups(requested, groups)
 		if err != nil {
 			if n > 0 {
 				fmt.Printf("%sCould not re-materialize existing installs after converting %d of them: %v%s\n", ansiYellow, n, err, ansiReset)
@@ -63,6 +63,119 @@ func applyScopeInstallMode(requested InstallMode, global bool, cwd string) (Inst
 		return "", false
 	}
 	return requested, true
+}
+
+// conversionPath is one install path to convert, paired with the name mdm's
+// canonical copy of that asset has inside the group's canonical directory.
+//
+// The two names are not always the same. A harness may read an agent
+// definition under an extension of its own (harness.AgentFileExt): GitHub
+// Copilot installs `.github/agents/critic.agent.md` from the canonical
+// `.agents/agents/critic.md`. Recovering the canonical name downstream from
+// the target's basename therefore invented a SECOND canonical file,
+// `.agents/agents/critic.agent.md`, on a copy → symlink switch, and pointed
+// the harness at that duplicate instead of at the real canonical file; a
+// later `mdm agents remove critic` then deleted the real pair and left the
+// duplicate orphaned. Only the code that builds the paths knows both the
+// definition name and the harness, so the mapping travels with the path
+// from there rather than being guessed at the far end.
+type conversionPath struct {
+	target        string
+	canonicalName string
+}
+
+// selfNamedConversionPath pairs a target with a canonical name equal to its
+// own basename. That is the rule for skills, whose install path is the
+// canonical directory entry name verbatim, with no per-harness suffix.
+func selfNamedConversionPath(target string) conversionPath {
+	return conversionPath{target: target, canonicalName: filepath.Base(target)}
+}
+
+// conversionGroup is one set of install paths plus the canonical root they
+// were installed from. Skills and agent definitions live under different
+// canonical roots (.agents/skills and .agents/agents), and the converters
+// use that root to tell mdm's own links from a user's, so the two cannot
+// share one canonicalDir argument — the roots have to travel with the paths.
+type conversionGroup struct {
+	canonicalDir string
+	paths        []conversionPath
+}
+
+// scopeConversionGroups lists everything in the scope that a mode change has
+// to re-materialize. The install mode is a property of the SCOPE, promised
+// by the spec and by docs/agent-artifacts.md as one mode per scope, so the
+// sweep covers agent definitions as well as skills: enumerating only skills
+// left `mdm skills add --copy` recording copy for the scope while every
+// agent definition in it stayed a symlink.
+//
+// Skills come first, which is the order the conversion already ran in.
+func scopeConversionGroups(global bool, cwd string) []conversionGroup {
+	return []conversionGroup{
+		{canonicalDir: getCanonicalSkillsDir(global, cwd), paths: scopeInstallPaths(global, cwd)},
+		{canonicalDir: harness.CanonicalAgentsDir(global, cwd), paths: scopeAgentInstallPaths(global, cwd)},
+	}
+}
+
+func conversionGroupsCount(groups []conversionGroup) int {
+	n := 0
+	for _, g := range groups {
+		n += len(g.paths)
+	}
+	return n
+}
+
+// rematerializeGroups converts every group in order, returning the running
+// total so a partial failure can still say how far it got — the same
+// contract rematerializeScope has for a single group, which it delegates to
+// unchanged.
+func rematerializeGroups(to InstallMode, groups []conversionGroup) (int, error) {
+	total := 0
+	for _, g := range groups {
+		n, err := rematerializeScope(to, g.canonicalDir, g.paths)
+		total += n
+		if err != nil {
+			return total, err
+		}
+	}
+	return total, nil
+}
+
+// scopeAgentInstallPaths is scopeInstallPaths for agent definitions: the
+// existing on-disk file of every definition the scope's lock records, for
+// each harness with an agent concept, deduplicated. Harnesses are walked in
+// sorted order so the conversion order is deterministic; AllHarnesses is a
+// map, and the surrounding code reports "converted N of them" on failure,
+// which is only meaningful against a stable order.
+//
+// Each path carries the canonical file name for its definition, which is
+// name+agentCanonicalExt and NOT the target's basename: a harness that
+// overrides the extension it reads (harness.AgentFileExt) installs
+// "<name>.agent.md" from the canonical "<name>.md".
+func scopeAgentInstallPaths(global bool, cwd string) []conversionPath {
+	names, _ := agentLockEntries(global, cwd)
+
+	harnesses := make([]string, 0, len(harness.AllHarnesses))
+	for name := range harness.AllHarnesses {
+		harnesses = append(harnesses, name)
+	}
+	sort.Strings(harnesses)
+
+	seen := map[string]bool{}
+	var paths []conversionPath
+	for _, name := range names {
+		for _, harnessName := range harnesses {
+			target := agentHarnessPath(name, harnessName, global, cwd)
+			if target == "" || seen[target] {
+				continue
+			}
+			seen[target] = true
+			if _, err := os.Lstat(target); err != nil {
+				continue
+			}
+			paths = append(paths, conversionPath{target: target, canonicalName: name + agentCanonicalExt})
+		}
+	}
+	return paths
 }
 
 // scopeSkillNames lists the skills the given scope's lock records, sorted.
@@ -87,12 +200,12 @@ func scopeSkillNames(global bool, cwd string) []string {
 // what the interactive picker last saved, so consulting it would skip harnesses
 // installed with `--harness <harness> -y` and leave the scope half converted. The
 // sweep is safe because rematerializeScope converts only what mdm installed.
-func scopeInstallPaths(global bool, cwd string) []string {
+func scopeInstallPaths(global bool, cwd string) []conversionPath {
 	skills := scopeSkillNames(global, cwd)
 	harnesses := allHarnessesForScope(global)
 
 	seen := map[string]bool{}
-	var paths []string
+	var paths []conversionPath
 	for _, skillName := range skills {
 		for _, harnessName := range harnesses {
 			// A shared-dir harness's install path is the canonical directory,
@@ -112,7 +225,11 @@ func scopeInstallPaths(global bool, cwd string) []string {
 			if _, err := os.Lstat(target); err != nil {
 				continue
 			}
-			paths = append(paths, target)
+			// A skill's install path basename IS its canonical directory
+			// name — filepath.Join(base, sanitizeName(skillName)) above —
+			// so the canonical name is unchanged from what the converter
+			// used to derive for itself.
+			paths = append(paths, selfNamedConversionPath(target))
 		}
 	}
 	return paths
@@ -159,16 +276,18 @@ func resolvedDir(dir string) string {
 // directory than a user's file. The canonical directory is never removed:
 // harnesses that read the shared directory install into it in copy mode
 // too, and doctor and remove resolve it for every locked skill.
-func rematerializeScope(to InstallMode, canonicalDir string, installPaths []string) (int, error) {
+func rematerializeScope(to InstallMode, canonicalDir string, installPaths []conversionPath) (int, error) {
 	canonical := resolvedDir(canonicalDir)
 	converted := 0
-	for _, target := range installPaths {
+	for _, p := range installPaths {
 		var did bool
 		var err error
 		if to == InstallModeCopy {
-			did, err = linkToCopy(canonical, target)
+			// linkToCopy needs no canonical name: it materializes whatever
+			// the link already resolves to.
+			did, err = linkToCopy(canonical, p.target)
 		} else {
-			did, err = copyToLink(canonical, target)
+			did, err = copyToLink(canonical, p.target, p.canonicalName)
 		}
 		if err != nil {
 			return converted, err
@@ -266,12 +385,21 @@ func linkToCopy(canonical, target string) (bool, error) {
 }
 
 // copyToLink replaces one real install at target — a skill directory or an
-// agent-definition file — with an mdm symlink to <canonical>/<name>,
+// agent-definition file — with an mdm symlink to <canonical>/<canonicalName>,
 // reporting whether it converted anything. The canonical copy is created
 // first when missing, since it is the only place the content can live once
 // the install path is a link; the original is then set aside with a rename
 // so a failed link can put it straight back.
-func copyToLink(canonical, target string) (bool, error) {
+//
+// canonicalName is supplied by the caller and is deliberately NOT derived
+// from target's basename: a harness that reads agent definitions under its
+// own extension installs "<name>.agent.md" from the canonical "<name>.md",
+// and deriving the name here would create a duplicate canonical file under
+// the harness's extension and link the install at that duplicate. For a
+// skill the two are the same string, so nothing about the skill conversion
+// changes. name below stays the basename: it names only sibling temp files
+// and the install this error is about.
+func copyToLink(canonical, target, canonicalName string) (bool, error) {
 	installDir := filepath.Dir(target)
 	name := filepath.Base(target)
 	info, err := os.Lstat(target)
@@ -308,7 +436,7 @@ func copyToLink(canonical, target string) (bool, error) {
 		return false, nil
 	}
 
-	canonicalPath := filepath.Join(canonical, name)
+	canonicalPath := filepath.Join(canonical, canonicalName)
 	if _, err := os.Stat(canonicalPath); err != nil {
 		if !os.IsNotExist(err) {
 			return false, fmt.Errorf("checking %s: %w", canonicalPath, err)

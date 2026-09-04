@@ -99,3 +99,17 @@ func TestAgentsInstallDirForScopes(t *testing.T) {
 		})
 	}
 }
+
+// DeepAgents is a product name, not an instance of the concept this branch
+// renamed. The blanket agent→harness rename caught it and produced "Deep
+// Harnesses", which is a name no user has ever seen. Proper nouns do not
+// get renamed by a concept rename.
+func TestDeepAgentsKeepsItsProductName(t *testing.T) {
+	h, ok := AllHarnesses["deepagents"]
+	if !ok {
+		t.Fatal("deepagents is missing from AllHarnesses")
+	}
+	if h.DisplayName != "Deep Agents" {
+		t.Errorf("DisplayName = %q, want %q", h.DisplayName, "Deep Agents")
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -368,7 +369,7 @@ func TestRematerializeRestoresARelativeSymlinkAfterARenameFailure(t *testing.T) 
 	canonical, link := linkSkill(t, cwd, "s1")
 	failRename(t)
 
-	n, err := rematerializeScope(InstallModeCopy, getCanonicalSkillsDir(false, cwd), []string{link})
+	n, err := rematerializeScope(InstallModeCopy, getCanonicalSkillsDir(false, cwd), []conversionPath{selfNamedConversionPath(link)})
 	if err == nil {
 		t.Fatal("expected an error from the forced rename failure")
 	}
@@ -451,7 +452,7 @@ func TestRematerializeConvertsRealDirectoriesToSymlinks(t *testing.T) {
 	target := writeCopiedSkill(t, cwd, "s1")
 	canonical := filepath.Join(cwd, ".agents", "skills")
 
-	n, err := rematerializeScope(InstallModeSymlink, canonical, []string{target})
+	n, err := rematerializeScope(InstallModeSymlink, canonical, []conversionPath{selfNamedConversionPath(target)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -474,7 +475,7 @@ func TestRematerializeToSymlinkKeepsExistingCanonical(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := rematerializeScope(InstallModeSymlink, canonical, []string{target}); err != nil {
+	if _, err := rematerializeScope(InstallModeSymlink, canonical, []conversionPath{selfNamedConversionPath(target)}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := os.ReadFile(filepath.Join(target, "SKILL.md"))
@@ -498,7 +499,7 @@ func TestRematerializeToSymlinkLeavesForeignDirectoriesAlone(t *testing.T) {
 	}
 	canonical := filepath.Join(cwd, ".agents", "skills")
 
-	n, err := rematerializeScope(InstallModeSymlink, canonical, []string{target})
+	n, err := rematerializeScope(InstallModeSymlink, canonical, []conversionPath{selfNamedConversionPath(target)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -520,7 +521,7 @@ func TestRematerializeToSymlinkRenameFailureLeavesTheCopy(t *testing.T) {
 	target := writeCopiedSkill(t, cwd, "s1")
 	failRename(t)
 
-	n, err := rematerializeScope(InstallModeSymlink, filepath.Join(cwd, ".agents", "skills"), []string{target})
+	n, err := rematerializeScope(InstallModeSymlink, filepath.Join(cwd, ".agents", "skills"), []conversionPath{selfNamedConversionPath(target)})
 	if err == nil {
 		t.Fatal("expected an error from the forced rename failure")
 	}
@@ -710,7 +711,7 @@ func TestRematerializeConvertsASingleFile(t *testing.T) {
 		t.Skipf("symlinks unavailable on this host: %v", err)
 	}
 
-	n, err := rematerializeScope(InstallModeCopy, canonicalDir, []string{target})
+	n, err := rematerializeScope(InstallModeCopy, canonicalDir, []conversionPath{selfNamedConversionPath(target)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -734,7 +735,7 @@ func TestRematerializeFileIsANoOpWhenAlreadyReal(t *testing.T) {
 	cwd := t.TempDir()
 	real := writeCopiedAgentFile(t, cwd, "critic")
 
-	n, err := rematerializeScope(InstallModeCopy, filepath.Join(cwd, ".agents", "agents"), []string{real})
+	n, err := rematerializeScope(InstallModeCopy, filepath.Join(cwd, ".agents", "agents"), []conversionPath{selfNamedConversionPath(real)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -753,7 +754,7 @@ func TestRematerializeFileFailureLeavesSymlinkUnchanged(t *testing.T) {
 	canonical, canonicalDir, link := linkAgentFile(t, cwd, "critic")
 	failCopyFile(t)
 
-	n, err := rematerializeScope(InstallModeCopy, canonicalDir, []string{link})
+	n, err := rematerializeScope(InstallModeCopy, canonicalDir, []conversionPath{selfNamedConversionPath(link)})
 	if err == nil {
 		t.Fatal("expected an error from the forced copy failure")
 	}
@@ -774,7 +775,7 @@ func TestRematerializeRestoresARelativeSymlinkForAFileAfterARenameFailure(t *tes
 	canonical, canonicalDir, link := linkAgentFile(t, cwd, "critic")
 	failRename(t)
 
-	n, err := rematerializeScope(InstallModeCopy, canonicalDir, []string{link})
+	n, err := rematerializeScope(InstallModeCopy, canonicalDir, []conversionPath{selfNamedConversionPath(link)})
 	if err == nil {
 		t.Fatal("expected an error from the forced rename failure")
 	}
@@ -803,7 +804,7 @@ func TestRematerializeLeavesAForeignFileSymlinkAlone(t *testing.T) {
 	link := filepath.Join(cwd, ".claude", "agents", "critic.md")
 	symlinkOrSkip(t, outside, link)
 
-	n, err := rematerializeScope(InstallModeCopy, filepath.Join(cwd, ".agents", "agents"), []string{link})
+	n, err := rematerializeScope(InstallModeCopy, filepath.Join(cwd, ".agents", "agents"), []conversionPath{selfNamedConversionPath(link)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -823,7 +824,7 @@ func TestRematerializeConvertsASingleFileToSymlink(t *testing.T) {
 	target := writeCopiedAgentFile(t, cwd, "critic")
 	canonicalDir := filepath.Join(cwd, ".agents", "agents")
 
-	n, err := rematerializeScope(InstallModeSymlink, canonicalDir, []string{target})
+	n, err := rematerializeScope(InstallModeSymlink, canonicalDir, []conversionPath{selfNamedConversionPath(target)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -847,7 +848,7 @@ func TestRematerializeToSymlinkKeepsExistingCanonicalFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := rematerializeScope(InstallModeSymlink, canonicalDir, []string{target}); err != nil {
+	if _, err := rematerializeScope(InstallModeSymlink, canonicalDir, []conversionPath{selfNamedConversionPath(target)}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := os.ReadFile(target)
@@ -865,7 +866,7 @@ func TestRematerializeToSymlinkCopyFailureLeavesTheFile(t *testing.T) {
 	target := writeCopiedAgentFile(t, cwd, "critic")
 	failCopyFile(t)
 
-	n, err := rematerializeScope(InstallModeSymlink, filepath.Join(cwd, ".agents", "agents"), []string{target})
+	n, err := rematerializeScope(InstallModeSymlink, filepath.Join(cwd, ".agents", "agents"), []conversionPath{selfNamedConversionPath(target)})
 	if err == nil {
 		t.Fatal("expected an error from the forced copy failure")
 	}
@@ -887,7 +888,7 @@ func TestRematerializeToSymlinkRenameFailureLeavesTheFile(t *testing.T) {
 	target := writeCopiedAgentFile(t, cwd, "critic")
 	failRename(t)
 
-	n, err := rematerializeScope(InstallModeSymlink, filepath.Join(cwd, ".agents", "agents"), []string{target})
+	n, err := rematerializeScope(InstallModeSymlink, filepath.Join(cwd, ".agents", "agents"), []conversionPath{selfNamedConversionPath(target)})
 	if err == nil {
 		t.Fatal("expected an error from the forced rename failure")
 	}
@@ -921,7 +922,7 @@ func TestRematerializeToSymlinkLeavesANonAgentFileAlone(t *testing.T) {
 	}
 	canonicalDir := filepath.Join(cwd, ".agents", "agents")
 
-	n, err := rematerializeScope(InstallModeSymlink, canonicalDir, []string{target})
+	n, err := rematerializeScope(InstallModeSymlink, canonicalDir, []conversionPath{selfNamedConversionPath(target)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -940,5 +941,142 @@ func TestRematerializeToSymlinkLeavesANonAgentFileAlone(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(canonicalDir, "critic.md")); !os.IsNotExist(err) {
 		t.Errorf("canonical file created for a non-agent file: %v", err)
+	}
+}
+
+// ── Scope conversion reaches agent definitions ─────────────────────────────
+
+// lockAgent records one agent definition in the project lock, so the scope
+// conversion can find it the way it finds a skill.
+func lockAgent(t *testing.T, cwd, name string) {
+	t.Helper()
+	if err := lock.AddAgentToLocalLock(name, lock.AgentLockEntry{Source: "o/r", SourceType: "github"}, cwd); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The install mode is a property of the SCOPE: `mdm skills add --copy`
+// records copy for the whole scope, and the spec and docs both promise one
+// mode per scope. This test goes through applyScopeInstallMode rather than
+// calling rematerializeScope with a hand-built path list, because that
+// wiring is exactly where the gap was: the converters handled single files
+// perfectly well and nothing ever handed them an agent definition's path,
+// so `--copy` recorded copy for the scope and left every definition in it a
+// symlink. Every file-shaped test that already existed called
+// rematerializeScope directly and so could not see that.
+func TestApplyScopeInstallModeConvertsAgentDefinitions(t *testing.T) {
+	cwd := t.TempDir()
+	skillCanonical, skillLink := linkSkill(t, cwd, "s1")
+	agentCanonical, _, agentLink := linkAgentFile(t, cwd, "critic")
+	lockSkill(t, cwd, "s1")
+	lockAgent(t, cwd, "critic")
+	assertRecordedMode(t, cwd, "")
+
+	if mode, ok := applyScopeInstallMode(InstallModeCopy, false, cwd); !ok || mode != InstallModeCopy {
+		t.Fatalf("mode = %q ok = %v, want copy true", mode, ok)
+	}
+	assertRecordedMode(t, cwd, lock.InstallModeCopy)
+
+	assertRealSkill(t, skillLink)
+	assertSameMode(t, skillLink, skillCanonical)
+	if isSymlink(t, agentLink) {
+		t.Fatalf("%s is still a symlink after the scope switched to copy mode", agentLink)
+	}
+	got, err := os.ReadFile(agentLink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := os.ReadFile(agentCanonical)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(want) {
+		t.Errorf("converted agent definition = %q, want %q", got, want)
+	}
+
+	// And back: the switch is lossless in both directions for both shapes.
+	if mode, ok := applyScopeInstallMode(InstallModeSymlink, false, cwd); !ok || mode != InstallModeSymlink {
+		t.Fatalf("mode = %q ok = %v, want symlink true", mode, ok)
+	}
+	if !isSymlink(t, agentLink) {
+		t.Error("agent definition did not convert back to a symlink")
+	}
+	if !isSymlink(t, skillLink) {
+		t.Error("skill did not convert back to a symlink")
+	}
+}
+
+// GitHub Copilot reads agent definitions ONLY as "<name>.agent.md", so its
+// install path's basename is not the name of the canonical file it was
+// installed from. Deriving the canonical name from that basename during a
+// copy → symlink switch minted a SECOND canonical file,
+// .agents/agents/critic.agent.md, and pointed .github/agents/critic.agent.md
+// at the duplicate instead of at .agents/agents/critic.md; a later
+// `mdm agents remove critic` then deleted the real canonical file and the
+// link and left the duplicate orphaned.
+//
+// This drives applyScopeInstallMode rather than rematerializeScope, for the
+// same reason TestApplyScopeInstallModeConvertsAgentDefinitions does: the
+// canonical name is decided where the install paths are enumerated, and a
+// test that hands rematerializeScope a path list of its own supplies that
+// mapping for free and so cannot see a gap in the wiring.
+func TestApplyScopeInstallModeKeepsOneCanonicalFileForASuffixedHarness(t *testing.T) {
+	cwd := t.TempDir()
+	canonicalDir := harness.CanonicalAgentsDir(false, cwd)
+	canonical := writeAgentFile(t, canonicalDir, "critic")
+	link := agentHarnessPath("critic", "github-copilot", false, cwd)
+	if base := filepath.Base(link); base != "critic.agent.md" {
+		t.Fatalf("github-copilot install path basename = %q, want %q; this test is only meaningful for a harness that overrides the extension", base, "critic.agent.md")
+	}
+	symlinkOrSkip(t, canonical, link)
+	lockAgent(t, cwd, "critic")
+
+	if mode, ok := applyScopeInstallMode(InstallModeCopy, false, cwd); !ok || mode != InstallModeCopy {
+		t.Fatalf("mode = %q ok = %v, want copy true", mode, ok)
+	}
+	if isSymlink(t, link) {
+		t.Fatal("the install is still a symlink after the scope switched to copy mode")
+	}
+	if mode, ok := applyScopeInstallMode(InstallModeSymlink, false, cwd); !ok || mode != InstallModeSymlink {
+		t.Fatalf("mode = %q ok = %v, want symlink true", mode, ok)
+	}
+
+	entries, err := os.ReadDir(canonicalDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	if len(names) != 1 || names[0] != "critic.md" {
+		t.Errorf("canonical directory holds %v, want exactly [critic.md]", names)
+	}
+	assertLinkTo(t, link, canonical)
+}
+
+// The conversion count the scope prints, and the "converted N of them"
+// number a failure reports, are only meaningful against a stable order.
+// AllHarnesses is a map, so the agent sweep sorts it.
+func TestScopeAgentInstallPathsIsSortedAndDeduplicated(t *testing.T) {
+	cwd := t.TempDir()
+	linkAgentFile(t, cwd, "critic")
+	lockAgent(t, cwd, "critic")
+
+	first := scopeAgentInstallPaths(false, cwd)
+	if len(first) == 0 {
+		t.Fatal("no agent install paths found for a locked, installed definition")
+	}
+	for i := 0; i < 20; i++ {
+		if got := scopeAgentInstallPaths(false, cwd); !reflect.DeepEqual(got, first) {
+			t.Fatalf("order is not stable across runs:\n%v\n%v", first, got)
+		}
+	}
+	seen := map[string]bool{}
+	for _, p := range first {
+		if seen[p.target] {
+			t.Errorf("duplicate path %s", p.target)
+		}
+		seen[p.target] = true
 	}
 }

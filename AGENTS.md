@@ -2,9 +2,35 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+`CLAUDE.md` is a symlink to this file. Edit `AGENTS.md`; never replace the
+symlink with a copy. The filename `AGENTS.md` is an ecosystem contract — several
+harnesses look for exactly that name — and does not change, even though this
+project now calls the tools themselves "harnesses" rather than "agents".
+
 ## What This Project Is
 
-**MDM** (Markdown Management) is a Go CLI tool for managing "skills" - reusable markdown-based prompt libraries for AI agents (Claude Code, Cursor, Cline, Copilot, and 40+ others). Skills are installed from GitHub repos, GitLab, URLs, or local paths and placed into each agent's skills directory.
+**MDM** (Markdown Management) is a Go CLI tool for managing "skills" — reusable markdown-based prompt libraries for AI coding tools (Claude Code, Cursor, Cline, Copilot, and 40+ others). Skills are installed from GitHub repos, GitLab, URLs, or local paths and placed into each tool's skills directory.
+
+### "Harness" and "agent" mean two different things
+
+The word "agent" used to mean the AI tool mdm installs into. It no longer does,
+and the distinction runs through every name in the codebase:
+
+| Term | Means | Command | Lives in |
+| --- | --- | --- | --- |
+| **harness** | an AI coding tool mdm installs into (Claude Code, Cursor, Codex, …) | `mdm harnesses` | `internal/harness/`, `commands/harnesses.go` |
+| **agent definition** | one markdown file with `name` + `description` frontmatter that gives a harness a named subagent persona | `mdm agents` | `internal/agentfile/`, `commands/agent_artifacts.go` |
+
+So `mdm agents add` installs *into* a harness; `mdm harnesses add` configures
+*which* harnesses are the default install targets. A skill is a directory with a
+`SKILL.md`; an agent definition is a single file. Both are installed from the
+same sources, recorded in the same lock, and obey the same per-scope install
+mode.
+
+Three names deliberately keep the old word and must not be renamed: `AGENTS.md`
+itself, the shared `.agents/` directory (`.agents/skills`, `.agents/agents`), and
+the `configuredAgents` JSON key that v1 lock readers still parse (the Go field
+behind it is `ConfiguredHarnesses`).
 
 ## Git Conventions
 
@@ -25,7 +51,7 @@ Examples:
 feat(skills): add --dry-run flag to mdm skills add
 fix(audit): handle nil response from OSV API
 chore: bump Go toolchain to 1.26.3
-docs(agents): add pre-PR checklist guidance
+docs(harness): add pre-PR checklist guidance
 ```
 
 ### Branch naming
@@ -381,8 +407,8 @@ mdm
 ├── bug                                     # Open a prefilled GitHub issue form (--print, --command); no network I/O
 ├── completion [bash|zsh|fish|powershell]   # Generate shell completion script
 │   └── install                             # Write completion into shell rc file
-├── skills                                  # Manage skills for AI agents
-│   ├── add <package>                       # Install a skill from GitHub, GitLab, URL, or local path (alias: a)
+├── skills                                  # Manage skills for AI harnesses
+│   ├── add <package>                       # Install a skill from GitHub, GitLab, URL, or local path (alias: a; --copy/--symlink)
 │   ├── cherry-pick <source>                # Fork skills into ./skills as your own, with provenance (aliases: fork, cp)
 │   ├── remove [skills...]                  # Uninstall skills (aliases: rm, r)
 │   ├── list                                # List installed skills (alias: ls)
@@ -390,8 +416,8 @@ mdm
 │   ├── update [skills...]                  # Re-fetch skills from their recorded source+ref (alias: check)
 │   ├── audit [skills...]                   # Check installed skills for updates and security advisories
 │   ├── init [name]                         # Scaffold a new SKILL.md in the current directory
-│   ├── install                             # Restore all skills from mdm.lock (CI/onboarding)
-│   └── sync                                # Sync skills from node_modules into agent skill directories
+│   ├── install                             # Restore skills, then agent definitions, from mdm.lock (CI/onboarding)
+│   └── sync                                # Sync skills from node_modules into harness skill directories
 ├── knowledge                               # Manage OKF knowledge bundles
 │   ├── add <source>                        # Install an OKF bundle into ./knowledge/ and record it in mdm.lock (alias: a)
 │   ├── remove [bundles...]                 # Remove bundles and their lock entries (aliases: rm, r)
@@ -412,14 +438,20 @@ mdm
 │   ├── list                                # Show experimental features and their status (alias: ls)
 │   ├── enable <feature>                    # Persist an opt-in
 │   └── disable <feature>                   # Remove a persisted opt-in
-├── agents                                  # Manage the configured agent list used as default install targets
-│   ├── list                                # Show configured agents for the current scope (alias: ls)
-│   ├── add [agents...]                     # Add agents to the configured list (interactive picker with no args)
-│   └── remove [agents...]                  # Remove agents and their unique skill/instruction files
-└── rules                                   # Manage agent instruction files (CLAUDE.md, AGENTS.md, .cursorrules, etc.)
-    ├── link                                # Symlink all agent instruction files to a single AGENTS.md source of truth
+├── harnesses                               # Manage the configured harness list used as default install targets
+│   ├── list                                # Show configured harnesses for the current scope (alias: ls)
+│   ├── add [harnesses...]                  # Add harnesses to the configured list (interactive picker with no args)
+│   └── remove [harnesses...]               # Remove harnesses and their unique skill/instruction files
+├── agents                                  # Manage agent definitions — subagent persona files installed into a harness
+│   ├── add <source>                        # Install agent definitions from GitHub, a URL, or a local path (alias: a)
+│   ├── list                                # List installed agent definitions (alias: ls)
+│   ├── remove [names...]                   # Remove installed agent definitions (aliases: rm, r)
+│   ├── update [names...]                   # Re-fetch definitions from their recorded source+ref
+│   └── install                             # Restore all agent definitions from mdm.lock (CI/onboarding)
+└── rules                                   # Manage harness instruction files (CLAUDE.md, AGENTS.md, .cursorrules, etc.)
+    ├── link                                # Symlink all harness instruction files to a single AGENTS.md source of truth
     ├── status                              # Show which instruction files exist, are symlinked, or are missing
-    └── unlink                              # Remove symlinks and restore per-agent instruction files
+    └── unlink                              # Remove symlinks and restore per-harness instruction files
 ```
 
 ## Architecture
@@ -429,8 +461,9 @@ mdm
 ├── commands/            # One file per CLI command
 │   ├── root.go          # Cobra root; flag normalization; ANSI logo/styles; completion command
 │   ├── skills.go        # `mdm skills` group; registers all skills subcommands
-│   ├── add.go           # `mdm skills add`: install flow; multi-agent/skill prompts, scope selection
+│   ├── add.go           # `mdm skills add`: install flow; multi-harness/skill prompts, scope selection
 │   ├── installer.go     # Shared install logic: clone → discover → copy → lock; sanitizeName, isPathSafe, skillNameMatches
+│   ├── install_mode.go  # Per-scope symlink/copy switch; converts every existing skill AND agent definition when the mode changes
 │   ├── cherrypick.go    # `mdm skills cherry-pick`: vendor third-party skills into ./skills; license resolution, --status
 │   ├── remove.go        # `mdm skills remove`
 │   ├── list.go          # `mdm skills list`
@@ -440,27 +473,30 @@ mdm
 │   ├── init.go          # `mdm skills init`: scaffolds a new SKILL.md
 │   ├── install.go       # `mdm skills install`: restores skills from mdm.lock
 │   ├── sync.go          # `mdm skills sync`: syncs from node_modules
-│   ├── agents.go        # `mdm agents` group: list/add/remove configured agents (project + global scope)
-│   ├── rules.go         # `mdm rules` group: link/status/unlink agent instruction files
+│   ├── harnesses.go     # `mdm harnesses` group: list/add/remove configured harnesses (project + global scope)
+│   ├── agent_artifacts.go # `mdm agents` group: add/list/remove/update/install AGENT DEFINITIONS (not harnesses)
+│   ├── agent_installer.go # Installs one definition into one harness; agentDiskName, the canonical/harness path pair
+│   ├── rules.go         # `mdm rules` group: link/status/unlink harness instruction files
 │   ├── selfupdate.go    # `mdm upgrade`: downloads and replaces the mdm binary from GitHub releases
 │   ├── uninstall.go     # `mdm uninstall`: removes the mdm binary from the system
-│   ├── hidden_scan.go   # Hidden-character pre-install scan shared by add/update
+│   ├── hidden_scan.go   # Hidden-character pre-install scan shared by every install path (skills, agent definitions, knowledge, plugins)
 │   ├── experimental.go  # `mdm experimental` group: list/enable/disable feature gates
 │   ├── knowledge*.go    # `mdm knowledge` group: OKF bundle add/list/remove/update/validate/init/install + doctor section
 │   ├── plugins*.go      # `mdm plugins` group: Agent Plugins add/list/remove/update/validate/init/install + MCP wiring + doctor section
 │   ├── bug.go           # `mdm bug`: prefilled issue-form URL + panic hook (HandlePanic, deferred from main)
 │   └── doctor.go        # `mdm doctor`: checks skill health, symlinks, hashes, README presence, and markdown sizes
 ├── internal/
-    ├── agent/           # AllAgents registry (45+ agents); skill dir paths; detection
+    ├── harness/         # AllHarnesses registry (45+ harnesses); skills / agents dir paths; detection
     ├── skill/           # Skill discovery (SKILL.md parsing); frontmatter; filtering
+    ├── agentfile/       # Agent-definition discovery and parsing (single .md files with name + description frontmatter)
     ├── fork/            # Cherry-pick provenance: .mdm-origin.json, ATTRIBUTION.md, content hashing, license detection
     ├── okf/             # OKF bundle parsing, discovery, validation, content hashing
     ├── plugin/          # Agent Plugins spec conformance: plugin.json + mcp.json parsing, discovery, path containment, hashing
-    ├── mcpwire/         # Per-agent MCP config targets; renders plugin servers into .mcp.json / .cursor/mcp.json
+    ├── mcpwire/         # Per-harness MCP config targets; renders plugin servers into .mcp.json / .cursor/mcp.json
     ├── experimental/    # Named feature gates (MDM_EXPERIMENTAL env var + persisted opt-ins)
     ├── source/          # URL/path parsing into ParsedSource (GitHub, GitLab, local, well-known)
     ├── registry/        # Well-known registry fetching (.well-known/agent-skills standard)
-    ├── lock/            # mdm.lock read/write (skills, knowledge, plugins sections; reads legacy v1 lock files as a fallback); tracks hashes, versions, timestamps, configuredAgents
+    ├── lock/            # mdm.lock read/write (skills, agents, knowledge, plugins sections; reads legacy v1 lock files as a fallback); tracks hashes, versions, timestamps, the per-scope installMode, and configuredHarnesses (still written under the `configuredAgents` JSON key for v1 readers)
     ├── git/             # Shallow git clone; branch/ref handling
     ├── blob/            # GitHub API tree/blob queries for skill discovery
     ├── security/        # markdownscan: hidden-character / prompt-smuggling detection
@@ -475,14 +511,30 @@ mdm
 1. `source/` parses the input URL/path into a `ParsedSource`
 2. `git/` clones the repo (shallow) or `blob/` queries GitHub API
 3. `skill/` discovers `SKILL.md` files and applies `--skill` filters
-4. User is prompted for which agents to install to (or `--agent` flag)
-5. Skill dirs are copied into each agent's skills directory
-6. `lock/` records the installation in the skills section of `mdm.lock`
+4. `hidden_scan.go` scans the selected markdown before anything is written; a
+   finding blocks the install unless `--allow-hidden-chars` is passed
+5. User is prompted for which harnesses to install to (or `--harness` flag)
+6. Skill dirs are written to `.agents/skills/<name>` and symlinked (or copied,
+   per the scope's `installMode`) into each harness's skills directory
+7. `lock/` records the installation in the skills section of `mdm.lock`
+
+`mdm agents add` → `agent_artifacts.go` runs the same seven steps with
+`agentfile/` in place of `skill/`, `agent_installer.go` in place of
+`installer.go`, and the agents section of the lock. Two rules hold there
+specifically:
+
+- The name is sanitized ONCE, by `agentDiskName`, because it becomes both a
+  file name and the lock key. If those two ever disagree, `mdm agents remove`
+  drops the lock entry, finds nothing to delete, and leaves the definition live
+  in the harness with no record of it.
+- A harness with no agent concept is a **skip** with a printed reason, not a
+  failure — but a run that installed nothing anywhere prints no success line and
+  exits non-zero.
 
 `mdm skills cherry-pick` → `cherrypick.go` reuses steps 1–3, then diverges:
 
-4. The skill directory is copied into `./skills/<name>` - the project's own tree,
-   not an agent's
+4. The skill directory is copied into `./skills/<name>` — the project's own tree,
+   not a harness's
 5. `fork/` writes `.mdm-origin.json` (source, ref, commit, license, content hash)
    and `ATTRIBUTION.md`, and the upstream license text is copied in when the
    skill directory did not carry its own
@@ -493,13 +545,33 @@ mdm
 That last point is the whole design. A fork is a file in the user's repository;
 anything that re-fetches it would defeat the purpose of having forked it.
 
-### Adding a new agent
+### Adding a new harness
 
-Add an entry to `AllAgents` in `internal/agent/` with the agent's skills dir path(s) and an optional `DetectInstalled()` function.
+Add an entry to `AllHarnesses` in `internal/harness/` with the harness's skills
+dir path(s) and an optional `DetectInstalled()` function. If the harness also
+loads subagent persona files, set `AgentsInstallDir` (and
+`GlobalAgentsInstallDir`), plus `AgentFileSuffix` when it wants something other
+than `.md` — GitHub Copilot CLI wants `.agent.md`, and writing a plain `.md`
+there installs a file the harness silently never loads. Leaving those fields
+empty is how a harness declares it has no agent concept, which every
+agent-definition path treats as a skip.
+
+Resolve paths through the helpers (`SkillsInstallDir`, `AgentsInstallDirFor`,
+`CanonicalSkillsDir`, `CanonicalAgentsDir`, `UsesSharedSkillsDir`), not by
+string-comparing `SkillsDir`. The TODO on `SkillsInstallDir` lists the older
+callers that still build paths by hand — check a new layout against those too.
 
 ### Adding a new command
 
 Create a file in `commands/`, define a `cobra.Command`, and register it either on the root command in `root.go` (for top-level commands like `upgrade`) or on the `skills` subcommand in `skills.go` (for skill management commands like `add`, `list`, etc.).
+
+### Adding a new install path
+
+Anything that writes third-party markdown into a place a model will read must
+call the `hidden_scan.go` gate first and expose `--allow-hidden-chars`. The
+README promises this for *every* install, and an install path that skips it
+makes that claim false — most sharply for agent definitions, which exist to
+become a persona the model adopts.
 
 ## Pre-PR Checklist
 

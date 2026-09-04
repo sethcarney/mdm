@@ -322,7 +322,7 @@ func TestAgentsUpdateRefreshesCopyModeHarnessInstalls(t *testing.T) {
 
 	group := updateGroup{source: sourceDir, skills: []string{"critic"}, names: []string{"critic"}}
 	var stats updateStats
-	runAgentUpdateGroups([]updateGroup{group}, false, cwd, &stats)
+	runAgentUpdateGroups([]updateGroup{group}, false, cwd, false, &stats)
 
 	canonicalAfter, err := os.ReadFile(canonicalPath)
 	if err != nil {
@@ -376,7 +376,7 @@ func TestAgentsUpdateKeepsSymlinkModeHarnessInstallsAsSymlinks(t *testing.T) {
 
 	group := updateGroup{source: sourceDir, skills: []string{"critic"}, names: []string{"critic"}}
 	var stats updateStats
-	runAgentUpdateGroups([]updateGroup{group}, false, cwd, &stats)
+	runAgentUpdateGroups([]updateGroup{group}, false, cwd, false, &stats)
 
 	infoAfter, err := os.Lstat(harnessTarget)
 	if err != nil {
@@ -463,7 +463,7 @@ func TestAgentsUpdateLeavesLockUnchangedWhenEveryHarnessInstallFails(t *testing.
 
 	group := updateGroup{source: sourceDir, skills: []string{"critic"}, names: []string{"critic"}}
 	var stats updateStats
-	runAgentUpdateGroups([]updateGroup{group}, false, cwd, &stats)
+	runAgentUpdateGroups([]updateGroup{group}, false, cwd, false, &stats)
 
 	if stats.updated != 0 {
 		t.Errorf("stats.updated = %d, want 0: every installed harness failed", stats.updated)
@@ -508,7 +508,7 @@ func TestAgentsUpdateWarnsWhenDefinitionMissingUpstream(t *testing.T) {
 	group := updateGroup{source: sourceDir, skills: []string{"critic", "ghost"}, names: []string{"critic", "ghost"}}
 	var stats updateStats
 	out := captureStdout(t, func() {
-		runAgentUpdateGroups([]updateGroup{group}, false, cwd, &stats)
+		runAgentUpdateGroups([]updateGroup{group}, false, cwd, false, &stats)
 	})
 
 	if !strings.Contains(out, "ghost") {
@@ -516,5 +516,48 @@ func TestAgentsUpdateWarnsWhenDefinitionMissingUpstream(t *testing.T) {
 	}
 	if !strings.Contains(out, sourceDir) {
 		t.Errorf("expected the warning to name the source %q, got:\n%s", sourceDir, out)
+	}
+}
+
+// The summary must report what landed, not what was asked for. Reporting
+// len(selected) printed "✓ Installed 1 agent definition" after writing no
+// file and no lock entry, and named the harness the install had just been
+// skipped by.
+func TestInstallAgentsForHarnessesCountsWhatActuallyInstalled(t *testing.T) {
+	cwd := t.TempDir()
+	src := filepath.Join(cwd, "critic.md")
+	if err := os.WriteFile(src, []byte("---\nname: critic\ndescription: d\n---\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a := &agentfile.AgentFile{Name: "critic", Description: "d", Path: src}
+	baseEntry := lock.AgentLockEntry{Source: "o/r", SourceType: "github"}
+
+	var without string
+	for name, h := range harness.AllHarnesses {
+		if h.AgentsInstallDir == "" {
+			without = name
+			break
+		}
+	}
+	if without == "" {
+		t.Skip("every harness supports agent definitions")
+	}
+
+	// Every target skipped: nothing installed, no harness to report.
+	outcome := installAgentsForHarnesses([]*agentfile.AgentFile{a}, []string{without}, false, InstallModeCopy, baseEntry, "", cwd)
+	if outcome.installed != 0 {
+		t.Errorf("installed = %d, want 0 when every harness skipped", outcome.installed)
+	}
+	if len(outcome.harnesses) != 0 {
+		t.Errorf("harnesses = %v, want none: no harness received anything", outcome.harnesses)
+	}
+
+	// Mixed: the count is 1, and only the harness that took it is named.
+	outcome = installAgentsForHarnesses([]*agentfile.AgentFile{a}, []string{without, "claude-code"}, false, InstallModeCopy, baseEntry, "", cwd)
+	if outcome.installed != 1 {
+		t.Errorf("installed = %d, want 1", outcome.installed)
+	}
+	if len(outcome.harnesses) != 1 || outcome.harnesses[0] != "claude-code" {
+		t.Errorf("harnesses = %v, want [claude-code]", outcome.harnesses)
 	}
 }

@@ -229,7 +229,7 @@ func Reload() {
 		},
 		"deepagents": {
 			Name:               "deepagents",
-			DisplayName:        "Deep Harnesses",
+			DisplayName:        "Deep Agents",
 			SkillsDir:          ".agents/skills",
 			GlobalSkillsDir:    filepath.Join(home, ".deepagents/agent/skills"),
 			SharedSkillsDir:    true,

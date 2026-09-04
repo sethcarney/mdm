@@ -58,11 +58,12 @@ reusable prompt libraries %smdm skills%s installs.
 
 // AgentOptions holds the flags shared by the agent-definition subcommands.
 type AgentOptions struct {
-	Global    bool
-	Project   bool
-	Harnesses []string // empty = prompt; "*" = all
-	Agents    []string // empty = prompt; "*" = all
-	Yes       bool
+	Global           bool
+	Project          bool
+	Harnesses        []string // empty = prompt; "*" = all
+	Agents           []string // empty = prompt; "*" = all
+	Yes              bool
+	AllowHiddenChars bool
 }
 
 // asAddOptions adapts AgentOptions to the AddOptions fields that
@@ -98,7 +99,17 @@ pass them space-separated after the flag or repeat the flag for each value:
   mdm agents add ./my-agents`, ansiBold, ansiReset),
 		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			runAgentAdd(args[0], opts)
+			// Nothing installed anywhere is a failed run, whatever the
+			// reason. A CI script that reads exit 0 after `mdm agents add`
+			// has been told the definitions are in place; exiting 0 here is
+			// how "installed to a harness with no agent concept" became a
+			// silent no-op that still printed a checkmark. The exit lives
+			// here rather than in runAgentAdd because the restore path calls
+			// runAgentAdd once per source group and must not be killed
+			// part-way through by one empty group.
+			if !runAgentAdd(args[0], opts) {
+				os.Exit(1)
+			}
 		},
 	}
 
@@ -108,6 +119,7 @@ pass them space-separated after the flag or repeat the flag for each value:
 	f.StringArrayVar(&opts.Harnesses, "harness", nil, "Harnesses to install to (repeatable, use '*' for all)")
 	f.StringArrayVarP(&opts.Agents, "agent", "a", nil, "Agent definition names to install (repeatable, use '*' for all)")
 	f.BoolVarP(&opts.Yes, "yes", "y", false, "Skip confirmation prompts")
+	f.BoolVar(&opts.AllowHiddenChars, "allow-hidden-chars", false, "Allow markdown files with hidden Unicode characters")
 
 	_ = cmd.RegisterFlagCompletionFunc("harness", harnessFlagCompletion)
 
@@ -144,7 +156,10 @@ func fetchAgentSource(parsed source.ParsedSource, verbose bool) (searchRoot, clo
 	}
 }
 
-func runAgentAdd(sourceInput string, opts AgentOptions) {
+// runAgentAdd reports whether at least one definition reached at least one
+// harness. Callers that are a whole command turn that into the exit code;
+// the restore path calls it per source group and keeps going.
+func runAgentAdd(sourceInput string, opts AgentOptions) bool {
 	cwd, _ := os.Getwd()
 	parsed := source.ParseSource(sourceInput)
 	vlog(verboseFlag, "source %q → type=%s url=%s ref=%q subpath=%q",
@@ -166,24 +181,36 @@ func runAgentAdd(sourceInput string, opts AgentOptions) {
 
 	selected, ok := selectAgents(agents, opts)
 	if !ok {
-		return
+		return false
+	}
+
+	// The same gate every other install path in mdm runs before writing a
+	// byte (add.go, cherrypick.go, knowledge_add.go, plugins_add.go), and
+	// the one the README promises for "every install". It is placed here,
+	// after selection and before the scope prompts, exactly where the
+	// skills path puts it: a blocked install must not first talk the user
+	// through choosing harnesses, and must not convert the scope's install
+	// mode on its way to exiting.
+	if !checkAgentFilesMarkdownForHiddenChars(selected, opts.AllowHiddenChars) {
+		os.Exit(1)
 	}
 
 	global, harnesses, ok := promptScopeAndHarnesses(opts.asAddOptions(), cwd)
 	if !ok {
-		return
+		return false
 	}
 
 	mode, ok := commitScopeInstallMode(opts.asAddOptions(), global, cwd)
 	if !ok {
-		return
+		return false
 	}
 
 	baseEntry := agentLockEntry(parsed, sourceInput)
 	fmt.Println()
-	fallbacks := installAgentsForHarnesses(selected, harnesses, global, mode, baseEntry, cloneDir, cwd)
+	outcome := installAgentsForHarnesses(selected, harnesses, global, mode, baseEntry, cloneDir, cwd)
 	fmt.Println()
-	printAgentInstallSummary(len(selected), global, harnesses, mode, fallbacks)
+	printAgentInstallSummary(outcome, global, mode)
+	return outcome.installed > 0
 }
 
 // filterAgentsByName keeps agents whose name matches one of names (by the
@@ -218,7 +245,7 @@ func selectAgents(agents []*agentfile.AgentFile, opts AgentOptions) ([]*agentfil
 	}
 	options := make([]ui.UIOption, len(agents))
 	for i, a := range agents {
-		options[i] = ui.UIOption{Label: a.Name, Value: sanitizeName(a.Name), Hint: a.Description}
+		options[i] = ui.UIOption{Label: a.Name, Value: agentDiskName(a.Name), Hint: a.Description}
 	}
 	indices, ok := ui.UiSearchMultiselect("Which agent definitions would you like to install?", options, nil, nil, true)
 	if !ok {
@@ -266,32 +293,63 @@ func agentFileRepoPath(agentPath, cloneDir string) string {
 	return filepath.ToSlash(rel)
 }
 
+// agentInstallOutcome is what an add run actually did, as opposed to what
+// it was asked to do. The summary is printed from these numbers rather than
+// from the selection, because the two are not the same: a definition can be
+// skipped by every harness it was aimed at and install nowhere.
+type agentInstallOutcome struct {
+	installed int      // definitions that reached at least one harness
+	harnesses []string // harnesses that actually received something, in the order given
+	fallbacks *symlinkFallbacks
+}
+
 // installAgentsForHarnesses installs each selected definition into every
 // requested harness, then records the definition in the lock — but ONLY
 // when at least one harness actually received it. An agent recorded in the
 // lock after every harness install failed would point a later `mdm agents
 // remove` or update at a file that exists nowhere a harness reads from,
 // which is worse than not recording it at all.
-func installAgentsForHarnesses(agents []*agentfile.AgentFile, harnesses []string, global bool, mode InstallMode, baseEntry lock.AgentLockEntry, cloneDir, cwd string) *symlinkFallbacks {
+//
+// A harness with no agent concept is reported as a skip with its reason,
+// not folded in with genuine failures: "Codex has no agent concept" is a
+// fact about Codex, and printing it as `! critic (failed for: codex)` reads
+// as a bug in mdm or in the definition.
+func installAgentsForHarnesses(agents []*agentfile.AgentFile, harnesses []string, global bool, mode InstallMode, baseEntry lock.AgentLockEntry, cloneDir, cwd string) agentInstallOutcome {
 	var fallbacks symlinkFallbacks
+	outcome := agentInstallOutcome{fallbacks: &fallbacks}
+	received := map[string]bool{}
+
 	for _, a := range agents {
-		name := sanitizeName(a.Name)
+		name := agentDiskName(a.Name)
 		fmt.Printf("%sInstalling %s%s%s...\n", ansiDim, ansiText, a.Name, ansiReset)
 
-		var failedHarnesses []string
+		var failedHarnesses, skipReasons []string
 		installedAny := false
 		for _, harnessName := range harnesses {
 			result := installAgentFile(a, harnessName, global, cwd, mode)
 			fallbacks.note(harnessName, result)
-			if result.Success {
+			switch {
+			case result.Success:
 				installedAny = true
-			} else {
+				if !received[harnessName] {
+					received[harnessName] = true
+					outcome.harnesses = append(outcome.harnesses, harnessName)
+				}
+			case result.Skipped:
+				skipReasons = append(skipReasons, result.Error)
+			default:
 				failedHarnesses = append(failedHarnesses, harnessName)
 			}
 		}
 
+		for _, reason := range skipReasons {
+			ui.LogInfo(fmt.Sprintf("%s: skipped — %s", a.Name, reason))
+		}
+
 		if !installedAny {
-			ui.LogWarn(fmt.Sprintf("%s (failed for: %s)", a.Name, strings.Join(failedHarnesses, ", ")))
+			if len(failedHarnesses) > 0 {
+				ui.LogWarn(fmt.Sprintf("%s (failed for: %s)", a.Name, strings.Join(failedHarnesses, ", ")))
+			}
 			continue
 		}
 		if len(failedHarnesses) == 0 {
@@ -299,6 +357,7 @@ func installAgentsForHarnesses(agents []*agentfile.AgentFile, harnesses []string
 		} else {
 			ui.LogWarn(fmt.Sprintf("%s (failed for: %s)", a.Name, strings.Join(failedHarnesses, ", ")))
 		}
+		outcome.installed++
 
 		entry := baseEntry
 		entry.AgentPath = agentFileRepoPath(a.Path, cloneDir)
@@ -313,41 +372,43 @@ func installAgentsForHarnesses(agents []*agentfile.AgentFile, harnesses []string
 			}
 		}
 	}
-	return &fallbacks
+	return outcome
 }
 
 // printAgentInstallSummary is printInstallSummary's counterpart for agent
 // definitions: same scope/mode/harness reporting, but the noun is "agent
 // definition(s)" rather than "skill(s)".
-func printAgentInstallSummary(count int, global bool, harnesses []string, mode InstallMode, fallbacks *symlinkFallbacks) {
+//
+// It reports what landed, never what was asked for. A run that installed
+// nothing gets a plain statement of that instead of a checkmark, and the
+// harness list names only the harnesses that actually received a file — the
+// old summary named the harness the install had just failed on.
+func printAgentInstallSummary(outcome agentInstallOutcome, global bool, mode InstallMode) {
 	scope := "project"
 	if global {
 		scope = "global"
 	}
+	if outcome.installed == 0 {
+		fmt.Printf("%sNo agent definitions were installed (%s scope).%s\n\n", ansiYellow, scope, ansiReset)
+		outcome.fallbacks.warn()
+		return
+	}
 	noun := "agent definition"
-	if count != 1 {
+	if outcome.installed != 1 {
 		noun = "agent definitions"
 	}
 	modeNote := string(mode)
-	if fallbacks.any() {
+	if outcome.fallbacks.any() {
 		modeNote += " mode, copied where symlinks failed"
 	} else {
 		modeNote += " mode"
 	}
-	fmt.Printf("%s✓ Installed %d %s (%s scope, %s)%s\n", ansiText, count, noun, scope, modeNote, ansiReset)
-	if len(harnesses) > 0 {
-		var displayNames []string
-		for _, a := range harnesses {
-			if cfg := harness.AllHarnesses[a]; cfg != nil {
-				displayNames = append(displayNames, cfg.DisplayName)
-			} else {
-				displayNames = append(displayNames, a)
-			}
-		}
-		fmt.Printf("%s  Harnesses: %s%s\n", ansiDim, strings.Join(displayNames, ", "), ansiReset)
+	fmt.Printf("%s✓ Installed %d %s (%s scope, %s)%s\n", ansiText, outcome.installed, noun, scope, modeNote, ansiReset)
+	if len(outcome.harnesses) > 0 {
+		fmt.Printf("%s  Harnesses: %s%s\n", ansiDim, strings.Join(harnessDisplayNames(outcome.harnesses), ", "), ansiReset)
 	}
 	fmt.Println()
-	fallbacks.warn()
+	outcome.fallbacks.warn()
 }
 
 // ─── list ───────────────────────────────────────────────────────────────────────
@@ -403,11 +464,10 @@ func agentLockEntries(global bool, cwd string) ([]string, map[string]lock.AgentL
 func agentInstalledHarnesses(name string, global bool, cwd string) []string {
 	var found []string
 	for harnessName := range harness.AllHarnesses {
-		dir := harness.AgentsInstallDirFor(harnessName, global, cwd)
-		if dir == "" {
+		target := agentHarnessPath(name, harnessName, global, cwd)
+		if target == "" {
 			continue
 		}
-		target := filepath.Join(dir, name+harness.AgentFileExt(harnessName))
 		if _, err := os.Lstat(target); err == nil {
 			found = append(found, harnessName)
 		}
@@ -432,7 +492,7 @@ type agentEntryStatus struct {
 }
 
 func agentStatusFor(name string, global bool, cwd string) agentEntryStatus {
-	canonical := filepath.Join(harness.CanonicalAgentsDir(global, cwd), name+".md")
+	canonical := agentCanonicalPath(name, global, cwd)
 	_, err := os.Stat(canonical)
 	return agentEntryStatus{
 		CanonicalMissing: err != nil,
@@ -632,12 +692,11 @@ func removeAgentFromDisk(name string, harnessFilter []string, global bool, cwd s
 
 	var failed []string
 	for _, harnessName := range harnesses {
-		dir := harness.AgentsInstallDirFor(harnessName, global, cwd)
-		if dir == "" {
+		target := agentHarnessPath(name, harnessName, global, cwd)
+		if target == "" {
 			continue
 		}
-		target := filepath.Join(dir, name+harness.AgentFileExt(harnessName))
-		if !isPathSafe(dir, target) {
+		if !isPathSafe(harness.AgentsInstallDirFor(harnessName, global, cwd), target) {
 			continue
 		}
 		if rmErr := removeFileFn(target); rmErr != nil && !os.IsNotExist(rmErr) {
@@ -653,7 +712,7 @@ func removeAgentFromDisk(name string, harnessFilter []string, global bool, cwd s
 	}
 
 	canonicalDir := harness.CanonicalAgentsDir(global, cwd)
-	canonicalPath := filepath.Join(canonicalDir, name+".md")
+	canonicalPath := agentCanonicalPath(name, global, cwd)
 	if isPathSafe(canonicalDir, canonicalPath) {
 		if rmErr := removeFileFn(canonicalPath); rmErr != nil && !os.IsNotExist(rmErr) {
 			return false, fmt.Errorf("could not remove the canonical file: %w", rmErr)
@@ -730,6 +789,7 @@ func buildAgentsInstallCmd() *cobra.Command {
 	}
 
 	cmd.Flags().BoolVarP(&opts.yes, "yes", "y", false, "Skip confirmation prompts")
+	cmd.Flags().BoolVar(&opts.allowHiddenChars, "allow-hidden-chars", false, "Allow markdown files with hidden Unicode characters")
 	return cmd
 }
 
@@ -801,7 +861,7 @@ func restoreAgentsMap(entries map[string]lock.AgentLockEntry, global bool, opts 
 	}
 	groups := groupBySourceRef(refs)
 
-	baseOpts := AgentOptions{Yes: opts.yes}
+	baseOpts := AgentOptions{Yes: opts.yes, AllowHiddenChars: opts.allowHiddenChars}
 	if global {
 		baseOpts.Global = true
 	} else {
@@ -826,7 +886,7 @@ func restoreAgentsMap(entries map[string]lock.AgentLockEntry, global bool, opts 
 		if group.ref != "" && !strings.Contains(src, "#") {
 			src = src + "#" + group.ref
 		}
-		runAgentAdd(src, groupOpts)
+		_ = runAgentAdd(src, groupOpts)
 	}
 
 	fmt.Printf("%sDone.%s\n\n", ansiText, ansiReset)
@@ -862,6 +922,7 @@ copy-mode harness install picks up the change too, instead of going stale.
 	f.BoolVarP(&opts.Global, "global", "g", false, "Update global agent definitions only")
 	f.BoolVarP(&opts.Project, "project", "p", false, "Update project agent definitions only")
 	f.BoolVarP(&opts.Yes, "yes", "y", false, "Skip scope prompt")
+	f.BoolVar(&opts.AllowHiddenChars, "allow-hidden-chars", false, "Allow markdown files with hidden Unicode characters")
 
 	return cmd
 }
@@ -910,7 +971,7 @@ func collectAgentCandidates(global bool, filter []string, cwd string) []updateCa
 // canonical file moves forward: installAgentFile is called again for each
 // of those harnesses, not skipped in favor of just refreshing the canonical
 // copy.
-func runAgentUpdateGroups(groups []updateGroup, global bool, cwd string, stats *updateStats) {
+func runAgentUpdateGroups(groups []updateGroup, global bool, cwd string, allowHiddenChars bool, stats *updateStats) {
 	mode := currentInstallMode(global, cwd)
 	for _, g := range groups {
 		if len(g.skills) > 1 {
@@ -928,6 +989,18 @@ func runAgentUpdateGroups(groups []updateGroup, global bool, cwd string, stats *
 			continue
 		}
 		selected := filterAgentsByName(found, g.skills)
+
+		// An update overwrites a file the harness already loads as a
+		// persona, so the incoming version gets the same scan the first
+		// install got — `mdm skills update` reaches the scan by routing
+		// through runAdd; this path installs directly and has to call it
+		// itself. The whole group is dropped rather than the offending
+		// definition alone, matching the skills path's all-or-nothing gate.
+		if !checkAgentFilesMarkdownForHiddenChars(selected, allowHiddenChars) {
+			cleanup()
+			continue
+		}
+
 		baseEntry := agentLockEntry(parsed, g.source)
 
 		// A name the lock records but that no longer parses out of the
@@ -948,7 +1021,7 @@ func runAgentUpdateGroups(groups []updateGroup, global bool, cwd string, stats *
 		}
 
 		for _, a := range selected {
-			name := sanitizeName(a.Name)
+			name := agentDiskName(a.Name)
 			installedHarnesses := agentInstalledHarnesses(name, global, cwd)
 			if len(installedHarnesses) == 0 {
 				ui.LogWarn(fmt.Sprintf("%s: not installed in any harness, skipping", a.Name))
@@ -1013,12 +1086,12 @@ func runAgentsUpdateWithOpts(filter []string, opts UpdateOptions) {
 	if global {
 		groups := planUpdates(collectAgentCandidates(true, filter, cwd), check, &stats)
 		vlog(verboseFlag, "global: %d source group(s) to fetch", len(groups))
-		runAgentUpdateGroups(groups, true, cwd, &stats)
+		runAgentUpdateGroups(groups, true, cwd, opts.AllowHiddenChars, &stats)
 	}
 	if project {
 		groups := planUpdates(collectAgentCandidates(false, filter, cwd), check, &stats)
 		vlog(verboseFlag, "project: %d source group(s) to fetch", len(groups))
-		runAgentUpdateGroups(groups, false, cwd, &stats)
+		runAgentUpdateGroups(groups, false, cwd, opts.AllowHiddenChars, &stats)
 	}
 
 	fmt.Println()
