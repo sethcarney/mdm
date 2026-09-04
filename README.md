@@ -114,7 +114,9 @@ Run `mdm --help` for the full command reference. See [docs/rules.md](docs/rules.
 > in a directory no harness claims. Every other harness uses a dot-prefixed or shared
 > directory. See [Troubleshooting](https://sethcarney.github.io/mdm/troubleshooting/).
 
-Skill installs run a deterministic local hidden-character scan over markdown files before copying or symlinking content. See [docs/security/hidden-character-scan.md](docs/security/hidden-character-scan.md) for the exact checks and bypass policy.
+Every install path — skills, agent definitions, knowledge bundles and plugins — runs a deterministic local hidden-character scan over markdown files before copying or symlinking content, and each exposes `--allow-hidden-chars` to override it deliberately. See [docs/security/hidden-character-scan.md](docs/security/hidden-character-scan.md) for the exact checks and bypass policy.
+
+`mdm agents add` additionally refuses any directory a source declares for itself (an `agentsDirs` entry in `.claude-plugin/marketplace.json`) that would leave the source tree — a parent escape, a rooted path, or a directory that resolves through a symlink to somewhere else on your disk. Such an entry is dropped silently; the source's legitimate directories still install.
 
 When installing from a git source, mdm restricts git to the **https** and **ssh** transports. This blocks git's `ext::`/`fd::` local-command transports, which would otherwise let a repository source string - including one replayed from a checked-in `mdm.lock` - execute arbitrary commands. See [docs/security/git-transport-restrictions.md](docs/security/git-transport-restrictions.md) for the rationale and the full allow/deny list.
 

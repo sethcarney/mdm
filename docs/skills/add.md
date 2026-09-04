@@ -26,8 +26,28 @@ mdm skills add <package>
 3. If the repo contains multiple skills, a picker lets you choose which ones to install.
 4. You are prompted for scope (project or global) and which harnesses to install to — unless flags are provided.
 5. Markdown files are scanned for hidden Unicode characters.
-6. Skill directories are copied into each harness's skills directory.
+6. One canonical copy of each skill is written to `.agents/skills/<name>`, and
+   each harness with a skills directory of its own is symlinked to it (or given
+   a real copy, in [copy mode](../commands.md)).
 7. The installation is recorded in `mdm.lock`.
+
+## Installing from a directory that is already the destination
+
+`mdm skills add .` walks the whole project for `SKILL.md` files, so it finds
+mdm's own canonical copies under `.agents/skills` as well as your sources. When a
+skill's source directory turns out to *be* its install destination, mdm skips the
+copy rather than performing it.
+
+The skip is not an error. Asking to install something that is already exactly in
+place is a reasonable thing to do, and there is nothing for you to fix. In the
+default symlink mode the skip covers the copy only — the harness symlink is still
+created, so `mdm skills add . --harness roo` on an already-installed skill still
+does the one useful thing it can.
+
+Sameness is decided by inspecting the files, not by comparing path strings, so
+the common shape of this is caught too: a harness's `.claude/skills/<name>`
+symlink discovered as the source while the destination is the
+`.agents/skills/<name>` it points at. Two spellings, one directory.
 
 ## Flags
 

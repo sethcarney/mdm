@@ -494,6 +494,7 @@ mdm
     ├── plugin/          # Agent Plugins spec conformance: plugin.json + mcp.json parsing, discovery, path containment, hashing
     ├── mcpwire/         # Per-harness MCP config targets; renders plugin servers into .mcp.json / .cursor/mcp.json
     ├── experimental/    # Named feature gates (MDM_EXPERIMENTAL env var + persisted opt-ins)
+    ├── pathsafe/        # The one copy of the install path guard: IsSafeRelDir (lexical) + ResolvedContains (on-disk containment), applied by skill/ and agentfile/ to directories a source declares for itself
     ├── source/          # URL/path parsing into ParsedSource (GitHub, GitLab, local, well-known)
     ├── registry/        # Well-known registry fetching (.well-known/agent-skills standard)
     ├── lock/            # mdm.lock read/write (skills, agents, knowledge, plugins sections; reads legacy v1 lock files as a fallback); tracks hashes, versions, timestamps, the per-scope installMode, and configuredHarnesses (still written under the `configuredAgents` JSON key for v1 readers)
@@ -515,8 +516,37 @@ mdm
    finding blocks the install unless `--allow-hidden-chars` is passed
 5. User is prompted for which harnesses to install to (or `--harness` flag)
 6. Skill dirs are written to `.agents/skills/<name>` and symlinked (or copied,
-   per the scope's `installMode`) into each harness's skills directory
+   per the scope's `installMode`) into each harness's skills directory. A skill
+   whose source directory IS its destination — `mdm skills add .` rediscovering
+   mdm's own canonical copies — is skipped rather than copied. The check is
+   `os.Stat` + `os.SameFile` at the level where both paths are known, immediately
+   before the destination is emptied; a same-file guard inside `copyFile` would
+   be too late, because in symlink mode the directory it would read is deleted a
+   layer above it.
 7. `lock/` records the installation in the skills section of `mdm.lock`
+
+Directories a source declares for itself — `skillDirs` in `skill/`, `agentsDirs`
+in `agentfile/`, both read out of `.claude-plugin/marketplace.json` — are
+third-party input and go through `pathsafe/` before they are opened: the lexical
+`IsSafeRelDir` first, then `ResolvedContains` against the resolved search root, so
+that a directory which only looks local but is really a symlink out of the tree
+is refused. A rejected entry is dropped silently. Note the asymmetry: the
+`agentfile/` guard is live, reached by `mdm agents add` and `mdm agents update`
+through `DiscoverAgentFiles`, while the `skill/` guard sits in `DiscoverSkills`,
+`GetPluginSkillPaths` and `GetPluginGroupings`, none of which any command in
+`commands/` calls today — the discovery the CLI runs is
+`DiscoverNodeModuleSkills`. The skills-side guard hardens a latent hazard rather
+than closing a reachable hole.
+
+`mdm skills remove` (`remove.go`) is scoped by `--harness`. It computes, BEFORE
+deleting anything, which harnesses outside the filter still hold the skill, and
+keeps the canonical directory and the lock entry when any do. That question
+cannot be answered by probing each harness's directory the way the
+agent-definition side does, because for a `SharedSkillsDir` harness that
+directory IS the canonical one being decided about. With no filter every harness
+is swept, not only the detected ones. Failed deletions are collected and reported
+against the skill, and the lock entry survives them: the lock is the record of
+what is on disk.
 
 `mdm agents add` → `agent_artifacts.go` runs the same seven steps with
 `agentfile/` in place of `skill/`, `agent_installer.go` in place of

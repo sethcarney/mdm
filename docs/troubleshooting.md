@@ -74,6 +74,55 @@ an install: `mdm harnesses remove` cleans around it and reports how many it kept
 and `mdm skills remove` leaves it alone. Hand-written skills have no such marker,
 which is why they are still at risk.
 
+## `mdm skills remove --harness X` kept the skill instead of deleting it
+
+**Symptom.** You ran `mdm skills remove demo --harness claude-code` expecting the
+skill to be gone, and instead saw:
+
+```
+! demo: removed from Claude Code, but Roo Code still has it — keeping the skill and its lock entry
+```
+
+**Cause.** This is the flag working. `--harness` is a scoped removal: it takes the
+named harness's copy and nothing else. Because another harness still has the
+skill, the canonical `.agents/skills/demo` directory and the `mdm.lock` entry are
+both kept.
+
+They have to be. Every other harness installs by symlinking that canonical
+directory, so deleting it would leave them pointing at nothing, and dropping the
+lock entry would remove the one record that lets `mdm skills list` and
+`mdm doctor` report the breakage.
+
+**If you meant to remove it everywhere**, drop the flag: `mdm skills remove demo`
+sweeps every harness, the canonical directory, and the lock entry. Removing the
+last remaining harness with `--harness` does the same thing, since at that point
+nothing is left to keep it for.
+
+Earlier versions deleted everything on a `--harness` removal, which is what left
+other harnesses pointing at a missing directory with no lock entry to diagnose it
+by. If a project still carries that damage, `mdm doctor` reports the broken links.
+
+## `mdm skills add .` deleted the skills it was supposed to install
+
+**Symptom.** On an older mdm, running `mdm skills add .` in a project that already
+had skills installed emptied them and still printed a tick against each name.
+
+**Cause.** Discovery walks the project for `SKILL.md` files and finds mdm's own
+canonical copies under `.agents/skills`, so the install ran with the source
+directory and the destination directory being one directory. Every install path
+starts by emptying the destination, so the source was gone before any file was
+read and the copy that followed had nothing left to copy.
+
+**Fixed.** mdm now compares the source and the destination before removing
+anything, and skips the copy when they are the same directory. The comparison
+inspects the files rather than the path strings, so it also catches a harness's
+`.claude/skills/<name>` symlink discovered as the source while the destination is
+the `.agents/skills/<name>` it points at.
+
+**Recovery on an affected project.** The emptied skills are not recoverable from
+mdm — reinstall them from their sources with `mdm skills install`, or
+`git restore` them if the canonical directory was committed.
+
 ## My copied skills came back as symlinks
 
 **Symptom.** You installed with `--copy` expecting real directories, but

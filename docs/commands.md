@@ -147,6 +147,11 @@ mdm skills remove [skills...]
 | `--yes`, `-y` | Skip confirmation prompts |
 | `--all` | Shorthand for `--skill '*' --harness '*' -y` |
 
+`--harness` is scoped: it removes that harness's copy and keeps the canonical
+directory and the lock entry while any harness outside the filter still has the
+skill. With no `--harness`, the skill is removed outright and the sweep covers
+every harness, not only the ones it was detected in.
+
 [:octicons-arrow-right-24: Details](skills/remove.md)
 
 ### `skills list` <small>alias: `ls`</small>

@@ -36,9 +36,23 @@ files in this order, and the **first occurrence of a name wins**:
 Only files directly inside one of these directories are scanned (not
 subdirectories), and only files ending in `.md` are considered — this is
 independent of the file extension a *target* harness expects on install (see
-[GitHub Copilot's `.agent.md` requirement](#github-copilot-loads-only-agentmd) below). Every candidate directory and file is resolved against the
-search root before being read, so a symlink inside an untrusted source
-cannot point mdm at reading a file elsewhere on disk.
+[GitHub Copilot's `.agent.md` requirement](#github-copilot-loads-only-agentmd) below).
+
+A directory named in `agentsDirs` is declared by the source, and the source is
+third-party, so each one goes through two checks before it is opened. The first
+is lexical: the declared string must be a genuine relative subdirectory, which
+rules out an empty value, `.`, a parent escape, and a rooted path (including a
+driveless `/x`, which Windows does not treat as absolute). The second resolves
+the candidate on disk and requires the result to still sit inside the resolved
+search root, which is what catches a directory that only *looks* local but is
+really a symlink pointing somewhere else on the victim's disk. A resolution
+error, including a dangling or looping symlink, counts as unsafe. The
+`.claude-plugin/marketplace.json` file itself goes through the containment check
+too, because it is opened before anything has looked at where it points.
+
+A rejected entry is dropped silently, the same way a file missing its
+frontmatter is. This is untrusted input being filtered, not a mistake by the
+person running mdm, and there is nothing for them to act on.
 
 ## Commands
 
