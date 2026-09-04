@@ -64,6 +64,33 @@ func sameFileOnDisk(a, b string) bool {
 	return os.SameFile(ai, bi)
 }
 
+// copyAgentFileUnlessSame copies src over dst unless the two are already the
+// same file on disk.
+//
+// The guard is what makes every route safe against copying a file onto
+// itself. `mdm agents add .` discovers .agents/agents (a conventional agents
+// directory) and .claude/agents (whose entries are symlinks into it), so the
+// source file can BE the destination. copyFile opens the destination O_TRUNC
+// before reading the source, which in that case empties the very file it is
+// about to read and leaves a 0-byte copy behind a green checkmark.
+func copyAgentFileUnlessSame(src, dst string) error {
+	if sameFileOnDisk(src, dst) {
+		return nil
+	}
+	return copyFile(src, dst)
+}
+
+// copyAgentIntoHarness materializes a real copy of the canonical definition
+// in the harness's own agents directory, creating that directory first.
+// Used both for an explicit copy-mode install and as the fallback when a
+// symlink cannot be created.
+func copyAgentIntoHarness(canonicalPath, harnessDir, harnessPath string) error {
+	if err := os.MkdirAll(harnessDir, 0755); err != nil {
+		return err
+	}
+	return copyAgentFileUnlessSame(canonicalPath, harnessPath)
+}
+
 // installAgentFile installs one agent-definition file into one harness: the
 // canonical copy is written first at .agents/agents/<name>.md, then linked
 // (or copied, on symlink failure) into the harness's own agents directory
@@ -105,29 +132,14 @@ func installAgentFile(a *agentfile.AgentFile, harnessName string, global bool, c
 		return InstallResult{Success: false, Path: harnessPath, Mode: mode, Error: err.Error()}
 	}
 	// Reinstalling a definition mdm already owns is a no-op, not an error:
-	// `mdm agents add .` discovers .agents/agents (a conventional agents
-	// directory) and .claude/agents (whose entries are symlinks into it), so
-	// the source file can BE the destination. copyFile opens the destination
-	// O_TRUNC before reading the source, which in that case empties the very
-	// file it is about to read and leaves a 0-byte canonical copy behind a
-	// green checkmark. Comparing the files first is what makes that
-	// impossible, on this route and on any other that reaches the same pair.
-	if !sameFileOnDisk(a.Path, canonicalPath) {
-		if err := copyFile(a.Path, canonicalPath); err != nil {
-			return InstallResult{Success: false, Path: harnessPath, Mode: mode, Error: err.Error()}
-		}
+	// the source file can be the canonical file itself.
+	if err := copyAgentFileUnlessSame(a.Path, canonicalPath); err != nil {
+		return InstallResult{Success: false, Path: harnessPath, Mode: mode, Error: err.Error()}
 	}
 
 	if mode == InstallModeCopy {
-		if err := os.MkdirAll(harnessDir, 0755); err != nil {
+		if err := copyAgentIntoHarness(canonicalPath, harnessDir, harnessPath); err != nil {
 			return InstallResult{Success: false, Path: harnessPath, Mode: mode, Error: err.Error()}
-		}
-		// Same guard as above: a harness whose agents directory IS the
-		// canonical directory would otherwise copy the file onto itself.
-		if !sameFileOnDisk(canonicalPath, harnessPath) {
-			if err := copyFile(canonicalPath, harnessPath); err != nil {
-				return InstallResult{Success: false, Path: harnessPath, Mode: mode, Error: err.Error()}
-			}
 		}
 		return InstallResult{Success: true, Path: harnessPath, CanonicalPath: canonicalPath, Mode: InstallModeCopy}
 	}
@@ -139,13 +151,8 @@ func installAgentFile(a *agentfile.AgentFile, harnessName string, global bool, c
 	if createSymlink(canonicalPath, harnessPath) {
 		return InstallResult{Success: true, Path: harnessPath, CanonicalPath: canonicalPath, Mode: InstallModeSymlink}
 	}
-	if err := os.MkdirAll(harnessDir, 0755); err != nil {
+	if err := copyAgentIntoHarness(canonicalPath, harnessDir, harnessPath); err != nil {
 		return InstallResult{Success: false, Path: harnessPath, Mode: mode, Error: err.Error()}
-	}
-	if !sameFileOnDisk(canonicalPath, harnessPath) {
-		if err := copyFile(canonicalPath, harnessPath); err != nil {
-			return InstallResult{Success: false, Path: harnessPath, Mode: mode, Error: err.Error()}
-		}
 	}
 	return InstallResult{Success: true, Path: harnessPath, CanonicalPath: canonicalPath, Mode: InstallModeSymlink, SymlinkFailed: true}
 }

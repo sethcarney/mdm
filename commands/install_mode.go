@@ -299,6 +299,71 @@ func rematerializeScope(to InstallMode, canonicalDir string, installPaths []conv
 	return converted, nil
 }
 
+// reserveSiblingName reserves an unused name next to an install path and
+// returns it free for a rename to take. MkdirTemp is the only race-free way
+// to claim a unique name, but it claims it by creating a directory, and both
+// callers need the name empty — one to copy a file to, one to rename onto —
+// so the directory is removed again immediately. The sibling location is
+// load-bearing: it keeps the later rename on one filesystem.
+//
+// The error is returned bare so each caller can wrap it in the wording for
+// the step it is performing.
+func reserveSiblingName(dir, name string) (string, error) {
+	reserved, err := os.MkdirTemp(dir, name+".mdm-tmp-")
+	if err != nil {
+		return "", err
+	}
+	if err := os.Remove(reserved); err != nil {
+		return "", err
+	}
+	return reserved, nil
+}
+
+// materializeLinkReplacement builds, beside the install path, the real
+// content that is about to replace the symlink at it: a directory copy for a
+// skill, a file copy for an agent definition. It returns the temp path and a
+// cleanup that removes it, so the caller can discard the work on any later
+// failure.
+//
+// Nothing here touches the install path itself. That is the point of doing
+// it first: until the caller renames the temp entry into place, the link and
+// what it points at are both untouched, so a failure at this stage leaves
+// the install exactly as it was.
+func materializeLinkReplacement(installDir, name, resolved string, srcInfo os.FileInfo) (temp string, removeTemp func(), err error) {
+	if srcInfo.IsDir() {
+		// MkdirTemp creates it 0700; take the source's mode instead, so the
+		// result matches a fresh copy install.
+		temp, err = os.MkdirTemp(installDir, name+".mdm-tmp-")
+		if err != nil {
+			return "", nil, fmt.Errorf("preparing temp dir for %s: %w", name, err)
+		}
+		removeTemp = func() { _ = os.RemoveAll(temp) }
+		if err := os.Chmod(temp, srcInfo.Mode().Perm()); err != nil {
+			removeTemp()
+			return "", nil, fmt.Errorf("preparing temp dir for %s: %w", name, err)
+		}
+		if err := copyDirFn(resolved, temp); err != nil {
+			removeTemp()
+			return "", nil, fmt.Errorf("copying %s: %w", name, err)
+		}
+		return temp, removeTemp, nil
+	}
+
+	// Reserve a unique sibling name the same way copyToLink reserves its
+	// backup name: copyFileFn creates the file itself, so it (not a separate
+	// chmod) is what gives the result the source's mode.
+	temp, err = reserveSiblingName(installDir, name)
+	if err != nil {
+		return "", nil, fmt.Errorf("preparing temp file for %s: %w", name, err)
+	}
+	removeTemp = func() { _ = removeFileFn(temp) }
+	if err := copyFileFn(resolved, temp); err != nil {
+		removeTemp()
+		return "", nil, fmt.Errorf("copying %s: %w", name, err)
+	}
+	return temp, removeTemp, nil
+}
+
 // linkToCopy replaces one mdm symlink at target with a real copy of what it
 // points at (a directory for a skill, a single file for an agent
 // definition), reporting whether it converted anything. The copy is built
@@ -329,41 +394,9 @@ func linkToCopy(canonical, target string) (bool, error) {
 
 	// The temp entry sits in installDir so the final rename stays on one
 	// filesystem.
-	var temp string
-	var removeTemp func()
-	if srcInfo.IsDir() {
-		// MkdirTemp creates it 0700; take the source's mode instead, so the
-		// result matches a fresh copy install.
-		temp, err = os.MkdirTemp(installDir, name+".mdm-tmp-")
-		if err != nil {
-			return false, fmt.Errorf("preparing temp dir for %s: %w", name, err)
-		}
-		removeTemp = func() { _ = os.RemoveAll(temp) }
-		if err := os.Chmod(temp, srcInfo.Mode().Perm()); err != nil {
-			removeTemp()
-			return false, fmt.Errorf("preparing temp dir for %s: %w", name, err)
-		}
-		if err := copyDirFn(resolved, temp); err != nil {
-			removeTemp()
-			return false, fmt.Errorf("copying %s: %w", name, err)
-		}
-	} else {
-		// Reserve a unique sibling name the same way copyToLink reserves its
-		// backup name, then free it: copyFileFn creates the file itself, so
-		// it (not a separate chmod) is what gives the result the source's mode.
-		reserved, err := os.MkdirTemp(installDir, name+".mdm-tmp-")
-		if err != nil {
-			return false, fmt.Errorf("preparing temp file for %s: %w", name, err)
-		}
-		if err := os.Remove(reserved); err != nil {
-			return false, fmt.Errorf("preparing temp file for %s: %w", name, err)
-		}
-		temp = reserved
-		removeTemp = func() { _ = removeFileFn(temp) }
-		if err := copyFileFn(resolved, temp); err != nil {
-			removeTemp()
-			return false, fmt.Errorf("copying %s: %w", name, err)
-		}
+	temp, removeTemp, err := materializeLinkReplacement(installDir, name, resolved, srcInfo)
+	if err != nil {
+		return false, err
 	}
 
 	// Remove the link only, never what it points at.
@@ -382,6 +415,66 @@ func linkToCopy(canonical, target string) (bool, error) {
 		return false, fmt.Errorf("finalizing %s: rename failed (%w); restored the original symlink at %s", name, err, target)
 	}
 	return true, nil
+}
+
+// isMdmOwnedCopyInstall reports whether the real entry at target looks like a
+// copy install mdm itself wrote, and so is one this conversion may replace
+// with a link. Anything else at an install path belongs to someone else and
+// is left alone.
+//
+// Both shapes are checked by content rather than by name, and both checks
+// are deliberately the same strength: a directory qualifies if it holds a
+// SKILL.md, a file qualifies if it parses as an agent definition. Neither
+// can tell mdm's own entry from a user's that happens to look identical, but
+// because they are equally weak, neither shape is the easier one to sweep up
+// by accident.
+func isMdmOwnedCopyInstall(target string, info os.FileInfo) (bool, error) {
+	if info.IsDir() {
+		if _, err := os.Stat(filepath.Join(target, "SKILL.md")); err != nil {
+			return false, nil
+		}
+		return true, nil
+	}
+	// ParseAgentMd returns (nil, nil) for a file with no name/description
+	// frontmatter, so a read error still surfaces as an error here.
+	agent, err := agentfile.ParseAgentMd(target)
+	if err != nil {
+		return false, fmt.Errorf("checking %s: %w", target, err)
+	}
+	return agent != nil, nil
+}
+
+// ensureCanonicalCopy makes sure the content exists at canonicalPath before
+// the install path stops holding it. This runs first for a reason: once the
+// install path is a symlink, the canonical copy is the only place the
+// content lives, so creating it has to succeed before anything is set aside.
+//
+// An existing canonical copy is left exactly as it is — this only fills in a
+// missing one. A partial copy is cleaned up so a retry does not find a
+// half-written canonical entry and take it for a complete one.
+func ensureCanonicalCopy(canonical, canonicalPath, target, name string, isDir bool) error {
+	if _, err := os.Stat(canonicalPath); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("checking %s: %w", canonicalPath, err)
+	}
+	if isDir {
+		if err := copyDirFn(target, canonicalPath); err != nil {
+			_ = os.RemoveAll(canonicalPath)
+			return fmt.Errorf("copying %s into %s: %w", name, canonical, err)
+		}
+		return nil
+	}
+	// Unlike copyDirFn, copyFileFn does not create its destination's parent:
+	// the canonical directory needs making explicitly here.
+	if err := os.MkdirAll(canonical, 0755); err != nil {
+		return fmt.Errorf("preparing %s: %w", canonical, err)
+	}
+	if err := copyFileFn(target, canonicalPath); err != nil {
+		_ = removeFileFn(canonicalPath)
+		return fmt.Errorf("copying %s into %s: %w", name, canonical, err)
+	}
+	return nil
 }
 
 // copyToLink replaces one real install at target — a skill directory or an
@@ -406,30 +499,12 @@ func copyToLink(canonical, target, canonicalName string) (bool, error) {
 	if err != nil || info.Mode()&os.ModeSymlink != 0 {
 		return false, nil
 	}
-	if info.IsDir() {
-		// Every mdm copy install of a skill holds a SKILL.md; a directory
-		// without one is someone else's. This is a weak signal — it cannot
-		// tell mdm's own directory from a user's directory that happens to
-		// hold a SKILL.md of its own — but it is the same strength as the
-		// file check below, so neither shape is the easier one to sweep up
-		// by accident.
-		if _, err := os.Stat(filepath.Join(target, "SKILL.md")); err != nil {
-			return false, nil
-		}
-	} else {
-		// Every mdm copy install of an agent definition parses as one: name
-		// and description frontmatter present. A file that does not parse —
-		// including one a user hand-wrote at the same path the lock happens
-		// to track — is someone else's, mirroring the SKILL.md check above.
-		// ParseAgentMd returns (nil, nil) for a file with no such
-		// frontmatter, so a read error still surfaces as an error here.
-		agent, err := agentfile.ParseAgentMd(target)
-		if err != nil {
-			return false, fmt.Errorf("checking %s: %w", target, err)
-		}
-		if agent == nil {
-			return false, nil
-		}
+	owned, err := isMdmOwnedCopyInstall(target, info)
+	if err != nil {
+		return false, err
+	}
+	if !owned {
+		return false, nil
 	}
 	// Never link something inside the canonical tree back to itself.
 	if isInsideOrEqual(resolvedDir(target), canonical) {
@@ -437,34 +512,12 @@ func copyToLink(canonical, target, canonicalName string) (bool, error) {
 	}
 
 	canonicalPath := filepath.Join(canonical, canonicalName)
-	if _, err := os.Stat(canonicalPath); err != nil {
-		if !os.IsNotExist(err) {
-			return false, fmt.Errorf("checking %s: %w", canonicalPath, err)
-		}
-		if info.IsDir() {
-			if err := copyDirFn(target, canonicalPath); err != nil {
-				_ = os.RemoveAll(canonicalPath)
-				return false, fmt.Errorf("copying %s into %s: %w", name, canonical, err)
-			}
-		} else {
-			// Unlike copyDirFn, copyFileFn does not create its destination's
-			// parent: the canonical directory needs making explicitly here.
-			if err := os.MkdirAll(canonical, 0755); err != nil {
-				return false, fmt.Errorf("preparing %s: %w", canonical, err)
-			}
-			if err := copyFileFn(target, canonicalPath); err != nil {
-				_ = removeFileFn(canonicalPath)
-				return false, fmt.Errorf("copying %s into %s: %w", name, canonical, err)
-			}
-		}
+	if err := ensureCanonicalCopy(canonical, canonicalPath, target, name, info.IsDir()); err != nil {
+		return false, err
 	}
 
-	// MkdirTemp only reserves a unique sibling name; the rename needs it free.
-	backup, err := os.MkdirTemp(installDir, name+".mdm-tmp-")
+	backup, err := reserveSiblingName(installDir, name)
 	if err != nil {
-		return false, fmt.Errorf("preparing backup for %s: %w", name, err)
-	}
-	if err := os.Remove(backup); err != nil {
 		return false, fmt.Errorf("preparing backup for %s: %w", name, err)
 	}
 	if err := renameFn(target, backup); err != nil {

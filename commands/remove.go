@@ -240,6 +240,72 @@ func harnessesRetainingSkill(sk *InstalledSkill, removing []string, global bool,
 	return retained
 }
 
+// removeSkillInstalls deletes the skill's install under each harness in
+// harnessesToRemove and returns a description of every deletion that failed.
+// It never touches the canonical directory or the lock: those are the
+// caller's, and only once every install here is gone.
+//
+// retained is the list of harnesses outside the filter that still hold the
+// skill. When it is non-empty, a harness that reads the canonical directory
+// directly is skipped, because "its" copy IS the copy those harnesses are
+// still using — there is nothing scoped to delete for such a harness.
+func removeSkillInstalls(sk *InstalledSkill, harnessesToRemove, retained []string, sName, localSourceAbs string, global bool, cwd string) []string {
+	var failed []string
+	for _, harnessName := range harnessesToRemove {
+		if len(retained) > 0 && harness.UsesSharedSkillsDir(harnessName) {
+			vlog(verboseFlag, "skip harness %q: shares the canonical dir, still needed by %v", harnessName, retained)
+			continue
+		}
+		harnessBase := getHarnessBaseDir(harnessName, global, cwd)
+		if harnessBase == "" {
+			vlog(verboseFlag, "skip harness %q: no base dir resolved", harnessName)
+			continue
+		}
+		for _, name := range []string{sName, filepath.Base(sk.Path)} {
+			if rmErr := removeHarnessSkillDir(harnessBase, name, localSourceAbs); rmErr != nil {
+				failed = append(failed, fmt.Sprintf("%s (%v)", harnessName, rmErr))
+			}
+		}
+	}
+	return failed
+}
+
+// removeCanonicalSkillCopy deletes mdm's own copy of the skill, and only when
+// every guard agrees it is mdm's to delete: the canonical directory must not
+// sit inside a local source (deleting it would delete the user's own working
+// copy), must not be a cherry-picked fork (the user's vendored file, which
+// nothing re-fetches), and must resolve inside the canonical skills tree.
+// A guard that says no is not an error — it means there is nothing here for
+// mdm to remove.
+func removeCanonicalSkillCopy(sk *InstalledSkill, localSourceAbs string, global bool, cwd string) error {
+	canonicalDir := getCanonicalPath(sk.Name, global)
+	canonicalAbs, _ := filepath.Abs(canonicalDir)
+	skipCanonical := localSourceAbs != "" && isInsideOrEqual(canonicalAbs, localSourceAbs)
+	if !skipCanonical && canonicalDir != "" && !isCherryPickedSource(canonicalDir) &&
+		isPathSafe(getCanonicalSkillsDir(global, cwd), canonicalDir) {
+		if rmErr := removeAllFn(canonicalDir); rmErr != nil {
+			return fmt.Errorf("could not remove %s: %w", canonicalDir, rmErr)
+		}
+	}
+	return nil
+}
+
+// removeSkillLockEntry drops the skill's record from whichever lock the scope
+// keeps. It runs last, after the disk is already clear, so the lock never
+// claims a skill is gone while its files are still there.
+func removeSkillLockEntry(sName string, global bool, cwd string) error {
+	var lockErr error
+	if global {
+		lockErr = lock.RemoveSkillFromGlobalState(sName)
+	} else {
+		lockErr = lock.RemoveSkillFromLocalLock(sName, cwd)
+	}
+	if lockErr != nil {
+		return fmt.Errorf("could not update the lock file: %w", lockErr)
+	}
+	return nil
+}
+
 // removeSkillFromDisk deletes the installs for the harnesses in harnessFilter
 // and, when nothing outside that filter still holds the skill, the canonical
 // directory and the lock entry too.
@@ -279,26 +345,7 @@ func removeSkillFromDisk(sk *InstalledSkill, harnessFilter []string, global bool
 	}
 	vlog(verboseFlag, "removing %q from harnesses=%v (localSource=%q, retained=%v)", sk.Name, harnessesToRemove, localSourceAbs, retained)
 
-	var failed []string
-	for _, harnessName := range harnessesToRemove {
-		if len(retained) > 0 && harness.UsesSharedSkillsDir(harnessName) {
-			// This harness reads the canonical directory itself, so removing
-			// "its" copy is removing the copy the retaining harnesses still
-			// use. There is nothing scoped to delete here.
-			vlog(verboseFlag, "skip harness %q: shares the canonical dir, still needed by %v", harnessName, retained)
-			continue
-		}
-		harnessBase := getHarnessBaseDir(harnessName, global, cwd)
-		if harnessBase == "" {
-			vlog(verboseFlag, "skip harness %q: no base dir resolved", harnessName)
-			continue
-		}
-		for _, name := range []string{sName, filepath.Base(sk.Path)} {
-			if rmErr := removeHarnessSkillDir(harnessBase, name, localSourceAbs); rmErr != nil {
-				failed = append(failed, fmt.Sprintf("%s (%v)", harnessName, rmErr))
-			}
-		}
-	}
+	failed := removeSkillInstalls(sk, harnessesToRemove, retained, sName, localSourceAbs, global, cwd)
 	if len(failed) > 0 {
 		return retained, fmt.Errorf("could not remove from %s", strings.Join(failed, ", "))
 	}
@@ -307,24 +354,12 @@ func removeSkillFromDisk(sk *InstalledSkill, harnessFilter []string, global bool
 		return retained, nil
 	}
 
-	canonicalDir := getCanonicalPath(sk.Name, global)
-	canonicalAbs, _ := filepath.Abs(canonicalDir)
-	skipCanonical := localSourceAbs != "" && isInsideOrEqual(canonicalAbs, localSourceAbs)
-	if !skipCanonical && canonicalDir != "" && !isCherryPickedSource(canonicalDir) &&
-		isPathSafe(getCanonicalSkillsDir(global, cwd), canonicalDir) {
-		if rmErr := removeAllFn(canonicalDir); rmErr != nil {
-			return nil, fmt.Errorf("could not remove %s: %w", canonicalDir, rmErr)
-		}
+	if rmErr := removeCanonicalSkillCopy(sk, localSourceAbs, global, cwd); rmErr != nil {
+		return nil, rmErr
 	}
 
-	if global {
-		if lockErr := lock.RemoveSkillFromGlobalState(sName); lockErr != nil {
-			return nil, fmt.Errorf("could not update the lock file: %w", lockErr)
-		}
-		return nil, nil
-	}
-	if lockErr := lock.RemoveSkillFromLocalLock(sName, cwd); lockErr != nil {
-		return nil, fmt.Errorf("could not update the lock file: %w", lockErr)
+	if lockErr := removeSkillLockEntry(sName, global, cwd); lockErr != nil {
+		return nil, lockErr
 	}
 	return nil, nil
 }

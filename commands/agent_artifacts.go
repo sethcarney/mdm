@@ -962,6 +962,56 @@ func collectAgentCandidates(global bool, filter []string, cwd string) []updateCa
 	return candidates
 }
 
+// warnAgentNamesNotInSource reports every requested name the source no
+// longer yields. Such a definition is left exactly as installed — there is
+// nothing to reinstall it from — but the user asked to update it and
+// deserves a signal that it has vanished upstream, not silence.
+func warnAgentNamesNotInSource(requested []string, selected []*agentfile.AgentFile, sourceRef string) {
+	for _, filterName := range requested {
+		matched := false
+		for _, a := range selected {
+			if skillNameMatches(a.Name, filterName) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			ui.LogWarn(fmt.Sprintf("%s: not found in %s, leaving the existing install alone", filterName, sourceRef))
+		}
+	}
+}
+
+// reinstallAgentIntoHarnesses reinstalls one definition into every harness
+// given, and reports whether any install succeeded along with the names of
+// the ones that failed. The caller needs both: the lock may only move
+// forward if something on disk actually did.
+func reinstallAgentIntoHarnesses(a *agentfile.AgentFile, harnesses []string, global bool, cwd string, mode InstallMode) (installedAny bool, failedHarnesses []string) {
+	for _, harnessName := range harnesses {
+		if result := installAgentFile(a, harnessName, global, cwd, mode); result.Success {
+			installedAny = true
+		} else {
+			failedHarnesses = append(failedHarnesses, harnessName)
+		}
+	}
+	return installedAny, failedHarnesses
+}
+
+// recordAgentUpdate writes the definition's refreshed lock entry to whichever
+// lock the scope keeps. A lock write that fails is a warning, not a stop: the
+// files are already updated on disk, and the rest of the run still has work
+// to report on.
+func recordAgentUpdate(name string, entry lock.AgentLockEntry, global bool, cwd string) {
+	var err error
+	if global {
+		err = lock.AddAgentToGlobalState(name, entry)
+	} else {
+		err = lock.AddAgentToLocalLock(name, entry, cwd)
+	}
+	if err != nil {
+		ui.LogWarn(fmt.Sprintf("could not update lock file: %v", err))
+	}
+}
+
 // runAgentUpdateGroups re-fetches each group once (the same clone-sharing
 // planUpdates buys skills) and reinstalls every selected definition into
 // every harness it is CURRENTLY installed to, per agentInstalledHarnesses —
@@ -1003,22 +1053,7 @@ func runAgentUpdateGroups(groups []updateGroup, global bool, cwd string, allowHi
 
 		baseEntry := agentLockEntry(parsed, g.source)
 
-		// A name the lock records but that no longer parses out of the
-		// source is left exactly as installed — there is nothing to
-		// reinstall it from — but the user asked to update it and deserves
-		// a signal that it has vanished upstream, not silence.
-		for _, filterName := range g.skills {
-			matched := false
-			for _, a := range selected {
-				if skillNameMatches(a.Name, filterName) {
-					matched = true
-					break
-				}
-			}
-			if !matched {
-				ui.LogWarn(fmt.Sprintf("%s: not found in %s, leaving the existing install alone", filterName, g.source))
-			}
-		}
+		warnAgentNamesNotInSource(g.skills, selected, g.source)
 
 		for _, a := range selected {
 			name := agentDiskName(a.Name)
@@ -1028,16 +1063,7 @@ func runAgentUpdateGroups(groups []updateGroup, global bool, cwd string, allowHi
 				continue
 			}
 
-			var failedHarnesses []string
-			installedAny := false
-			for _, harnessName := range installedHarnesses {
-				result := installAgentFile(a, harnessName, global, cwd, mode)
-				if result.Success {
-					installedAny = true
-				} else {
-					failedHarnesses = append(failedHarnesses, harnessName)
-				}
-			}
+			installedAny, failedHarnesses := reinstallAgentIntoHarnesses(a, installedHarnesses, global, cwd, mode)
 
 			// The lock must always describe the disk: if every harness
 			// install failed, nothing changed on disk, so nothing changes
@@ -1056,15 +1082,7 @@ func runAgentUpdateGroups(groups []updateGroup, global bool, cwd string, allowHi
 
 			entry := baseEntry
 			entry.AgentPath = agentFileRepoPath(a.Path, cloneDir)
-			if global {
-				if err := lock.AddAgentToGlobalState(name, entry); err != nil {
-					ui.LogWarn(fmt.Sprintf("could not update lock file: %v", err))
-				}
-			} else {
-				if err := lock.AddAgentToLocalLock(name, entry, cwd); err != nil {
-					ui.LogWarn(fmt.Sprintf("could not update lock file: %v", err))
-				}
-			}
+			recordAgentUpdate(name, entry, global, cwd)
 			stats.updated++
 		}
 		cleanup()
