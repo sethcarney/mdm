@@ -66,12 +66,10 @@ func TestInstallAgentsForHarnessesSkipsLockOnTotalFailure(t *testing.T) {
 	}
 }
 
-// Mutation this test catches: dropping the `entry.AgentPath =
-// agentFileRepoPath(...)` assignment in installAgentsForHarnesses, which
-// would leave AgentPath empty and strand a later update with no way to find
-// the file inside its source again. Also catches writing the entry to any
-// key besides mdm.lock's "agents" section (ReadProjectLock().Agents reads
-// through the same decoder that a "wrong key" mutation would starve).
+// Guards the `entry.AgentPath = agentFileRepoPath(...)` assignment in
+// installAgentsForHarnesses, which a later update needs to find the file in its
+// source. It also catches writing the entry to any key besides mdm.lock's
+// "agents" section.
 func TestInstallAgentsForHarnessesRecordsAgentPathOnSuccess(t *testing.T) {
 	cwd := t.TempDir()
 	cloneDir := t.TempDir()
@@ -280,14 +278,11 @@ func writeCriticSource(t *testing.T, path, description string) {
 	}
 }
 
-// Mutation this test catches: an `agents update` that refreshes only the
-// canonical file (or that resolves harnesses from the scope's
-// configured-harness list instead of agentInstalledHarnesses, so it misses
-// a harness never added to that list) leaves a copy-mode harness install
-// stale. This installs "critic" to claude-code in copy mode — a real file,
-// not a symlink, so nothing here can pass just because the canonical file
-// changed underneath a link — changes the upstream source, then asserts
-// BOTH the canonical file and the harness's own copy picked up the change.
+// An `agents update` that refreshes only the canonical file, or that resolves
+// harnesses from the scope's configured-harness list instead of
+// agentInstalledHarnesses, leaves a copy-mode harness install stale. This
+// installs "critic" to claude-code in copy mode, so a real file and not a
+// symlink, and asserts both copies pick up an upstream change.
 func TestAgentsUpdateRefreshesCopyModeHarnessInstalls(t *testing.T) {
 	cwd := t.TempDir()
 	if err := lock.SetInstallMode(lock.InstallModeCopy, false, cwd); err != nil {
@@ -398,20 +393,11 @@ func TestAgentsUpdateKeepsSymlinkModeHarnessInstallsAsSymlinks(t *testing.T) {
 	}
 }
 
-// Mutation this test catches: dropping the `if !installedAny { continue }`
-// guard added to runAgentUpdateGroups (mirroring installAgentsForHarnesses'
-// own guard) — without it, an update where every currently-installed
-// harness fails still writes the lock entry and counts as updated, even
-// though nothing on disk changed.
-//
-// The failure is forced by replacing claude-code's installed FILE (not its
-// containing directory — agentInstalledHarnesses must still count it as
-// installed, via os.Lstat, or the test would only exercise the older
-// "not installed in any harness, skipping" branch instead of the new
-// guard) with a directory of the same name: installAgentFile's
-// os.MkdirAll(harnessDir, ...) then succeeds (the directory is already
-// there), but copyFile's os.OpenFile(..., O_CREATE|O_TRUNC, ...) fails
-// deterministically against a path that is now a directory.
+// Guards the `if !installedAny { continue }` check in runAgentUpdateGroups.
+// Without it, an update where every installed harness fails still writes the
+// lock entry. The failure is forced by replacing claude-code's installed file
+// with a directory of the same name: os.MkdirAll then succeeds and copyFile's
+// O_CREATE|O_TRUNC open fails, while os.Lstat still counts it as installed.
 func TestAgentsUpdateLeavesLockUnchangedWhenEveryHarnessInstallFails(t *testing.T) {
 	cwd := t.TempDir()
 	if err := lock.SetInstallMode(lock.InstallModeCopy, false, cwd); err != nil {

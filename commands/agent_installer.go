@@ -9,36 +9,27 @@ import (
 )
 
 // agentCanonicalExt is the extension of mdm's own canonical copy of an agent
-// definition. It is always ".md" regardless of what extension the harness
-// wants (harness.AgentFileExt) — the canonical file is mdm's, not a
-// harness's.
+// definition. It is always ".md" whatever extension the harness wants
+// (harness.AgentFileExt).
 const agentCanonicalExt = ".md"
 
 // agentDiskName turns a definition's frontmatter name into the one name mdm
-// uses for it everywhere: the canonical file, every harness's own file, and
-// the lock key. Frontmatter is third-party text and is routinely not a legal
-// or stable file name ("Code Reviewer"), so it is sanitized exactly the way
-// installSkillForHarness sanitizes a skill's name.
-//
-// The single function matters more than the sanitizing does. When the file
-// name and the lock key were derived separately, an install wrote
-// ".agents/agents/Code Reviewer.md" while the lock recorded "code-reviewer",
-// and `mdm agents remove code-reviewer` then dropped the lock entry, found
-// no file to delete, reported success, and left the definition live in the
-// harness with nothing left to find it by.
+// uses everywhere: the canonical file, every harness's own file, and the lock
+// key. Frontmatter is third-party text and often not a legal file name ("Code
+// Reviewer"), so it is sanitized the way installSkillForHarness sanitizes a
+// skill name. One function for all three keeps the file and the lock key in step.
 func agentDiskName(rawName string) string {
 	return sanitizeName(rawName)
 }
 
-// agentCanonicalPath returns mdm's canonical file for one definition. name
-// must already have been through agentDiskName — it is the lock key too.
+// agentCanonicalPath returns mdm's canonical file for one definition. name must
+// already have been through agentDiskName, which also produces the lock key.
 func agentCanonicalPath(name string, global bool, cwd string) string {
 	return filepath.Join(harness.CanonicalAgentsDir(global, cwd), name+agentCanonicalExt)
 }
 
-// agentHarnessPath returns the file harnessName reads this definition from,
-// or "" when that harness has no agents directory for this scope. name must
-// already have been through agentDiskName.
+// agentHarnessPath returns the file harnessName reads this definition from, or
+// "" when that harness has no agents directory for this scope.
 func agentHarnessPath(name, harnessName string, global bool, cwd string) string {
 	dir := harness.AgentsInstallDirFor(harnessName, global, cwd)
 	if dir == "" {
@@ -47,11 +38,9 @@ func agentHarnessPath(name, harnessName string, global bool, cwd string) string 
 	return filepath.Join(dir, name+harness.AgentFileExt(harnessName))
 }
 
-// sameFileOnDisk reports whether two paths name the same file once symlinks
-// are followed. os.Stat (not Lstat) is deliberate: a harness's symlink into
-// the canonical directory has to count as the same file as its target.
-// Either path failing to stat means they cannot be the same file — a missing
-// destination is the normal case for a first install.
+// sameFileOnDisk reports whether two paths name the same file once symlinks are
+// followed. os.Stat, not Lstat: a harness's symlink into the canonical directory
+// counts as the same file as its target. A failed stat means not the same file.
 func sameFileOnDisk(a, b string) bool {
 	ai, err := os.Stat(a)
 	if err != nil {
@@ -65,14 +54,9 @@ func sameFileOnDisk(a, b string) bool {
 }
 
 // copyAgentFileUnlessSame copies src over dst unless the two are already the
-// same file on disk.
-//
-// The guard is what makes every route safe against copying a file onto
-// itself. `mdm agents add .` discovers .agents/agents (a conventional agents
-// directory) and .claude/agents (whose entries are symlinks into it), so the
-// source file can BE the destination. copyFile opens the destination O_TRUNC
-// before reading the source, which in that case empties the very file it is
-// about to read and leaves a 0-byte copy behind a green checkmark.
+// same file on disk. `mdm agents add .` discovers both .agents/agents and
+// .claude/agents, whose entries link into it, so src can be dst. copyFile opens
+// the destination O_TRUNC first, which would empty the file it then reads.
 func copyAgentFileUnlessSame(src, dst string) error {
 	if sameFileOnDisk(src, dst) {
 		return nil
@@ -80,10 +64,8 @@ func copyAgentFileUnlessSame(src, dst string) error {
 	return copyFile(src, dst)
 }
 
-// copyAgentIntoHarness materializes a real copy of the canonical definition
-// in the harness's own agents directory, creating that directory first.
-// Used both for an explicit copy-mode install and as the fallback when a
-// symlink cannot be created.
+// copyAgentIntoHarness copies the canonical definition into the harness's own
+// agents directory, creating that directory first.
 func copyAgentIntoHarness(canonicalPath, harnessDir, harnessPath string) error {
 	if err := os.MkdirAll(harnessDir, 0755); err != nil {
 		return err
@@ -91,15 +73,11 @@ func copyAgentIntoHarness(canonicalPath, harnessDir, harnessPath string) error {
 	return copyAgentFileUnlessSame(canonicalPath, harnessPath)
 }
 
-// installAgentFile installs one agent-definition file into one harness: the
-// canonical copy is written first at .agents/agents/<name>.md, then linked
-// (or copied, on symlink failure) into the harness's own agents directory
-// under <name><ext>, where ext is harness.AgentFileExt(harnessName).
-//
-// A harness with no agent concept (AgentsInstallDirFor returns "") is
-// reported as a skip rather than a failure: installing an agent definition
-// to several harnesses where some have no agent support at all is a normal,
-// expected outcome, not an error.
+// installAgentFile installs one agent-definition file into one harness. The
+// canonical copy is written first at .agents/agents/<name>.md, then linked (or
+// copied, on symlink failure) into the harness's own agents directory under
+// <name><ext>, where ext is harness.AgentFileExt(harnessName). A harness with no
+// agent concept is a skip, not a failure.
 func installAgentFile(a *agentfile.AgentFile, harnessName string, global bool, cwd string, mode InstallMode) InstallResult {
 	if cwd == "" {
 		cwd, _ = os.Getwd()
@@ -131,8 +109,8 @@ func installAgentFile(a *agentfile.AgentFile, harnessName string, global bool, c
 	if err := os.MkdirAll(canonicalBase, 0755); err != nil {
 		return InstallResult{Success: false, Path: harnessPath, Mode: mode, Error: err.Error()}
 	}
-	// Reinstalling a definition mdm already owns is a no-op, not an error:
-	// the source file can be the canonical file itself.
+	// The source file can be the canonical file itself, so reinstalling a
+	// definition mdm already owns is a no-op.
 	if err := copyAgentFileUnlessSame(a.Path, canonicalPath); err != nil {
 		return InstallResult{Success: false, Path: harnessPath, Mode: mode, Error: err.Error()}
 	}
@@ -144,10 +122,8 @@ func installAgentFile(a *agentfile.AgentFile, harnessName string, global bool, c
 		return InstallResult{Success: true, Path: harnessPath, CanonicalPath: canonicalPath, Mode: InstallModeCopy}
 	}
 
-	// Symlink-then-copy-on-failure, following performSymlinkInstall in
-	// installer.go: link the single canonical file into the harness
-	// directory, falling back to a plain copy when the platform or
-	// filesystem cannot create the link.
+	// Symlink first, plain copy when the platform or filesystem cannot
+	// create the link, following performSymlinkInstall in installer.go.
 	if createSymlink(canonicalPath, harnessPath) {
 		return InstallResult{Success: true, Path: harnessPath, CanonicalPath: canonicalPath, Mode: InstallModeSymlink}
 	}

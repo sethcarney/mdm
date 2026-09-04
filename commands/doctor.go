@@ -156,13 +156,9 @@ func runDoctor(opts DoctorOptions) {
 		missingSkillLinkIssues = checkMissingHarnessSkillLinks(cwd)
 		knowledgeIssues = checkKnowledgeBundles(cwd)
 		pluginIssues = checkInstalledPlugins(cwd)
-		// Project scope only, alongside checkKnowledgeBundles and
-		// checkInstalledPlugins above: global agent installs would need
-		// lock.ReadGlobalState(), which aborts the whole process on an
-		// unreadable global state file, and `mdm doctor -p` must never fail
-		// over a problem outside the project it was asked to check (see
-		// checkGlobalMigration's own checkGlobal-gated error/warn split for
-		// the same rule applied to the migration check).
+		// Project scope only, like checkKnowledgeBundles and checkInstalledPlugins:
+		// a global read aborts the process on an unreadable global state file, and
+		// `mdm doctor -p` must not fail over a problem outside the project.
 		agentIssues = checkAgentInstalls(cwd)
 		migrationIssues = checkProjectMigration(cwd)
 		mdIssues, mdTruncated = checkProjectMarkdown(cwd, skipDirs, skipFiles)
@@ -207,10 +203,9 @@ func checkProjectMigration(cwd string) []doctorIssue {
 			})
 		}
 	}
-	// Copies on disk with no recorded mode get re-symlinked by the next
-	// restore. Both lock shapes need this: an existing mdm.lock has no
-	// legacy files left to prompt a migration, and a v1 lock's legacy
-	// warning names the file but not the copies at stake.
+	// Copies on disk with no recorded mode get re-symlinked by the next restore.
+	// Both lock shapes need this: mdm.lock has no legacy files to prompt a
+	// migration, and a v1 lock's warning names the file but not the copies.
 	if plan.InstallModeBackfill != "" {
 		msg := fmt.Sprintf("skills here are installed in %s mode but %s does not record it: run `mdm migrate` so installs and updates keep it", plan.InstallModeBackfill, lockName)
 		if !plan.TargetExists {
@@ -221,11 +216,10 @@ func checkProjectMigration(cwd string) []doctorIssue {
 	return issues
 }
 
-// checkGlobalMigration flags the v1 global skills-lock.json, and an install
-// mode the global scope is using but has not recorded. It runs in every
-// scope; checkGlobal only decides the level of the unreadable-state issue,
-// which is an error in global scope and a warning otherwise, so `mdm doctor
-// -p` used as a CI gate does not exit 1 over a machine-global file.
+// checkGlobalMigration flags the v1 global skills-lock.json, and an install mode
+// the global scope uses but has not recorded. checkGlobal only sets the level of
+// the unreadable-state issue: error in global scope, warning otherwise, so
+// `mdm doctor -p` as a CI gate does not exit 1 over a machine-global file.
 func checkGlobalMigration(checkGlobal bool) []doctorIssue {
 	var issues []doctorIssue
 	if path, ok := lock.LegacyGlobalLockExists(); ok {
@@ -357,9 +351,8 @@ func checkHarnessLinks(r *doctorResult, global bool, cwd string) {
 	}
 }
 
-// checkLargeMarkdown walks the skill directory and flags .md files that are
-// large enough to threaten harness context windows. Common dependency/build
-// directories (e.g. .git, node_modules, vendor) are skipped.
+// checkLargeMarkdown walks the skill directory and flags .md files large enough
+// to threaten harness context windows. It skips .git, node_modules, and vendor.
 func checkLargeMarkdown(r *doctorResult) {
 	_ = filepath.WalkDir(r.Path, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -396,10 +389,8 @@ func checkLargeMarkdown(r *doctorResult) {
 	})
 }
 
-// checkUnlinkedRulesHarnesses finds configured harnesses that have a unique
-// instructions file (e.g. CLAUDE.md, .cursorrules) which is not yet symlinked
-// to AGENTS.md. This means the harness has been added via skills add or
-// harnesses add but mdm rules link has not been run for it yet.
+// checkUnlinkedRulesHarnesses finds configured harnesses with a unique
+// instructions file (CLAUDE.md, .cursorrules) not yet symlinked to AGENTS.md.
 func checkUnlinkedRulesHarnesses(cwd string) []doctorIssue {
 	configured := lock.GetConfiguredHarnesses(false, cwd)
 	if len(configured) == 0 {
@@ -440,9 +431,7 @@ func checkUnlinkedRulesHarnesses(cwd string) []doctorIssue {
 }
 
 // checkMissingHarnessSkillLinks finds configured harnesses whose rules file is
-// properly linked but whose harness-specific skills directory is missing symlinks
-// for one or more installed project skills. This catches the case where rules
-// link was run but skills add was never run for that harness.
+// linked but whose skills directory lacks symlinks for installed project skills.
 func checkMissingHarnessSkillLinks(cwd string) []doctorIssue {
 	configured := lock.GetConfiguredHarnesses(false, cwd)
 	if len(configured) == 0 {
@@ -461,9 +450,8 @@ func checkMissingHarnessSkillLinks(cwd string) []doctorIssue {
 			// Shared-skills-dir harnesses don't need per-harness symlinks.
 			continue
 		}
-		// Only flag harnesses whose rules file IS already linked (or they have no
-		// rules file — e.g. a pure-skills-dir harness). Harnesses whose rules file
-		// is missing are already reported by checkUnlinkedRulesHarnesses.
+		// Harnesses whose rules file is missing are already reported by
+		// checkUnlinkedRulesHarnesses. A pure-skills-dir harness has no rules file.
 		if !cfg.NativeInstructions {
 			instrPath := filepath.Join(cwd, cfg.InstructionsFile)
 			info, err := os.Lstat(instrPath)
@@ -498,24 +486,11 @@ func checkMissingHarnessSkillLinks(cwd string) []doctorIssue {
 	return issues
 }
 
-// checkAgentInstalls reports the health of every project-scoped locked
-// agent definition. Project scope only, mirroring checkKnowledgeBundles and
-// checkInstalledPlugins: see the checkProject call site for why global
-// scope is out of reach here.
-//
-// Two distinct problems get two distinct messages:
-//
-//   - the definition is not installed in any harness at all (nothing to
-//     report on disk beyond the canonical file, if that even exists), and
-//   - a harness DOES have an entry for it, but that entry is a symlink
-//     whose target is gone.
-//
-// This distinction matters because agentInstalledSomewhere (used by `mdm
-// agents list` and by `mdm agents remove`) deliberately uses os.Lstat, so a
-// dangling symlink counts as "installed" there — that is what stops remove
-// from stranding the canonical file when a harness copy still exists in
-// name only. It also means `mdm agents list` reports a broken install as
-// healthy. Doctor is where that gets surfaced instead of silently trusted.
+// checkAgentInstalls reports the health of every project-scoped locked agent
+// definition. It separates "installed in no harness" from "a harness entry is a
+// symlink whose target is gone". agentInstalledSomewhere uses os.Lstat, so a
+// dangling symlink counts as installed there and `mdm agents list` calls a
+// broken install healthy. Doctor is where that surfaces.
 func checkAgentInstalls(cwd string) []doctorIssue {
 	var issues []doctorIssue
 	names, agents := agentLockEntries(false, cwd)
@@ -526,9 +501,8 @@ func checkAgentInstalls(cwd string) []doctorIssue {
 	return issues
 }
 
-// diagnoseAgentInstall checks one locked project-scoped agent definition:
-// the canonical file, and every harness with an agent concept that
-// currently has something on disk for it.
+// diagnoseAgentInstall checks one locked project-scoped agent definition: the
+// canonical file, and every harness that has something on disk for it.
 func diagnoseAgentInstall(name string, _ lock.AgentLockEntry, cwd string) []doctorIssue {
 	var issues []doctorIssue
 
@@ -548,8 +522,7 @@ func diagnoseAgentInstall(name string, _ lock.AgentLockEntry, cwd string) []doct
 		}
 		info, err := os.Lstat(target)
 		if err != nil {
-			// Not installed in this harness — not inherently a problem: a
-			// definition need not be installed to every harness that could
+			// A definition need not be installed to every harness that could
 			// take it.
 			continue
 		}
@@ -581,8 +554,7 @@ func diagnoseAgentInstall(name string, _ lock.AgentLockEntry, cwd string) []doct
 }
 
 // checkInstructionFiles scans the project root for known harness instruction
-// files (CLAUDE.md, AGENTS.md, .cursorrules, .github/copilot-instructions.md,
-// etc.) and flags oversized ones.
+// files (CLAUDE.md, AGENTS.md, .cursorrules) and flags oversized ones.
 func checkInstructionFiles(cwd string) []doctorIssue {
 	seen := map[string]bool{}
 	var issues []doctorIssue
@@ -636,11 +608,9 @@ func checkProjectReadme(cwd string) *doctorIssue {
 	}
 }
 
-// checkProjectMarkdown walks the project tree and flags .md files that are
-// large enough to strain harness context windows. It skips directories and files
-// already covered by the skill and instruction-file checks, as well as common
-// build/dependency directories. The walk stops after markdownWalkLimit
-// filesystem entries to prevent hangs on very large repositories.
+// checkProjectMarkdown walks the project tree and flags .md files large enough
+// to strain harness context windows. It skips what the skill and instruction
+// checks cover plus build directories, and stops after markdownWalkLimit entries.
 func checkProjectMarkdown(cwd string, skipDirs map[string]bool, skipFiles map[string]bool) (issues []doctorIssue, truncated bool) {
 	walked := 0
 

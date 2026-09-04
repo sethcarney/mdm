@@ -642,11 +642,9 @@ func TestCopyAndSymlinkFlagsAreMutuallyExclusive(t *testing.T) {
 
 // ── Single-file conversions (agent definitions) ─────────────────────────────
 //
-// Agent definitions are single files, not directories: canonical at
-// .agents/agents/<name>.md, installed as <name>.md (or, for a harness with
-// its own required suffix, <name><ext>). These fixtures and tests mirror the
-// directory-shaped ones above, so the converter's file branch gets the same
-// coverage the directory branch already has.
+// Agent definitions are single files: canonical at .agents/agents/<name>.md,
+// installed as <name>.md, or <name><ext> for a harness with its own suffix.
+// These fixtures mirror the directory-shaped ones above.
 
 // writeAgentFile writes a canonical-shaped agent-definition file at
 // dir/name+".md" and returns its path.
@@ -904,13 +902,10 @@ func TestRematerializeToSymlinkRenameFailureLeavesTheFile(t *testing.T) {
 }
 
 // A real file at a tracked install path that does not parse as an agent
-// definition (no name/description frontmatter) is someone else's — the
-// exact mirror of a real directory with no SKILL.md — and is left
-// untouched: not converted, not counted, and not copied into the
-// canonical directory. This is the concrete case a mode switch must not
-// clobber: a user hand-writes .claude/agents/critic.md for their own
-// purposes, and the lock happens to record an agent definition also named
-// "critic" at that same path.
+// definition belongs to someone else, the mirror of a real directory with no
+// SKILL.md, and stays untouched. The concrete case: a user hand-writes
+// .claude/agents/critic.md and the lock records a definition also named
+// "critic" at that path.
 func TestRematerializeToSymlinkLeavesANonAgentFileAlone(t *testing.T) {
 	cwd := t.TempDir()
 	target := filepath.Join(cwd, ".claude", "agents", "critic.md")
@@ -955,15 +950,10 @@ func lockAgent(t *testing.T, cwd, name string) {
 	}
 }
 
-// The install mode is a property of the SCOPE: `mdm skills add --copy`
-// records copy for the whole scope, and the spec and docs both promise one
-// mode per scope. This test goes through applyScopeInstallMode rather than
-// calling rematerializeScope with a hand-built path list, because that
-// wiring is exactly where the gap was: the converters handled single files
-// perfectly well and nothing ever handed them an agent definition's path,
-// so `--copy` recorded copy for the scope and left every definition in it a
-// symlink. Every file-shaped test that already existed called
-// rematerializeScope directly and so could not see that.
+// The install mode is a property of the scope, so `mdm skills add --copy` must
+// convert agent definitions too. This goes through applyScopeInstallMode rather
+// than rematerializeScope: the converters handle single files, and the gap was
+// in the wiring that never handed them an agent definition's path.
 func TestApplyScopeInstallModeConvertsAgentDefinitions(t *testing.T) {
 	cwd := t.TempDir()
 	skillCanonical, skillLink := linkSkill(t, cwd, "s1")
@@ -1006,20 +996,11 @@ func TestApplyScopeInstallModeConvertsAgentDefinitions(t *testing.T) {
 	}
 }
 
-// GitHub Copilot reads agent definitions ONLY as "<name>.agent.md", so its
-// install path's basename is not the name of the canonical file it was
-// installed from. Deriving the canonical name from that basename during a
-// copy → symlink switch minted a SECOND canonical file,
-// .agents/agents/critic.agent.md, and pointed .github/agents/critic.agent.md
-// at the duplicate instead of at .agents/agents/critic.md; a later
-// `mdm agents remove critic` then deleted the real canonical file and the
-// link and left the duplicate orphaned.
-//
-// This drives applyScopeInstallMode rather than rematerializeScope, for the
-// same reason TestApplyScopeInstallModeConvertsAgentDefinitions does: the
-// canonical name is decided where the install paths are enumerated, and a
-// test that hands rematerializeScope a path list of its own supplies that
-// mapping for free and so cannot see a gap in the wiring.
+// GitHub Copilot reads agent definitions only as "<name>.agent.md", so its
+// install path's basename is not the canonical file's name. Deriving the
+// canonical name from that basename on a copy-to-symlink switch mints a second
+// canonical file and links the install at the duplicate. This drives
+// applyScopeInstallMode, where the install paths and their names are decided.
 func TestApplyScopeInstallModeKeepsOneCanonicalFileForASuffixedHarness(t *testing.T) {
 	cwd := t.TempDir()
 	canonicalDir := harness.CanonicalAgentsDir(false, cwd)

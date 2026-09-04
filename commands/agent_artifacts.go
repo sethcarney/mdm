@@ -1,11 +1,7 @@
-// mdm agents manages agent-definition files: single markdown files that
-// give a harness a named subagent persona (e.g. Claude Code subagents),
-// distinct from the reusable prompt libraries `mdm skills` installs.
-//
-// `mdm agents` used to mean this project's harnesses, before the rename in
-// this same release renamed that concept and moved it to `mdm harnesses`.
-// This file is the name coming back, meaning something else: managing
-// agent-definition files.
+// mdm agents manages agent-definition files: single markdown files that give a
+// harness a named subagent persona, distinct from the prompt libraries
+// `mdm skills` installs. The harness concept `mdm agents` named before this
+// release is now `mdm harnesses`.
 package commands
 
 import (
@@ -66,10 +62,8 @@ type AgentOptions struct {
 	AllowHiddenChars bool
 }
 
-// asAddOptions adapts AgentOptions to the AddOptions fields that
-// promptScopeAndHarnesses and commitScopeInstallMode actually read, so
-// `mdm agents add` reuses that scope/mode machinery instead of a second
-// copy of it.
+// asAddOptions adapts AgentOptions to the AddOptions fields
+// promptScopeAndHarnesses and commitScopeInstallMode read.
 func (o AgentOptions) asAddOptions() AddOptions {
 	return AddOptions{Global: o.Global, Project: o.Project, Harnesses: o.Harnesses, Yes: o.Yes}
 }
@@ -99,14 +93,9 @@ pass them space-separated after the flag or repeat the flag for each value:
   mdm agents add ./my-agents`, ansiBold, ansiReset),
 		Args: cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			// Nothing installed anywhere is a failed run, whatever the
-			// reason. A CI script that reads exit 0 after `mdm agents add`
-			// has been told the definitions are in place; exiting 0 here is
-			// how "installed to a harness with no agent concept" became a
-			// silent no-op that still printed a checkmark. The exit lives
-			// here rather than in runAgentAdd because the restore path calls
-			// runAgentAdd once per source group and must not be killed
-			// part-way through by one empty group.
+			// Nothing installed anywhere is a failed run. The exit lives
+			// here, not in runAgentAdd, because the restore path calls
+			// runAgentAdd once per source group and must survive an empty one.
 			if !runAgentAdd(args[0], opts) {
 				os.Exit(1)
 			}
@@ -126,13 +115,9 @@ pass them space-separated after the flag or repeat the flag for each value:
 	return cmd
 }
 
-// fetchAgentSource materializes sourceInput on disk and returns the
-// directory to search, the git clone root for AgentPath bookkeeping (empty
-// for a local path — there is no separate "repo" to record a path relative
-// to), and a cleanup func for any temp clone. The git case goes through
-// cloneForAdd (add.go), the same clone path `mdm skills add` uses, so
-// `mdm agents add --verbose` gets the same streamed progress and timing
-// output instead of a second, silent implementation of "clone a repo".
+// fetchAgentSource materializes sourceInput on disk and returns the directory
+// to search, the git clone root for AgentPath bookkeeping (empty for a local
+// path), and a cleanup func for any temp clone.
 func fetchAgentSource(parsed source.ParsedSource, verbose bool) (searchRoot, cloneDir string, cleanup func()) {
 	noop := func() {}
 	switch parsed.Type {
@@ -157,8 +142,7 @@ func fetchAgentSource(parsed source.ParsedSource, verbose bool) (searchRoot, clo
 }
 
 // runAgentAdd reports whether at least one definition reached at least one
-// harness. Callers that are a whole command turn that into the exit code;
-// the restore path calls it per source group and keeps going.
+// harness.
 func runAgentAdd(sourceInput string, opts AgentOptions) bool {
 	cwd, _ := os.Getwd()
 	parsed := source.ParseSource(sourceInput)
@@ -184,13 +168,9 @@ func runAgentAdd(sourceInput string, opts AgentOptions) bool {
 		return false
 	}
 
-	// The same gate every other install path in mdm runs before writing a
-	// byte (add.go, cherrypick.go, knowledge_add.go, plugins_add.go), and
-	// the one the README promises for "every install". It is placed here,
-	// after selection and before the scope prompts, exactly where the
-	// skills path puts it: a blocked install must not first talk the user
-	// through choosing harnesses, and must not convert the scope's install
-	// mode on its way to exiting.
+	// The hidden-character gate every install path runs before writing a byte.
+	// It sits after selection and before the scope prompts: a blocked install
+	// must not first talk the user through choosing harnesses.
 	if !checkAgentFilesMarkdownForHiddenChars(selected, opts.AllowHiddenChars) {
 		os.Exit(1)
 	}
@@ -259,9 +239,8 @@ func selectAgents(agents []*agentfile.AgentFile, opts AgentOptions) ([]*agentfil
 	return selected, true
 }
 
-// agentLockEntry builds the source-level part of the lock entry shared by
-// every definition installed from this invocation, following the same
-// source-recording rules as skills' baseLockEntry.
+// agentLockEntry builds the source-level part of the lock entry shared by every
+// definition installed from this invocation.
 func agentLockEntry(parsed source.ParsedSource, sourceInput string) lock.AgentLockEntry {
 	entry := lock.AgentLockEntry{
 		Source:     stripSourceRef(sourceInput),
@@ -279,9 +258,7 @@ func agentLockEntry(parsed source.ParsedSource, sourceInput string) lock.AgentLo
 }
 
 // agentFileRepoPath returns the repo-relative path to a discovered agent
-// definition file, so a later update can find it again inside the source.
-// cloneDir is the root of the git clone; empty for a local-path install,
-// which mirrors skillMdRepoPath's cloneDir=="" convention.
+// definition file. cloneDir is the git clone root, empty for a local install.
 func agentFileRepoPath(agentPath, cloneDir string) string {
 	if cloneDir == "" || agentPath == "" {
 		return ""
@@ -293,10 +270,8 @@ func agentFileRepoPath(agentPath, cloneDir string) string {
 	return filepath.ToSlash(rel)
 }
 
-// agentInstallOutcome is what an add run actually did, as opposed to what
-// it was asked to do. The summary is printed from these numbers rather than
-// from the selection, because the two are not the same: a definition can be
-// skipped by every harness it was aimed at and install nowhere.
+// agentInstallOutcome is what an add run did. A definition can be skipped by
+// every harness it was aimed at and install nowhere.
 type agentInstallOutcome struct {
 	installed int      // definitions that reached at least one harness
 	harnesses []string // harnesses that actually received something, in the order given
@@ -304,16 +279,8 @@ type agentInstallOutcome struct {
 }
 
 // installAgentsForHarnesses installs each selected definition into every
-// requested harness, then records the definition in the lock — but ONLY
-// when at least one harness actually received it. An agent recorded in the
-// lock after every harness install failed would point a later `mdm agents
-// remove` or update at a file that exists nowhere a harness reads from,
-// which is worse than not recording it at all.
-//
-// A harness with no agent concept is reported as a skip with its reason,
-// not folded in with genuine failures: "Codex has no agent concept" is a
-// fact about Codex, and printing it as `! critic (failed for: codex)` reads
-// as a bug in mdm or in the definition.
+// requested harness, and records it in the lock only when at least one harness
+// received it. A harness with no agent concept is a skip with a reason.
 func installAgentsForHarnesses(agents []*agentfile.AgentFile, harnesses []string, global bool, mode InstallMode, baseEntry lock.AgentLockEntry, cloneDir, cwd string) agentInstallOutcome {
 	var fallbacks symlinkFallbacks
 	outcome := agentInstallOutcome{fallbacks: &fallbacks}
@@ -376,13 +343,7 @@ func installAgentsForHarnesses(agents []*agentfile.AgentFile, harnesses []string
 }
 
 // printAgentInstallSummary is printInstallSummary's counterpart for agent
-// definitions: same scope/mode/harness reporting, but the noun is "agent
-// definition(s)" rather than "skill(s)".
-//
-// It reports what landed, never what was asked for. A run that installed
-// nothing gets a plain statement of that instead of a checkmark, and the
-// harness list names only the harnesses that actually received a file — the
-// old summary named the harness the install had just failed on.
+// definitions. The harness list names only the harnesses that received a file.
 func printAgentInstallSummary(outcome agentInstallOutcome, global bool, mode InstallMode) {
 	scope := "project"
 	if global {
@@ -454,13 +415,9 @@ func agentLockEntries(global bool, cwd string) ([]string, map[string]lock.AgentL
 	return names, m
 }
 
-// agentInstalledHarnesses returns, sorted, every harness with an agent
-// concept in this scope that currently has a file on disk for this
-// definition. removeAgentFromDisk uses it to decide whether a scoped
-// removal has left the definition installed anywhere else; runAgentList
-// uses it to report where a definition actually lives instead of trusting
-// the canonical file alone — a harness's own copy can go missing (deleted
-// by hand, a broken symlink target) while the canonical file is untouched.
+// agentInstalledHarnesses returns, sorted, every harness with an agent concept
+// in this scope that has a file on disk for this definition. A harness copy can
+// go missing while the canonical file stays untouched.
 func agentInstalledHarnesses(name string, global bool, cwd string) []string {
 	var found []string
 	for harnessName := range harness.AllHarnesses {
@@ -476,10 +433,9 @@ func agentInstalledHarnesses(name string, global bool, cwd string) []string {
 	return found
 }
 
-// agentInstalledSomewhere reports whether any harness still has a copy of
-// this definition, so a scoped `--harness X` removal knows whether the
-// canonical file and lock entry are still needed for the harnesses outside
-// the filter.
+// agentInstalledSomewhere reports whether any harness still has a copy, so a
+// `--harness X` removal knows whether the canonical file and lock entry are
+// still needed by harnesses outside the filter.
 func agentInstalledSomewhere(name string, global bool, cwd string) bool {
 	return len(agentInstalledHarnesses(name, global, cwd)) > 0
 }
@@ -655,33 +611,16 @@ func selectAgentsToRemove(lockNames, filterNames []string, opts AgentOptions) ([
 	return selected, true
 }
 
-// removeFileFn is removeAgentFromDisk's deletion seam: production always
-// uses os.Remove, tests swap it for a failing version to exercise the
-// "a deletion failed" path, since that failure cannot be forced reliably at
-// the OS level. This follows copyDirFn/renameFn in install_mode.go — shared
-// mutable state, so tests that swap it must not run in parallel.
+// removeFileFn is removeAgentFromDisk's deletion seam: tests swap it for a
+// failing version. Shared mutable state, so those tests must not run in
+// parallel.
 var removeFileFn = os.Remove
 
-// removeAgentFromDisk deletes one agent definition's per-harness copy for
-// every harness in harnessFilter (all harnesses when empty). Removal is
-// genuinely scoped: the canonical .agents/agents/<name>.md file and the
-// lock entry are only dropped once NO harness — including ones outside
-// harnessFilter — still has a copy on disk. `--harness X` on a definition
-// installed to X and Y must leave Y working and the lock still describing
-// it; deleting the canonical file unconditionally would strand Y with a
-// dangling link and no lock entry to notice it by.
-//
-// A deletion failure is never swallowed into a false "removed": it returns
-// a non-nil error and leaves the lock entry (and the canonical file) alone,
-// so the lock keeps describing what is actually on disk and a retry can
-// still find the definition.
-//
-// Return value: (true, nil) means fully removed (canonical + lock entry
-// gone); (false, nil) means the per-harness copies in scope were removed
-// but the definition is still installed elsewhere, so the canonical file
-// and lock entry were deliberately left in place; (false, err) means a
-// deletion failed and nothing beyond the successfully-removed per-harness
-// copies changed.
+// removeAgentFromDisk deletes one definition's per-harness copy for every
+// harness in harnessFilter (all harnesses when empty). It drops the canonical
+// file and the lock entry only once no harness, including harnesses outside
+// harnessFilter, still has a copy. It returns fullyRemoved=false with a nil
+// error when the copies in scope went but the definition lives elsewhere.
 func removeAgentFromDisk(name string, harnessFilter []string, global bool, cwd string) (fullyRemoved bool, err error) {
 	harnesses := harnessFilter
 	if len(harnesses) == 0 {
@@ -793,11 +732,8 @@ func buildAgentsInstallCmd() *cobra.Command {
 	return cmd
 }
 
-// restoreAgentsFromLock installs every agent definition recorded in the
-// local and global locks. It mirrors restoreSkillsFromCurrentLock in
-// install.go: same local-vs-global resolution, and the same "which lock
-// file" prompt when both are populated. `mdm install` calls it after the
-// skill restore; `mdm agents install` calls it directly.
+// restoreAgentsFromLock installs every agent definition recorded in the local
+// and global locks, mirroring restoreSkillsFromCurrentLock in install.go.
 func restoreAgentsFromLock(opts restoreOptions) {
 	cwd, _ := os.Getwd()
 
@@ -810,9 +746,7 @@ func restoreAgentsFromLock(opts restoreOptions) {
 
 	switch {
 	case !hasLocal && !hasGlobal:
-		// Nothing recorded — this is a normal outcome for a project with no
-		// agent definitions, so stay quiet rather than repeat the skills
-		// "nothing found" message for a concept this project may not use.
+		// A project with no agent definitions is a normal outcome.
 		return
 
 	case hasLocal && !hasGlobal:
@@ -848,10 +782,8 @@ func restoreAgentsFromLock(opts restoreOptions) {
 	}
 }
 
-// restoreAgentsMap groups entries by source (groupBySourceRef, shared with
-// restoreSkills) and calls runAgentAdd once per group, exactly the economy
-// restoreSkills applies for skills: a repo holding many agent definitions is
-// cloned once per restore, not once per definition.
+// restoreAgentsMap groups entries by source and calls runAgentAdd once per
+// group, so a repo holding many definitions is cloned once per restore.
 func restoreAgentsMap(entries map[string]lock.AgentLockEntry, global bool, opts restoreOptions, cwd string) {
 	fmt.Printf("\n%sRestoring %d agent definition(s)...%s\n\n", ansiText, len(entries), ansiReset)
 
@@ -928,9 +860,7 @@ copy-mode harness install picks up the change too, instead of going stale.
 }
 
 // currentInstallMode reads the scope's recorded install mode without
-// reconciling it. An update refreshes existing installs in whatever mode
-// they are already in — it never switches modes, that is `mdm ... install
-// --copy`'s job via commitScopeInstallMode.
+// reconciling it. An update never switches modes; commitScopeInstallMode does.
 func currentInstallMode(global bool, cwd string) InstallMode {
 	if lock.GetInstallMode(global, cwd) == lock.InstallModeCopy {
 		return InstallModeCopy
@@ -939,9 +869,7 @@ func currentInstallMode(global bool, cwd string) InstallMode {
 }
 
 // collectAgentCandidates adapts one scope's agent lock entries to
-// updateCandidate, the same normalized shape collectProjectCandidates and
-// collectGlobalCandidates build for skills, so planUpdates (the semver
-// up-to-date check and source grouping) is shared rather than reimplemented.
+// updateCandidate, the shape planUpdates takes for skills.
 func collectAgentCandidates(global bool, filter []string, cwd string) []updateCandidate {
 	names, agents := agentLockEntries(global, cwd)
 
@@ -962,10 +890,8 @@ func collectAgentCandidates(global bool, filter []string, cwd string) []updateCa
 	return candidates
 }
 
-// warnAgentNamesNotInSource reports every requested name the source no
-// longer yields. Such a definition is left exactly as installed — there is
-// nothing to reinstall it from — but the user asked to update it and
-// deserves a signal that it has vanished upstream, not silence.
+// warnAgentNamesNotInSource reports every requested name the source no longer
+// yields. Such a definition stays exactly as installed.
 func warnAgentNamesNotInSource(requested []string, selected []*agentfile.AgentFile, sourceRef string) {
 	for _, filterName := range requested {
 		matched := false
@@ -982,9 +908,7 @@ func warnAgentNamesNotInSource(requested []string, selected []*agentfile.AgentFi
 }
 
 // reinstallAgentIntoHarnesses reinstalls one definition into every harness
-// given, and reports whether any install succeeded along with the names of
-// the ones that failed. The caller needs both: the lock may only move
-// forward if something on disk actually did.
+// given, and reports whether any install succeeded plus the names that failed.
 func reinstallAgentIntoHarnesses(a *agentfile.AgentFile, harnesses []string, global bool, cwd string, mode InstallMode) (installedAny bool, failedHarnesses []string) {
 	for _, harnessName := range harnesses {
 		if result := installAgentFile(a, harnessName, global, cwd, mode); result.Success {
@@ -997,9 +921,7 @@ func reinstallAgentIntoHarnesses(a *agentfile.AgentFile, harnesses []string, glo
 }
 
 // recordAgentUpdate writes the definition's refreshed lock entry to whichever
-// lock the scope keeps. A lock write that fails is a warning, not a stop: the
-// files are already updated on disk, and the rest of the run still has work
-// to report on.
+// lock the scope keeps. A failed lock write is a warning, not a stop.
 func recordAgentUpdate(name string, entry lock.AgentLockEntry, global bool, cwd string) {
 	var err error
 	if global {
@@ -1012,15 +934,9 @@ func recordAgentUpdate(name string, entry lock.AgentLockEntry, global bool, cwd 
 	}
 }
 
-// runAgentUpdateGroups re-fetches each group once (the same clone-sharing
-// planUpdates buys skills) and reinstalls every selected definition into
-// every harness it is CURRENTLY installed to, per agentInstalledHarnesses —
-// not the scope's configured-harness list, which can differ from where a
-// given definition actually lives. Sourcing the harness list this way is
-// what keeps a copy-mode harness's own file from going stale while only the
-// canonical file moves forward: installAgentFile is called again for each
-// of those harnesses, not skipped in favor of just refreshing the canonical
-// copy.
+// runAgentUpdateGroups re-fetches each group once and reinstalls every selected
+// definition into every harness it is currently installed to, per
+// agentInstalledHarnesses. The scope's configured-harness list can differ.
 func runAgentUpdateGroups(groups []updateGroup, global bool, cwd string, allowHiddenChars bool, stats *updateStats) {
 	mode := currentInstallMode(global, cwd)
 	for _, g := range groups {
@@ -1040,12 +956,9 @@ func runAgentUpdateGroups(groups []updateGroup, global bool, cwd string, allowHi
 		}
 		selected := filterAgentsByName(found, g.skills)
 
-		// An update overwrites a file the harness already loads as a
-		// persona, so the incoming version gets the same scan the first
-		// install got — `mdm skills update` reaches the scan by routing
-		// through runAdd; this path installs directly and has to call it
-		// itself. The whole group is dropped rather than the offending
-		// definition alone, matching the skills path's all-or-nothing gate.
+		// An update overwrites a file the harness already loads, so the
+		// incoming version gets the same scan the first install got. The
+		// whole group is dropped, matching the skills path.
 		if !checkAgentFilesMarkdownForHiddenChars(selected, allowHiddenChars) {
 			cleanup()
 			continue
@@ -1065,11 +978,8 @@ func runAgentUpdateGroups(groups []updateGroup, global bool, cwd string, allowHi
 
 			installedAny, failedHarnesses := reinstallAgentIntoHarnesses(a, installedHarnesses, global, cwd, mode)
 
-			// The lock must always describe the disk: if every harness
-			// install failed, nothing changed on disk, so nothing changes
-			// in the lock either. Mirrors installAgentsForHarnesses' own
-			// `if !installedAny { continue }` guard on the add path — the
-			// update path was written later and had not gotten it.
+			// The lock must describe the disk. If every harness install
+			// failed, nothing changed on disk.
 			if !installedAny {
 				ui.LogWarn(fmt.Sprintf("%s: update failed for every installed harness (%s) — lock entry left unchanged", a.Name, strings.Join(failedHarnesses, ", ")))
 				continue

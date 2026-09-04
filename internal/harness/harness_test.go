@@ -53,17 +53,10 @@ func TestSkillsInstallDirUnknownHarness(t *testing.T) {
 	}
 }
 
-// AgentsInstallDirFor's scope handling is exercised in production only by
-// the confirmed registry entries, and all five of those populate both
-// AgentsInstallDir and GlobalAgentsInstallDir — so nothing in the registry
-// exercises "global scope asked of a harness with a project dir but no
-// global dir" (must return "", not fall back to the project dir). A
-// synthetic HarnessConfig, not a real registry entry, is needed to reach
-// that combination without waiting for a harness that happens to have it.
-//
-// Not run in parallel: it replaces the package-level AllHarnesses map for
-// its duration, and Reload's own doc comment says such tests must not run
-// alongside anything else that reads or replaces it.
+// All five confirmed registry entries populate both AgentsInstallDir and
+// GlobalAgentsInstallDir, so nothing there reaches "global scope asked of a
+// harness with a project dir but no global dir", which must return "". A
+// synthetic HarnessConfig reaches it. Not parallel: it replaces AllHarnesses.
 func TestAgentsInstallDirForScopes(t *testing.T) {
 	orig := AllHarnesses
 	defer func() { AllHarnesses = orig }()

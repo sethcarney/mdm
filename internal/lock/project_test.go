@@ -528,12 +528,9 @@ func TestProjectLockUpgradesV1InPlace(t *testing.T) {
 	}
 }
 
-// PR 161 shipped mdm.lock's v2 format with configuredAgents, before this
-// rename landed, so a real lock on disk can carry the old key. The fallback
-// decode must consume it rather than leave it for the unknown-key
-// passthrough, or a read/write round trip would emit both spellings at
-// once — the harness list under the new key and a stale copy under the old
-// one preserved as an "unrecognized" extra field.
+// mdm.lock's v2 format shipped with configuredAgents, so a real lock on disk
+// can carry the old key. The fallback decode must consume it rather than leave
+// it to the unknown-key passthrough, or a round trip emits both spellings.
 func TestProjectLockOldKeyDoesNotRoundTripAlongsideNewKey(t *testing.T) {
 	cwd := t.TempDir()
 	v1 := `{"version":1,"skills":{"s1":{"source":"o/r","sourceType":"github"}},"configuredAgents":["claude-code"]}`

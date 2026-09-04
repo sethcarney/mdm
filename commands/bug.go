@@ -14,14 +14,10 @@ import (
 	"github.com/sethcarney/mdm/internal/harness"
 )
 
-// ──────────────────────────────────────────────────────────
-// mdm bug - prefilled issue reporting
-//
-// The command constructs a GitHub issue-form prefill URL and hands it
-// over. It does no network I/O, no authentication, and no telemetry -
-// nothing leaves the machine until the user submits the form themselves.
-// Prior art: `npm bugs`, rustc's ICE handler, `brew gist-logs`.
-// ──────────────────────────────────────────────────────────
+// mdm bug: prefilled issue reporting. The command constructs a GitHub
+// issue-form prefill URL and hands it over. It does no network I/O, no
+// authentication, and no telemetry. Nothing leaves the machine until the user
+// submits the form.
 
 const bugRepoURL = "https://github.com/sethcarney/mdm"
 
@@ -197,11 +193,9 @@ func openInBrowser(target string) {
 // Panic hook
 // ──────────────────────────────────────────────────────────
 
-// HandlePanic is deferred from main. On a panic it writes the full panic
-// output to a temp file (bulky data stays out of the URL), prints a
-// prefilled bug URL carrying the failing command and the panic's first
-// line, and exits non-zero. This catches people at the moment they are
-// annoyed enough to report but not enough to fill out a form by hand.
+// HandlePanic is deferred from main. On a panic it writes the full panic output
+// to a temp file, prints a prefilled bug URL carrying the failing command and
+// the panic's first line, and exits non-zero.
 func HandlePanic(ver string) {
 	r := recover()
 	if r == nil {

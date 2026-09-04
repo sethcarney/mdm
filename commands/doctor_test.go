@@ -656,14 +656,10 @@ func TestDoctorReportsABrokenAgentSymlink(t *testing.T) {
 	}
 }
 
-// Mutation this test catches: reporting a broken symlink and a definition
-// that is not installed anywhere with the same message (or the same
-// message for both), which would make it impossible for the user to tell
-// "run `mdm agents install`" from "run `mdm agents update` to repair a
-// harness copy" apart. agentInstalledSomewhere deliberately counts a
-// dangling symlink as installed (so `remove` never strands the canonical
-// file); this test pins down that doctor still tells the two situations
-// apart instead of collapsing them into one report.
+// A broken symlink and a definition installed nowhere need different messages,
+// so the user can tell `mdm agents install` from `mdm agents update`.
+// agentInstalledSomewhere counts a dangling symlink as installed, so that
+// remove never strands the canonical file; doctor still separates the two.
 func TestDoctorDistinguishesMissingAgentFromBrokenSymlink(t *testing.T) {
 	cwd := t.TempDir()
 

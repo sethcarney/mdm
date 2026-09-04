@@ -29,12 +29,9 @@ type InstallResult struct {
 	SymlinkFailed bool
 	Error         string
 
-	// Skipped marks a not-installed result that is nobody's fault: the
-	// target simply has nothing to install into, e.g. an agent definition
-	// aimed at a harness with no agent concept. Error still carries the
-	// reason, but a caller must report it as a skip, not a failure —
-	// otherwise "install this to every harness" looks broken every time it
-	// touches a harness that does not have the feature.
+	// Skipped marks a not-installed result that is nobody's fault: an agent
+	// definition aimed at a harness with no agent concept. Error carries the
+	// reason; a caller must report it as a skip, not a failure.
 	Skipped bool
 }
 
@@ -82,9 +79,8 @@ func getCanonicalSkillsDir(global bool, cwd string) string {
 	return harness.CanonicalSkillsDir(global, cwd)
 }
 
-// getHarnessBaseDir resolves where a harness's skills live for a scope. The
-// resolution itself lives in the harness package so that install-mode inference
-// in internal/lock computes exactly the same paths; see harness.SkillsInstallDir.
+// getHarnessBaseDir resolves where a harness's skills live for a scope. See
+// harness.SkillsInstallDir, which internal/lock uses for the same paths.
 func getHarnessBaseDir(harnessName string, global bool, cwd string) string {
 	return harness.SkillsInstallDir(harnessName, global, cwd)
 }
@@ -95,23 +91,10 @@ func cleanAndCreateDir(path string) error {
 }
 
 // sameExistingDir reports whether src and dst are the same directory on disk.
-//
-// An install whose source is also its destination has nothing to do, and must
-// do nothing: every install path starts by emptying the destination
-// (cleanAndCreateDir is a RemoveAll), so copying a directory onto itself
-// deletes it and then reports success. `mdm skills add .` in a project that
-// already has skills reaches exactly that state, because discovery walks
-// .agents/skills and finds mdm's own canonical copies.
-//
-// The comparison is os.Stat plus os.SameFile rather than string equality on
-// purpose. The usual shape of this is a harness's .claude/skills/<name>
-// symlink discovered as the source while the destination is the canonical
-// .agents/skills/<name> it points at: two different strings, one directory.
-// os.Stat follows symlinks, so the two compare equal, and SameFile also
-// absorbs differences in path spelling — relative against absolute, a
-// symlinked parent, a Windows short name. An empty path or one that does not
-// exist is not the same directory as anything; callers with no source
-// directory at all (well-known skills are written from memory) pass "".
+// Every install path empties the destination first, so copying a directory onto
+// itself would delete it and report success. The comparison uses os.Stat plus
+// os.SameFile, which follows the harness symlink to the canonical directory and
+// absorbs path spelling. An empty or missing path is the same as nothing.
 func sameExistingDir(src, dst string) bool {
 	if src == "" || dst == "" {
 		return false
@@ -141,11 +124,9 @@ func resolveParentSymlinks(path string) string {
 	return filepath.Join(real, base)
 }
 
-// symlinkFn creates the link in createSymlink. It is a package-level variable
-// only so a test can force the symlink-to-copy fallback deterministically;
-// production code always goes through os.Symlink. Like the other test seams
-// in this package it is shared mutable state, so no test may swap it while
-// running in parallel with another test that installs.
+// symlinkFn creates the link in createSymlink. Tests swap it to force the
+// symlink-to-copy fallback. Shared mutable state, so no test may swap it while
+// another install test runs in parallel.
 var symlinkFn = os.Symlink
 
 func createSymlink(target, linkPath string) bool {
@@ -293,18 +274,15 @@ func writeSkillFiles(targetDir string, files []struct{ Path, Contents string }) 
 	return nil
 }
 
-// performSymlinkInstall materializes the canonical copy and links the harness
-// at it. srcDir is the directory cp reads from, or "" when the content does
-// not come from a directory; it is here only so the copy onto itself can be
-// recognised before cleanAndCreateDir empties the destination.
+// performSymlinkInstall materializes the canonical copy and links the harness at
+// it. srcDir is the directory cp reads from, or "" when there is no source
+// directory; it lets a copy onto itself be caught before the destination empties.
 func performSymlinkInstall(canonicalDir, harnessDir, harnessName, srcDir string, global bool, mode InstallMode, cp copyFunc) InstallResult {
 	if err := refuseIfPluginOwned(canonicalDir, global); err != nil {
 		return InstallResult{Success: false, Path: harnessDir, Mode: mode, Error: err.Error()}
 	}
-	// The canonical copy is already exactly this content — the source IS the
-	// canonical directory. Re-materializing it would empty it first and copy
-	// nothing back, so skip to the linking, which is still worth doing: the
-	// harness may not have its link yet.
+	// The source is the canonical directory. Re-materializing would empty it and
+	// copy nothing back, so skip to the linking.
 	if !sameExistingDir(srcDir, canonicalDir) {
 		if err := cleanAndCreateDir(canonicalDir); err != nil {
 			return InstallResult{Success: false, Path: harnessDir, Mode: mode, Error: err.Error()}
@@ -331,9 +309,8 @@ func performSymlinkInstall(canonicalDir, harnessDir, harnessName, srcDir string,
 	return InstallResult{Success: true, Path: harnessDir, CanonicalPath: canonicalDir, Mode: InstallModeSymlink, SymlinkFailed: true}
 }
 
-// refuseIfPluginOwned blocks a standalone skill install from clobbering a
-// skill that an installed plugin owns; the plugins lock section is the sole
-// manager of those. Only project scope can be plugin-owned.
+// refuseIfPluginOwned blocks a standalone install from clobbering a skill an
+// installed plugin owns. Only project scope can be plugin-owned.
 func refuseIfPluginOwned(canonicalDir string, global bool) error {
 	if global {
 		return nil
@@ -380,9 +357,8 @@ func installSkillForHarness(s *skill.Skill, harnessName string, global bool, mod
 	}
 
 	if mode == InstallModeCopy {
-		// The harness's copy is the source. Nothing to copy, and copying would
-		// mean emptying the source first; report the install that is already
-		// in place rather than destroying it.
+		// The harness's copy is the source. Copying would empty the source
+		// first, so report the install already in place.
 		if sameExistingDir(s.Path, harnessDir) {
 			return InstallResult{Success: true, Path: harnessDir, Mode: InstallModeCopy}
 		}
@@ -473,8 +449,8 @@ type InstalledSkill struct {
 	Path          string
 	CanonicalPath string
 	Scope         string // "project" or "global"
-	// Harnesses keeps the JSON key "Agents": `mdm skills list --json` output
-	// is a stable external contract this commit does not change.
+	// The JSON key stays "Agents": `mdm skills list --json` output is a stable
+	// external contract.
 	Harnesses []string `json:"Agents"`
 }
 
@@ -539,10 +515,9 @@ func appendUndetectedHarnessScopes(scopes []scopeEntry, harnessesToCheck []strin
 		if contains(harnessesToCheck, harnessName) {
 			continue
 		}
-		// Only consider harnesses that were explicitly configured (saved in the
-		// lock file). Without this guard, any harness whose SkillsDir coincides
-		// with a directory that happens to exist on disk (e.g. openclaw →
-		// "./skills") would be mistakenly treated as an install target.
+		// Only harnesses saved in the lock count. Without this, any harness whose
+		// SkillsDir coincides with a directory that happens to exist (openclaw
+		// reads "./skills") would be treated as an install target.
 		if !contains(configured, harnessName) {
 			continue
 		}
@@ -658,9 +633,8 @@ func mergeCanonicalSkillIntoMap(skillsMap map[string]*InstalledSkill, mapKey str
 	}
 }
 
-// isSkillDirEntry reports whether a scope-dir entry can hold a skill: a
-// plain directory, or a symlinked directory - plugin skills link the
-// canonical dir into the plugin's own directory rather than copying.
+// isSkillDirEntry reports whether a scope-dir entry can hold a skill: a plain
+// directory, or a symlinked one, since plugin skills link the canonical dir.
 func isSkillDirEntry(base string, e os.DirEntry) bool {
 	if e.IsDir() {
 		return true
@@ -765,9 +739,9 @@ func installWellKnownSkillForHarness(sk *registry.WellKnownSkill, harnessName st
 	return installSkillFilesForHarness(sk.InstallName, files, harnessName, global, mode)
 }
 
-// linkInstalledSkillToHarness symlinks (or copies) an already-installed skill's
-// canonical directory into the given harness's own skills directory.
-// Returns true when the harness's skill directory now exists (created or was already present).
+// linkInstalledSkillToHarness symlinks (or copies) an installed skill's
+// canonical directory into the harness's own skills directory. It reports
+// whether that directory now exists.
 func linkInstalledSkillToHarness(skillName, harnessName string, global bool, cwd string) bool {
 	a := harness.AllHarnesses[harnessName]
 	if a == nil || (global && a.GlobalSkillsDir == "") {

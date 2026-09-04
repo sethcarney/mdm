@@ -138,22 +138,14 @@ func resolveLocalSourceAbs(sName string, global bool, cwd string) string {
 	return src
 }
 
-// removeHarnessSkillDir deletes the skill directory for one candidate name under
-// a harness base, skipping paths that live inside the local source tree.
-//
-// A path this deliberately declines to touch — one inside the local source, an
-// unsafe path, one that is not there, a cherry-picked fork — is not an error:
-// nothing was supposed to be deleted, so nil is the truth. A failed deletion is
-// reported, because the caller uses it to decide whether the lock file may stop
-// describing the disk.
-// removeAllFn is the directory-deletion seam for removals: production always
-// uses os.RemoveAll, tests swap it for a failing version to exercise the "a
-// deletion failed" path, which cannot be forced reliably at the OS level on
-// every platform. Same shape and same caveat as removeFileFn in
-// agent_artifacts.go — shared mutable state, so tests that swap it must not
-// run in parallel.
+// removeAllFn is the directory-deletion seam for removals: tests swap it for a
+// failing version. Shared mutable state, so those tests must not run in
+// parallel.
 var removeAllFn = os.RemoveAll
 
+// removeHarnessSkillDir deletes the skill directory for one candidate name
+// under a harness base. A path it declines to touch is not an error. It reports
+// a failed deletion, so the caller can keep the lock describing the disk.
 func removeHarnessSkillDir(harnessBase, name, localSourceAbs string) error {
 	harnessSkillDir := filepath.Join(harnessBase, name)
 	harnessSkillAbs, _ := filepath.Abs(harnessSkillDir)
@@ -176,9 +168,8 @@ func removeHarnessSkillDir(harnessBase, name, localSourceAbs string) error {
 	return removeAllFn(harnessSkillDir)
 }
 
-// isCherryPickedSource reports whether a directory is a cherry-picked fork -
-// the project's own source, carrying edits that exist nowhere else. Uninstalling
-// a skill must never delete one. This is reachable because a harness's skills
+// isCherryPickedSource reports whether a directory is a cherry-picked fork: the
+// project's own source, carrying edits that exist nowhere else. A harness skills
 // directory can be the forks directory itself (OpenClaw reads ./skills), which
 // makes a fork look like an installed skill to every scan.
 func isCherryPickedSource(dir string) bool {
@@ -189,25 +180,10 @@ func isCherryPickedSource(dir string) bool {
 }
 
 // harnessesRetainingSkill reports which harnesses outside a scoped removal
-// still hold sk, so removeSkillFromDisk can tell "remove this skill from
-// Claude Code" apart from "remove this skill".
-//
-// This cannot be answered the way the agent-definition side answers it, by
-// probing every harness's own directory on disk. Most harnesses read skills
-// from the shared .agents/skills directory (HarnessConfig.SharedSkillsDir),
-// so for them the "per-harness directory" IS the canonical directory whose
-// fate is being decided: a disk probe would report every shared-directory
-// harness as still holding the skill, including ones this project has never
-// installed to, and the evidence it read would be the very directory the
-// caller is asking about. The answer therefore comes from the harnesses
-// outside the filter, and what counts as one of those differs by kind:
-//
-//   - A harness with its own skills directory proves itself. That directory
-//     holds the skill only because something installed it there.
-//   - A harness reading the shared directory proves nothing by its contents,
-//     so it counts only when this project configured it or its tool is
-//     installed on this machine — in which case it really does still read
-//     the skill out of .agents/skills, and the canonical copy is still in use.
+// still hold sk. A disk probe cannot answer this: most harnesses read the
+// shared .agents/skills directory, so probing them reads the very directory
+// whose fate is being decided. A harness with its own skills directory proves
+// itself; a shared-directory one counts only when configured or installed here.
 func harnessesRetainingSkill(sk *InstalledSkill, removing []string, global bool, cwd string) []string {
 	inUse := map[string]bool{}
 	for _, name := range lock.GetConfiguredHarnesses(global, cwd) {
@@ -242,13 +218,9 @@ func harnessesRetainingSkill(sk *InstalledSkill, removing []string, global bool,
 
 // removeSkillInstalls deletes the skill's install under each harness in
 // harnessesToRemove and returns a description of every deletion that failed.
-// It never touches the canonical directory or the lock: those are the
-// caller's, and only once every install here is gone.
-//
-// retained is the list of harnesses outside the filter that still hold the
-// skill. When it is non-empty, a harness that reads the canonical directory
-// directly is skipped, because "its" copy IS the copy those harnesses are
-// still using — there is nothing scoped to delete for such a harness.
+// retained lists harnesses outside the filter that still hold the skill. While
+// it is non-empty, a harness reading the canonical directory is skipped, since
+// "its" copy is the copy those harnesses still use.
 func removeSkillInstalls(sk *InstalledSkill, harnessesToRemove, retained []string, sName, localSourceAbs string, global bool, cwd string) []string {
 	var failed []string
 	for _, harnessName := range harnessesToRemove {
@@ -270,13 +242,9 @@ func removeSkillInstalls(sk *InstalledSkill, harnessesToRemove, retained []strin
 	return failed
 }
 
-// removeCanonicalSkillCopy deletes mdm's own copy of the skill, and only when
-// every guard agrees it is mdm's to delete: the canonical directory must not
-// sit inside a local source (deleting it would delete the user's own working
-// copy), must not be a cherry-picked fork (the user's vendored file, which
-// nothing re-fetches), and must resolve inside the canonical skills tree.
-// A guard that says no is not an error — it means there is nothing here for
-// mdm to remove.
+// removeCanonicalSkillCopy deletes mdm's own copy of the skill. It refuses when
+// the canonical directory sits inside a local source, is a cherry-picked fork,
+// or resolves outside the canonical skills tree. A refusal is not an error.
 func removeCanonicalSkillCopy(sk *InstalledSkill, localSourceAbs string, global bool, cwd string) error {
 	canonicalDir := getCanonicalPath(sk.Name, global)
 	canonicalAbs, _ := filepath.Abs(canonicalDir)
@@ -308,39 +276,26 @@ func removeSkillLockEntry(sName string, global bool, cwd string) error {
 
 // removeSkillFromDisk deletes the installs for the harnesses in harnessFilter
 // and, when nothing outside that filter still holds the skill, the canonical
-// directory and the lock entry too.
-//
-// It returns the harnesses that still hold the skill: empty with no error
-// means the skill is gone, and the caller may report it removed. A non-empty
-// list means only the requested harnesses lost it and the canonical copy plus
-// the lock entry were deliberately kept — without that, `--harness X` deleted
-// the skill outright, leaving every other harness pointing at a directory
-// that no longer exists and dropping the one lock entry that would have let
-// `mdm skills list` or `mdm doctor` notice.
-//
-// An error means a deletion failed. The lock entry is then left alone on
-// purpose: it is the record of what is on disk, and dropping it for a skill
-// that is still there would hide the failure from every later command.
+// directory and the lock entry too. It returns the harnesses that still hold
+// the skill; a non-empty list means the canonical copy and the lock entry were
+// kept. On error the lock entry stays, so the failure stays visible.
 func removeSkillFromDisk(sk *InstalledSkill, harnessFilter []string, global bool, cwd string) (retained []string, err error) {
 	sName := sanitizeName(sk.Name)
 	localSourceAbs := resolveLocalSourceAbs(sName, global, cwd)
 
 	harnessesToRemove := harnessFilter
 	if len(harnessFilter) == 0 {
-		// No filter is a request to remove the skill outright, so every
-		// harness is in scope and nothing is left outside it to retain the
-		// skill. Sweeping all of them rather than only the ones the skill was
-		// detected in matters: detection depends on the harness's tool being
-		// installed, and a harness directory that was written by an earlier
-		// `--harness X` install is otherwise left holding a link to the
-		// canonical directory this call is about to delete.
+		// No filter removes the skill outright, so every harness is in scope.
+		// Sweeping all of them, not only the ones the skill was detected in,
+		// matters: detection needs the harness's tool installed, and a directory
+		// an earlier `--harness X` install wrote would keep a link to the
+		// canonical directory this call deletes.
 		for name := range harness.AllHarnesses {
 			harnessesToRemove = append(harnessesToRemove, name)
 		}
 	} else {
-		// Computed before anything is deleted: for a shared-directory harness
-		// in the filter, the deletion below would take the canonical directory
-		// with it and destroy the evidence this asks about.
+		// Computed before any deletion: for a shared-directory harness in the
+		// filter, the deletion below would destroy the evidence this reads.
 		retained = harnessesRetainingSkill(sk, harnessFilter, global, cwd)
 	}
 	vlog(verboseFlag, "removing %q from harnesses=%v (localSource=%q, retained=%v)", sk.Name, harnessesToRemove, localSourceAbs, retained)
@@ -402,8 +357,7 @@ func handleNoInstalled(global bool, cwd string) {
 }
 
 // executeRemovals removes each selected skill and reports what happened to it.
-// The returned error is only about the orphan sweep at the end; a failure on
-// one skill is reported against that skill and does not stop the others.
+// The returned error covers only the orphan sweep at the end.
 func executeRemovals(toRemove []*InstalledSkill, harnessFilter []string, global bool, cwd string) error {
 	failures := 0
 	for _, sk := range toRemove {
@@ -476,9 +430,8 @@ func runRemove(positional []string, opts RemoveOptions) {
 	}
 }
 
-// excludePluginOwnedSkills drops skills that an installed plugin owns -
-// those are managed by the plugins lock section, so `mdm plugins remove` is
-// the right tool. Only project scope can be plugin-owned.
+// excludePluginOwnedSkills drops skills an installed plugin owns; `mdm plugins
+// remove` handles those. Only project scope can be plugin-owned.
 func excludePluginOwnedSkills(toRemove []*InstalledSkill, global bool, cwd string) []*InstalledSkill {
 	if global {
 		return toRemove

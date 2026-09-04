@@ -13,9 +13,8 @@ import (
 )
 
 // restoreOptions carries what `mdm skills install` was asked for. The mode
-// flags belong here and not only on `skills add`: install is the command
-// that restores a scope which already exists, so it is where a user changes
-// the mode of one, and `skills add` needs a source to name.
+// flags belong here too: install is the command that restores a scope which
+// already exists, so it is where a user changes the mode of one.
 type restoreOptions struct {
 	yes              bool
 	allowHiddenChars bool
@@ -59,13 +58,9 @@ func hintPluginsInstall(cwd string) {
 	fmt.Printf("%sThis project also has plugins - restore them with 'mdm plugins install'.%s\n", ansiDim, ansiReset)
 }
 
-// restoreSkillsHook and restoreAgentsHook are runInstallFromLock's two
-// restore steps, extracted into swappable vars purely for testing. `mdm
-// install` restores skills, then agent definitions — but neither step
-// leaves an isolated on-disk trace a unit test can assert on without a
-// real network fetch or an interactive prompt, so tests swap these for
-// recorders instead of calling the real thing to pin down the order (and
-// that both actually run).
+// restoreSkillsHook and restoreAgentsHook are runInstallFromLock's two restore
+// steps, as swappable vars. Neither step leaves an on-disk trace a unit test
+// can assert on, so tests swap these for recorders to pin down the order.
 var (
 	restoreSkillsHook = restoreSkillsFromCurrentLock
 	restoreAgentsHook = restoreAgentsFromLock
@@ -76,18 +71,12 @@ func runInstallFromLock(opts restoreOptions) {
 	hintPluginsInstall(cwd)
 
 	restoreSkillsHook(opts, cwd)
-	// Agent definitions restore after skills: skills are the older, larger
-	// piece of `mdm install`, and agent restore reuses the same
-	// scope/harness/mode machinery, so running it second keeps a single
-	// command doing both without a second, earlier decision point.
 	restoreAgentsHook(opts)
 }
 
 // restoreSkillsFromCurrentLock is `mdm install`'s skill-restore step:
-// local-vs-global resolution, and the same "which lock file" prompt when
-// both are populated. Unchanged in behavior from before agent definitions
-// existed — only extracted into its own function so runInstallFromLock
-// could gain a second, ordered step.
+// local-vs-global resolution, and the "which lock file" prompt when both are
+// populated.
 func restoreSkillsFromCurrentLock(opts restoreOptions, cwd string) {
 	localL := lock.ReadLocalLock(cwd)
 	globalL := lock.ReadGlobalState()
@@ -179,10 +168,9 @@ type sourceGroup struct {
 	names  []string
 }
 
-// groupBySourceRef buckets entries by normalized source+ref, so restoring
-// (or updating) several names that share a repository fetches it once
-// instead of once per name. Shared by restoreSkills and the agent-restore
-// path in agent_artifacts.go — this is the one copy of that logic.
+// groupBySourceRef buckets entries by normalized source+ref, so restoring or
+// updating several names that share a repository fetches it once. Shared by
+// restoreSkills and the agent-restore path in agent_artifacts.go.
 func groupBySourceRef(entries map[string]sourceRef) []sourceGroup {
 	sourceMap := map[string]*sourceGroup{}
 	for name, e := range entries {

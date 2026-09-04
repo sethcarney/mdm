@@ -429,12 +429,10 @@ func pickHarnessesToRemove(configured []string) ([]string, bool) {
 	return toRemove, true
 }
 
-// removeHarnessSkillsDir deletes a harness's own skills directory, preserving any
-// cherry-picked forks inside it. A harness's directory can be the project's forks
-// directory (OpenClaw reads ./skills, mdm's default fork destination), and a
-// fork is the project's source code - edits that exist nowhere else - not
-// something mdm installed and may delete. Returns the number of forks kept, and
-// whether anything was removed at all.
+// removeHarnessSkillsDir deletes a harness's own skills directory, keeping any
+// cherry-picked forks inside it. A harness directory can be the project's forks
+// directory (OpenClaw reads ./skills), and a fork is the project's own source.
+// It returns the number of forks kept and whether anything was removed.
 func removeHarnessSkillsDir(skillsPath string) (kept int, removed bool) {
 	info, err := os.Lstat(skillsPath)
 	if err != nil {

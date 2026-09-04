@@ -34,13 +34,10 @@ func hasLockEntry(t *testing.T, cwd, name string) bool {
 	return ok
 }
 
-// Mutation this test catches: deleting the `if len(retained) > 0 { return }`
-// gate in removeSkillFromDisk, so the canonical directory and the lock entry
-// go unconditionally again. Removing a skill from ONE harness must not delete
-// it for the others: Roo Code's install is a symlink into the canonical
-// directory, so deleting that directory leaves Roo pointing at nothing, and
-// dropping the lock entry takes away the record that would let `mdm skills
-// list` or `mdm doctor` notice.
+// Guards the `if len(retained) > 0 { return }` gate in removeSkillFromDisk.
+// Removing a skill from one harness must not delete it for the others: Roo
+// Code's install is a symlink into the canonical directory, and the lock entry
+// is what lets `mdm skills list` or `mdm doctor` notice.
 func TestRemoveSkillScopedToOneHarnessKeepsCanonicalAndLock(t *testing.T) {
 	cwd := t.TempDir()
 	t.Chdir(cwd)
@@ -75,11 +72,9 @@ func TestRemoveSkillScopedToOneHarnessKeepsCanonicalAndLock(t *testing.T) {
 	}
 }
 
-// Mutation this test catches: dropping the UsesSharedSkillsDir skip in the
-// per-harness deletion loop. Most harnesses read the shared .agents/skills
-// directory, so for them "delete this harness's copy" IS "delete the canonical
-// copy" — doing it while Claude Code still symlinks to that directory breaks
-// Claude Code, even though the canonical-deletion gate below was honoured.
+// Guards the UsesSharedSkillsDir skip in the per-harness deletion loop. For a
+// shared-directory harness, "delete this harness's copy" is "delete the
+// canonical copy", which breaks Claude Code's symlink into it.
 func TestRemoveSkillScopedToSharedDirHarnessKeepsTheSharedCopy(t *testing.T) {
 	cwd := t.TempDir()
 	t.Chdir(cwd)

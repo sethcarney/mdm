@@ -34,14 +34,10 @@ func assertSkillIntact(t *testing.T, dir string) {
 	}
 }
 
-// Mutation this test catches: removing the sameExistingDir guard around
-// cleanAndCreateDir/cp in performSymlinkInstall. `mdm skills add .` in a
-// project that already has skills discovers mdm's own canonical copies under
-// .agents/skills, so the install runs with the source and the destination
-// pointing at one directory. cleanAndCreateDir is a RemoveAll and runs BEFORE
-// any copying, so without the guard the skill is deleted and the install still
-// reports success — a guard inside copyFile would not have caught this,
-// because copyFile is never reached with anything left to copy.
+// Guards the sameExistingDir check around cleanAndCreateDir/cp in
+// performSymlinkInstall. `mdm skills add .` discovers mdm's own canonical
+// copies under .agents/skills, so source and destination are one directory.
+// cleanAndCreateDir is a RemoveAll and runs before any copying.
 func TestInstallSkillFromItsOwnCanonicalDirIsNotDestructive(t *testing.T) {
 	cwd := t.TempDir()
 	t.Chdir(cwd)
@@ -74,11 +70,9 @@ func TestInstallSkillCopyModeFromItsOwnHarnessDirIsNotDestructive(t *testing.T) 
 	assertSkillIntact(t, harnessDir)
 }
 
-// The source and the destination are reached by different paths here: the
-// discovered source is the harness's symlink, the destination is the
-// canonical directory it points at. This is why the check is os.SameFile on
-// the stat results and not string comparison — mutation: comparing
-// filepath.Clean(src) == filepath.Clean(dst) instead.
+// Source and destination are reached by different paths: the discovered source
+// is the harness's symlink, the destination is the canonical directory it
+// points at. That is why the check is os.SameFile and not string comparison.
 func TestInstallSkillThroughAHarnessSymlinkIsNotDestructive(t *testing.T) {
 	cwd := t.TempDir()
 	t.Chdir(cwd)

@@ -12,12 +12,10 @@ import (
 )
 
 // applyScopeInstallMode reconciles the requested mode with the one the scope
-// records. The mode is scope-wide, so a change re-materializes every existing
-// install first and records the mode only once that succeeds; a partial
-// failure reports how far it got, records nothing, and refuses to proceed so
-// a re-run can finish the job. It never prompts: an explicit --copy or
-// --symlink is the consent, and the conversion is lossless in both
-// directions. It returns the mode to install with and whether to proceed.
+// records. The mode is scope-wide: a change re-materializes every existing
+// install first and records the mode only once that succeeds. A partial failure
+// reports how far it got, records nothing, and refuses to proceed. It never
+// prompts, and returns the mode to install with and whether to proceed.
 func applyScopeInstallMode(requested InstallMode, global bool, cwd string) (InstallMode, bool) {
 	current := lock.GetInstallMode(global, cwd)
 
@@ -30,9 +28,8 @@ func applyScopeInstallMode(requested InstallMode, global bool, cwd string) (Inst
 		return requested, true
 	}
 
-	// The mode is changing. Gate on that, not on a recorded string: a scope
-	// that predates the switch has symlinked installs and no recorded mode,
-	// and is the usual --copy case. Nothing installed means nothing to convert.
+	// The mode is changing. Gate on that, not on a recorded string: a scope that
+	// predates the switch has symlinked installs and no recorded mode.
 	groups := scopeConversionGroups(global, cwd)
 	if conversionGroupsCount(groups) > 0 {
 		from := current
@@ -65,50 +62,33 @@ func applyScopeInstallMode(requested InstallMode, global bool, cwd string) (Inst
 	return requested, true
 }
 
-// conversionPath is one install path to convert, paired with the name mdm's
-// canonical copy of that asset has inside the group's canonical directory.
-//
-// The two names are not always the same. A harness may read an agent
-// definition under an extension of its own (harness.AgentFileExt): GitHub
-// Copilot installs `.github/agents/critic.agent.md` from the canonical
-// `.agents/agents/critic.md`. Recovering the canonical name downstream from
-// the target's basename therefore invented a SECOND canonical file,
-// `.agents/agents/critic.agent.md`, on a copy → symlink switch, and pointed
-// the harness at that duplicate instead of at the real canonical file; a
-// later `mdm agents remove critic` then deleted the real pair and left the
-// duplicate orphaned. Only the code that builds the paths knows both the
-// definition name and the harness, so the mapping travels with the path
-// from there rather than being guessed at the far end.
+// conversionPath is one install path, paired with the name mdm's canonical copy
+// carries inside the group's canonical directory. The two differ when a harness
+// reads its own extension (harness.AgentFileExt): Copilot installs
+// `.github/agents/critic.agent.md` from `.agents/agents/critic.md`. Deriving the
+// canonical name from the target basename invents a second canonical file.
 type conversionPath struct {
 	target        string
 	canonicalName string
 }
 
-// selfNamedConversionPath pairs a target with a canonical name equal to its
-// own basename. That is the rule for skills, whose install path is the
-// canonical directory entry name verbatim, with no per-harness suffix.
+// selfNamedConversionPath pairs a target with a canonical name equal to its own
+// basename. That is the rule for skills, which carry no per-harness suffix.
 func selfNamedConversionPath(target string) conversionPath {
 	return conversionPath{target: target, canonicalName: filepath.Base(target)}
 }
 
-// conversionGroup is one set of install paths plus the canonical root they
-// were installed from. Skills and agent definitions live under different
-// canonical roots (.agents/skills and .agents/agents), and the converters
-// use that root to tell mdm's own links from a user's, so the two cannot
-// share one canonicalDir argument — the roots have to travel with the paths.
+// conversionGroup is one set of install paths plus the canonical root they were
+// installed from. Skills and agent definitions use different roots
+// (.agents/skills and .agents/agents), and the converters read the root.
 type conversionGroup struct {
 	canonicalDir string
 	paths        []conversionPath
 }
 
-// scopeConversionGroups lists everything in the scope that a mode change has
-// to re-materialize. The install mode is a property of the SCOPE, promised
-// by the spec and by docs/agent-artifacts.md as one mode per scope, so the
-// sweep covers agent definitions as well as skills: enumerating only skills
-// left `mdm skills add --copy` recording copy for the scope while every
-// agent definition in it stayed a symlink.
-//
-// Skills come first, which is the order the conversion already ran in.
+// scopeConversionGroups lists everything in the scope that a mode change has to
+// re-materialize. The install mode is a property of the scope, so the sweep
+// covers agent definitions as well as skills. Skills come first.
 func scopeConversionGroups(global bool, cwd string) []conversionGroup {
 	return []conversionGroup{
 		{canonicalDir: getCanonicalSkillsDir(global, cwd), paths: scopeInstallPaths(global, cwd)},
@@ -125,9 +105,7 @@ func conversionGroupsCount(groups []conversionGroup) int {
 }
 
 // rematerializeGroups converts every group in order, returning the running
-// total so a partial failure can still say how far it got — the same
-// contract rematerializeScope has for a single group, which it delegates to
-// unchanged.
+// total so a partial failure can still say how far it got.
 func rematerializeGroups(to InstallMode, groups []conversionGroup) (int, error) {
 	total := 0
 	for _, g := range groups {
@@ -141,16 +119,10 @@ func rematerializeGroups(to InstallMode, groups []conversionGroup) (int, error) 
 }
 
 // scopeAgentInstallPaths is scopeInstallPaths for agent definitions: the
-// existing on-disk file of every definition the scope's lock records, for
-// each harness with an agent concept, deduplicated. Harnesses are walked in
-// sorted order so the conversion order is deterministic; AllHarnesses is a
-// map, and the surrounding code reports "converted N of them" on failure,
-// which is only meaningful against a stable order.
-//
-// Each path carries the canonical file name for its definition, which is
-// name+agentCanonicalExt and NOT the target's basename: a harness that
-// overrides the extension it reads (harness.AgentFileExt) installs
-// "<name>.agent.md" from the canonical "<name>.md".
+// on-disk file of every definition the scope's lock records, per harness with
+// an agent concept, deduplicated. Harnesses are walked in sorted order, since
+// the caller reports "converted N of them". Each path carries the canonical file
+// name, name+agentCanonicalExt, not the target's basename.
 func scopeAgentInstallPaths(global bool, cwd string) []conversionPath {
 	names, _ := agentLockEntries(global, cwd)
 
@@ -194,12 +166,10 @@ func scopeSkillNames(global bool, cwd string) []string {
 	return skills
 }
 
-// scopeInstallPaths lists the existing on-disk install path of every skill
-// the scope records, for each harness the scope supports, deduplicated. It
-// sweeps every harness rather than configuredHarnesses: that list only records
-// what the interactive picker last saved, so consulting it would skip harnesses
-// installed with `--harness <harness> -y` and leave the scope half converted. The
-// sweep is safe because rematerializeScope converts only what mdm installed.
+// scopeInstallPaths lists the on-disk install path of every skill the scope
+// records, per supported harness, deduplicated. It sweeps every harness, not
+// configuredHarnesses: that list holds only what the interactive picker saved,
+// so it would skip harnesses installed with `--harness <harness> -y`.
 func scopeInstallPaths(global bool, cwd string) []conversionPath {
 	skills := scopeSkillNames(global, cwd)
 	harnesses := allHarnessesForScope(global)
@@ -225,31 +195,25 @@ func scopeInstallPaths(global bool, cwd string) []conversionPath {
 			if _, err := os.Lstat(target); err != nil {
 				continue
 			}
-			// A skill's install path basename IS its canonical directory
-			// name — filepath.Join(base, sanitizeName(skillName)) above —
-			// so the canonical name is unchanged from what the converter
-			// used to derive for itself.
+			// A skill's install path basename is its canonical directory name,
+			// per filepath.Join(base, sanitizeName(skillName)) above.
 			paths = append(paths, selfNamedConversionPath(target))
 		}
 	}
 	return paths
 }
 
-// copyDirFn, copyFileFn, and renameFn are the steps of a conversion that
-// tests swap for failing versions, since neither failure can be forced
-// reliably at the OS level. Production always uses the defaults. They are
-// shared mutable state, so tests that swap them must not run in parallel.
-// removeFileFn (defined in agent_artifacts.go, alongside the same caveat)
-// is reused here for the file-shaped cleanup and swap steps below.
+// copyDirFn, copyFileFn, and renameFn are the conversion steps tests swap for
+// failing versions. Shared mutable state, so those tests must not run in
+// parallel. removeFileFn in agent_artifacts.go covers the file-shaped steps.
 var (
 	copyDirFn  = copyDirectory
 	copyFileFn = copyFile
 	renameFn   = os.Rename
 )
 
-// resolvedDir returns dir with symlinks resolved (and, on Windows, short
-// names and case normalized), falling back to the absolute path when it does
-// not exist, in which case nothing can be inside it anyway.
+// resolvedDir returns dir with symlinks resolved (on Windows also short names
+// and case), falling back to the absolute path when it does not exist.
 func resolvedDir(dir string) string {
 	if resolved, err := filepath.EvalSymlinks(dir); err == nil {
 		return resolved
@@ -260,22 +224,11 @@ func resolvedDir(dir string) string {
 	return filepath.Clean(dir)
 }
 
-// rematerializeScope converts the given install paths into the requested
-// mode, so a mode change never leaves a scope half symlinked and half copied.
-// It returns how many installs it converted, also on error, so the caller
-// can say how far it got.
-//
-// Only what mdm installed is touched: symlink to copy converts links
-// pointing at <canonicalDir>/<name>, and copy to symlink converts real
-// directories holding a SKILL.md or real files that parse as an agent
-// definition (agent definitions are single files, not directories).
-// Anything else is the user's own and is skipped, not counted. Neither
-// check is strong — a SKILL.md or a name-and-description frontmatter block
-// is something a user's own file could have too — but they are the same
-// strength, so a mode switch is no more likely to sweep up a user's
-// directory than a user's file. The canonical directory is never removed:
-// harnesses that read the shared directory install into it in copy mode
-// too, and doctor and remove resolve it for every locked skill.
+// rematerializeScope converts the given install paths into the requested mode,
+// so a mode change never leaves a scope half symlinked and half copied. It
+// returns how many installs it converted, also on error. Only what mdm installed
+// is touched, per isMdmOwnedCopyInstall; anything else is skipped and not
+// counted. The canonical directory is never removed.
 func rematerializeScope(to InstallMode, canonicalDir string, installPaths []conversionPath) (int, error) {
 	canonical := resolvedDir(canonicalDir)
 	converted := 0
@@ -300,14 +253,10 @@ func rematerializeScope(to InstallMode, canonicalDir string, installPaths []conv
 }
 
 // reserveSiblingName reserves an unused name next to an install path and
-// returns it free for a rename to take. MkdirTemp is the only race-free way
-// to claim a unique name, but it claims it by creating a directory, and both
-// callers need the name empty — one to copy a file to, one to rename onto —
-// so the directory is removed again immediately. The sibling location is
-// load-bearing: it keeps the later rename on one filesystem.
-//
-// The error is returned bare so each caller can wrap it in the wording for
-// the step it is performing.
+// returns it free for a rename to take. MkdirTemp is the only race-free way to
+// claim a unique name, so the directory it creates is removed again at once.
+// The sibling location keeps the later rename on one filesystem. The error is
+// bare so each caller wraps it in its own wording.
 func reserveSiblingName(dir, name string) (string, error) {
 	reserved, err := os.MkdirTemp(dir, name+".mdm-tmp-")
 	if err != nil {
@@ -319,15 +268,10 @@ func reserveSiblingName(dir, name string) (string, error) {
 	return reserved, nil
 }
 
-// materializeLinkReplacement builds, beside the install path, the real
-// content that is about to replace the symlink at it: a directory copy for a
-// skill, a file copy for an agent definition. It returns the temp path and a
-// cleanup that removes it, so the caller can discard the work on any later
-// failure.
-//
-// Nothing here touches the install path itself. That is the point of doing
-// it first: until the caller renames the temp entry into place, the link and
-// what it points at are both untouched, so a failure at this stage leaves
+// materializeLinkReplacement builds, beside the install path, the real content
+// about to replace the symlink at it: a directory copy for a skill, a file copy
+// for an agent definition. It returns the temp path and a cleanup that removes
+// it. Nothing here touches the install path, so a failure at this stage leaves
 // the install exactly as it was.
 func materializeLinkReplacement(installDir, name, resolved string, srcInfo os.FileInfo) (temp string, removeTemp func(), err error) {
 	if srcInfo.IsDir() {
@@ -349,9 +293,9 @@ func materializeLinkReplacement(installDir, name, resolved string, srcInfo os.Fi
 		return temp, removeTemp, nil
 	}
 
-	// Reserve a unique sibling name the same way copyToLink reserves its
-	// backup name: copyFileFn creates the file itself, so it (not a separate
-	// chmod) is what gives the result the source's mode.
+	// Reserve a unique sibling name the way copyToLink reserves its backup
+	// name: copyFileFn creates the file, so it gives the result the source's
+	// mode.
 	temp, err = reserveSiblingName(installDir, name)
 	if err != nil {
 		return "", nil, fmt.Errorf("preparing temp file for %s: %w", name, err)
@@ -365,11 +309,9 @@ func materializeLinkReplacement(installDir, name, resolved string, srcInfo os.Fi
 }
 
 // linkToCopy replaces one mdm symlink at target with a real copy of what it
-// points at (a directory for a skill, a single file for an agent
-// definition), reporting whether it converted anything. The copy is built
-// beside the target — in a temp directory for a directory target, in a temp
-// file for a file target — and renamed into place, so a failed copy leaves
-// the link untouched, and a failed rename puts the link back.
+// points at, reporting whether it converted anything. The copy is built beside
+// the target and renamed into place, so a failed copy leaves the link untouched
+// and a failed rename puts the link back.
 func linkToCopy(canonical, target string) (bool, error) {
 	installDir := filepath.Dir(target)
 	name := filepath.Base(target)
@@ -405,9 +347,9 @@ func linkToCopy(canonical, target string) (bool, error) {
 		return false, err
 	}
 	if err := renameFn(temp, target); err != nil {
-		// Put the link back through createSymlink, which writes it RELATIVE
-		// like every other mdm link. If even that fails, keep temp: it is
-		// the only thing left holding the content.
+		// Put the link back through createSymlink, which writes it relative
+		// like every other mdm link. If that fails, keep temp: it is the only
+		// thing left holding the content.
 		if !createSymlink(resolved, target) {
 			return false, fmt.Errorf("finalizing %s: rename to %s failed (%v), and restoring the original symlink also failed; the copied content is stranded at %s and needs manual repair", name, target, err, temp)
 		}
@@ -418,16 +360,10 @@ func linkToCopy(canonical, target string) (bool, error) {
 }
 
 // isMdmOwnedCopyInstall reports whether the real entry at target looks like a
-// copy install mdm itself wrote, and so is one this conversion may replace
-// with a link. Anything else at an install path belongs to someone else and
-// is left alone.
-//
-// Both shapes are checked by content rather than by name, and both checks
-// are deliberately the same strength: a directory qualifies if it holds a
-// SKILL.md, a file qualifies if it parses as an agent definition. Neither
-// can tell mdm's own entry from a user's that happens to look identical, but
-// because they are equally weak, neither shape is the easier one to sweep up
-// by accident.
+// copy install mdm wrote, and so may be replaced with a link. A directory
+// qualifies if it holds a SKILL.md, a file if it parses as an agent definition.
+// Both are weak ownership signals, not proof, and deliberately of equal
+// strength, so neither shape is the easier one to sweep up by accident.
 func isMdmOwnedCopyInstall(target string, info os.FileInfo) (bool, error) {
 	if info.IsDir() {
 		if _, err := os.Stat(filepath.Join(target, "SKILL.md")); err != nil {
@@ -444,14 +380,11 @@ func isMdmOwnedCopyInstall(target string, info os.FileInfo) (bool, error) {
 	return agent != nil, nil
 }
 
-// ensureCanonicalCopy makes sure the content exists at canonicalPath before
-// the install path stops holding it. This runs first for a reason: once the
-// install path is a symlink, the canonical copy is the only place the
-// content lives, so creating it has to succeed before anything is set aside.
-//
-// An existing canonical copy is left exactly as it is — this only fills in a
-// missing one. A partial copy is cleaned up so a retry does not find a
-// half-written canonical entry and take it for a complete one.
+// ensureCanonicalCopy makes sure the content exists at canonicalPath before the
+// install path stops holding it. Once the install path is a symlink, the
+// canonical copy is the only place the content lives. An existing canonical copy
+// is left as it is. A partial copy is cleaned up, so a retry does not take a
+// half-written entry for a complete one.
 func ensureCanonicalCopy(canonical, canonicalPath, target, name string, isDir bool) error {
 	if _, err := os.Stat(canonicalPath); err == nil {
 		return nil
@@ -477,21 +410,11 @@ func ensureCanonicalCopy(canonical, canonicalPath, target, name string, isDir bo
 	return nil
 }
 
-// copyToLink replaces one real install at target — a skill directory or an
-// agent-definition file — with an mdm symlink to <canonical>/<canonicalName>,
-// reporting whether it converted anything. The canonical copy is created
-// first when missing, since it is the only place the content can live once
-// the install path is a link; the original is then set aside with a rename
-// so a failed link can put it straight back.
-//
-// canonicalName is supplied by the caller and is deliberately NOT derived
-// from target's basename: a harness that reads agent definitions under its
-// own extension installs "<name>.agent.md" from the canonical "<name>.md",
-// and deriving the name here would create a duplicate canonical file under
-// the harness's extension and link the install at that duplicate. For a
-// skill the two are the same string, so nothing about the skill conversion
-// changes. name below stays the basename: it names only sibling temp files
-// and the install this error is about.
+// copyToLink replaces one real install at target with an mdm symlink to
+// <canonical>/<canonicalName>, reporting whether it converted anything. The
+// canonical copy is created first when missing, then the original is set aside
+// with a rename so a failed link can put it straight back. canonicalName comes
+// from the caller, never from target's basename; see conversionPath.
 func copyToLink(canonical, target, canonicalName string) (bool, error) {
 	installDir := filepath.Dir(target)
 	name := filepath.Base(target)

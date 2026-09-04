@@ -38,13 +38,11 @@ func hiddenAgentFixturePath(t *testing.T) string {
 	return filepath.Join(root, "tests", "testdata", "hidden-agent")
 }
 
-// A definition's frontmatter name is third-party text and is routinely not a
-// legal file name. It has to be sanitized once, because it becomes BOTH the
-// file name and the lock key: when the two disagreed, `mdm agents remove`
-// dropped the lock entry, found no file at the name it recorded, reported
-// success, and left the definition live in the harness with nothing left to
-// find it by. This test installs "Code Reviewer" and then removes it, which
-// is the only sequence that catches the divergence end to end.
+// A definition's frontmatter name is third-party text and often not a legal
+// file name. It is sanitized once, because it becomes both the file name and
+// the lock key. When the two disagree, `mdm agents remove` drops the lock entry,
+// finds no file, and leaves the definition live in the harness. Installing
+// "Code Reviewer" and removing it is the sequence that catches that.
 func TestAgentsAddSanitizesTheNameOnDiskAndInTheLock(t *testing.T) {
 	projectDir := t.TempDir()
 	stateDir := t.TempDir()
@@ -131,11 +129,9 @@ func TestAgentsAddAllowsHiddenMarkdownCharactersWithFlag(t *testing.T) {
 }
 
 // `mdm agents add .` is one keystroke from the documented `mdm agents add
-// ./my-agents`, and .agents/agents is itself a conventional agents
-// directory, so discovery finds mdm's own canonical copies. Copying one onto
-// itself used to empty it — copyFile opens the destination O_TRUNC before
-// reading the source — and print a checkmark over a 0-byte file with a
-// harness symlink pointing at nothing.
+// ./my-agents`, and .agents/agents is itself a conventional agents directory,
+// so discovery finds mdm's own canonical copies. Copying one onto itself
+// empties it: copyFile opens the destination O_TRUNC before reading the source.
 func TestAgentsAddOnTheProjectItselfLeavesTheDefinitionIntact(t *testing.T) {
 	projectDir := t.TempDir()
 	stateDir := t.TempDir()

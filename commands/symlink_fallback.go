@@ -7,12 +7,10 @@ import (
 	"github.com/sethcarney/mdm/internal/harness"
 )
 
-// symlinkFallbacks collects the installs in one run that were copied because
-// a symlink could not be created (see performSymlinkInstall). The fallback is
-// per install and records nothing: the scope stays in symlink mode, so the
-// next `mdm skills install` or `mdm skills update` tries to link again. One
-// warning per run says so, rather than one per skill and harness, and gives
-// `--copy` as the way to make the copies deliberate.
+// symlinkFallbacks collects the installs in one run that were copied because a
+// symlink could not be created (see performSymlinkInstall). The fallback records
+// nothing: the scope stays in symlink mode, so the next install tries to link
+// again. One warning per run names `--copy` as the way to make copies deliberate.
 type symlinkFallbacks struct {
 	harnesses []string
 	seen      map[string]bool

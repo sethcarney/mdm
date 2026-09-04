@@ -91,12 +91,10 @@ func TestDiscoverFindsManifestAndConventionalDirs(t *testing.T) {
 	}
 }
 
-// ParseAgentMd's (nil, nil) return means "not an agent definition", which is
-// a routine thing to find. A genuine read failure is different and must not
-// collapse into the same result. A directory is a reliable, portable way to
-// make os.ReadFile fail with something other than "not found" on every OS,
-// without relying on chmod (which does not model "permission denied" the
-// same way on Windows/NTFS).
+// ParseAgentMd's (nil, nil) return means "not an agent definition". A genuine
+// read failure must not collapse into the same result. A directory makes
+// os.ReadFile fail with something other than "not found" on every OS, without
+// chmod, which does not model "permission denied" the same way on NTFS.
 func TestParseAgentMdReadError(t *testing.T) {
 	got, err := ParseAgentMd("testdata/repo/agents")
 	if err == nil {
@@ -142,13 +140,10 @@ func TestIsSafeRelDir(t *testing.T) {
 	}
 }
 
-// The doc comment on DiscoverAgentFiles claims manifest-declared directories
-// are searched before conventional ones and the first occurrence of a name
-// wins. testdata/repo/custom-agents/shared.md (manifest-declared) and
-// testdata/repo/agents/shared.md (conventional) share the name "shared"
-// with different descriptions specifically to pin that order down; every
-// other fixture uses distinct names, so this is the only test that would
-// fail if the order were reversed.
+// DiscoverAgentFiles searches manifest-declared directories before conventional
+// ones, and the first occurrence of a name wins.
+// testdata/repo/custom-agents/shared.md and testdata/repo/agents/shared.md share
+// the name "shared" with different descriptions to pin that order down.
 func TestDiscoverManifestDirWinsOverConventional(t *testing.T) {
 	got, err := DiscoverAgentFiles("testdata/repo", "")
 	if err != nil {
@@ -171,12 +166,9 @@ func TestDiscoverManifestDirWinsOverConventional(t *testing.T) {
 }
 
 // A source can ship a directory entry that lexically looks like a plain
-// subdirectory (e.g. "escaped-agents" in agentsDirs) but is actually a
-// symlink pointing outside the search root. isSafeRelDir only inspects the
-// declared name and cannot see that; only resolving the entry on disk
-// reveals it. Built at test time with t.TempDir rather than as a committed
-// fixture, since a symlink materializing correctly depends on the checkout
-// environment, not just this repo's own core.symlinks setting.
+// subdirectory but is a symlink pointing outside the search root. isSafeRelDir
+// only inspects the declared name. Built with t.TempDir rather than a committed
+// fixture, since a symlink materializing depends on the checkout environment.
 func TestDiscoverRejectsSymlinkedDirEscape(t *testing.T) {
 	root := t.TempDir()
 
@@ -250,14 +242,10 @@ func TestDiscoverRejectsSymlinkedFileEscape(t *testing.T) {
 }
 
 // .claude-plugin itself can be a symlink pointing outside the search root,
-// making manifestAgentDirs read and parse a marketplace.json that never
-// lived inside the source being installed. Declared agentsDirs are still
-// joined against searchPath (not against wherever the manifest actually
-// lives), so this is not an exfiltration path — but the read itself should
-// still be refused rather than silently followed, which is only observable
-// by calling manifestAgentDirs directly: DiscoverAgentFiles would resolve
-// any declared directory against the (uncompromised) repo root either way,
-// so it can't tell the two cases apart from the outside.
+// making manifestAgentDirs parse a marketplace.json from outside the source.
+// Declared agentsDirs are still joined against searchPath, so this is not an
+// exfiltration path, but the read is refused. Only a direct manifestAgentDirs
+// call can observe that: DiscoverAgentFiles resolves against the repo root.
 func TestManifestAgentDirsRejectsSymlinkedPluginDir(t *testing.T) {
 	root := t.TempDir()
 

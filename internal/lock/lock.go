@@ -21,12 +21,10 @@ type LocalSkillLockEntry struct {
 }
 
 // AgentLockEntry records one installed agent-definition file. It mirrors
-// LocalSkillLockEntry: the same source fields, plus AgentPath — where the
-// file sat inside the source tree — so a later update can find it again.
-// Unlike SkillPath, AgentPath has no omitempty: a definition is a single
-// file, not a directory, so there is no well-known name (like SKILL.md) an
-// update could fall back to guessing; losing this path silently would make
-// the entry impossible to refresh from its source.
+// LocalSkillLockEntry, plus AgentPath, where the file sat inside the source
+// tree. AgentPath has no omitempty: a definition is a single file with no
+// well-known name like SKILL.md, so losing the path makes the entry impossible
+// to refresh.
 type AgentLockEntry struct {
 	Source     string `json:"source"`
 	SourceType string `json:"sourceType"`
@@ -35,16 +33,10 @@ type AgentLockEntry struct {
 }
 
 // LocalSkillLockFile is a view of the skills section of the project lock.
-// Reading and writing it goes through mdm.lock (with legacy
-// skills-lock.json fallback on read); the other sections are preserved.
-//
-// json.Unmarshal into this struct is also how readLegacySkillsLockE reads a
-// real v1 skills-lock.json directly, so ConfiguredHarnesses keeps the v1 tag
-// (configuredAgents) rather than the v2 one: v1 is frozen and in the wild,
-// and this struct's tag is the only thing standing between a real v1 file
-// and this field. Field writes never go through this struct's own
-// MarshalJSON — WriteLocalLock copies onto ProjectLockFile, which owns the
-// v2 configuredHarnesses key — so the v1 tag here costs nothing on write.
+// json.Unmarshal into this struct is also how readLegacySkillsLockE reads a real
+// v1 skills-lock.json, so ConfiguredHarnesses keeps the v1 tag configuredAgents.
+// v1 is frozen and in the wild. Writes go through ProjectLockFile, which owns
+// the v2 configuredHarnesses key, so the v1 tag costs nothing on write.
 type LocalSkillLockFile struct {
 	Version             int                            `json:"version"`
 	Skills              map[string]LocalSkillLockEntry `json:"skills"`
@@ -60,11 +52,9 @@ func legacyTombstone(data []byte) bool {
 	return json.Unmarshal(data, &t) == nil && t.Moved != ""
 }
 
-// readLegacySkillsLockE reads the v1 skills-lock.json directly. It is only
-// consulted when mdm.lock does not exist. It fails the same way the
-// final v1 patch releases did - corrupt or newer-versioned files are an
-// error, not an empty lock - except for v2's own tombstone, which reads as
-// empty by design.
+// readLegacySkillsLockE reads the v1 skills-lock.json directly, only when
+// mdm.lock does not exist. Corrupt or newer-versioned files are an error, as in
+// the final v1 patch releases, except v2's own tombstone, which reads as empty.
 func readLegacySkillsLockE(cwd string) (LocalSkillLockFile, error) {
 	if cwd == "" {
 		cwd, _ = os.Getwd()
@@ -128,11 +118,9 @@ func RemoveSkillFromLocalLock(skillName string, cwd string) error {
 	return WriteLocalLock(lock, cwd)
 }
 
-// AddAgentToLocalLock records one installed agent definition in mdm.lock.
-// It mirrors AddSkillToLocalLock but goes through ProjectLockFile directly
-// rather than the LocalSkillLockFile view: that view carries only the
-// skills and configuredHarnesses sections across a read/write round trip,
-// not agents.
+// AddAgentToLocalLock records one installed agent definition in mdm.lock. It
+// goes through ProjectLockFile directly: the LocalSkillLockFile view carries
+// only the skills and configuredHarnesses sections across a round trip.
 func AddAgentToLocalLock(name string, entry AgentLockEntry, cwd string) error {
 	pl := ReadProjectLock(cwd)
 	if pl.Agents == nil {
@@ -199,9 +187,8 @@ func SetConfiguredHarnesses(harnesses []string, global bool, cwd string) error {
 	return WriteLocalLock(lk, cwd)
 }
 
-// GetInstallMode returns the scope's recorded install mode. An empty
-// string means symlink, which is the default for a scope that has never
-// had the switch set.
+// GetInstallMode returns the scope's recorded install mode. An empty string
+// means symlink, the default for a scope that never set the switch.
 func GetInstallMode(global bool, cwd string) string {
 	if global {
 		return ReadGlobalState().InstallMode
@@ -209,9 +196,8 @@ func GetInstallMode(global bool, cwd string) string {
 	return ReadProjectLock(cwd).InstallMode
 }
 
-// SetInstallMode records the scope's install mode. It goes through the
-// project lock directly rather than the LocalSkillLockFile view, which
-// carries only the skills and configuredHarnesses sections across a write.
+// SetInstallMode records the scope's install mode. It goes through the project
+// lock directly, since the LocalSkillLockFile view drops other sections.
 func SetInstallMode(mode string, global bool, cwd string) error {
 	if global {
 		s := ReadGlobalState()

@@ -191,19 +191,11 @@ type DiscoverOptions struct {
 	FullDepth       bool
 }
 
-// The two containment checks this package applies to manifest-declared
-// directories live in internal/pathsafe, because internal/agentfile needs the
-// same pair and a security guard that exists twice drifts. See that package
-// for what each one covers, why the lexical check uses filepath.IsLocal rather
-// than filepath.IsAbs, and the check-then-use window it deliberately leaves
-// open. They are named here so this file reads the same as it did when it
-// owned them.
-//
-// The scope limit is this package's own, and stays here: the guards cover
-// manifest-declared paths ONLY. The conventional directories DiscoverSkills
-// always scans (priorityDirs, and the FindSkillDirs walk) are still opened by
-// name, so a symlinked "skills" directory inside a source remains a way out of
-// the source tree. That was left alone on purpose rather than missed.
+// The containment checks this package applies to manifest-declared directories
+// live in internal/pathsafe. They cover manifest-declared paths only: the
+// conventional directories DiscoverSkills always scans (priorityDirs, and the
+// FindSkillDirs walk) are opened by name, so a symlinked "skills" directory
+// inside a source is still a way out of the source tree. That is deliberate.
 var (
 	isSafeRelDir     = pathsafe.IsSafeRelDir
 	resolvedContains = pathsafe.ResolvedContains
@@ -211,12 +203,8 @@ var (
 
 // readPluginManifest returns the raw .claude-plugin/marketplace.json bytes for
 // searchPath together with the resolved search root its declared directories
-// must stay inside.
-//
-// The manifest path gets the same containment check as the directories it
-// declares: .claude-plugin, or marketplace.json itself, can be a symlink
-// pointing outside the source, and it is read before anything else has a
-// chance to check where it came from.
+// must stay inside. The manifest path gets the same containment check:
+// .claude-plugin or marketplace.json itself can be a symlink out of the source.
 func readPluginManifest(searchPath string) (data []byte, resolvedRoot string, ok bool) {
 	resolvedRoot, err := filepath.EvalSymlinks(searchPath)
 	if err != nil {
@@ -513,11 +501,9 @@ func DiscoverNodeModuleSkills(cwd string) []NodeModuleSkill {
 var _ fs.DirEntry // suppress unused import warning
 
 // SetFrontmatterName rewrites the top-level `name:` value in a SKILL.md's YAML
-// frontmatter and returns the new document. Only that one line is touched - the
-// rest of the file, including comments, key order, and line endings, is
-// preserved byte for byte, because re-marshalling the YAML would silently
-// rewrite skills that are about to become someone's own source of truth.
-// Reports false when there is no frontmatter or no top-level name key.
+// frontmatter and returns the new document. Only that line changes; comments,
+// key order, and line endings are preserved byte for byte. It reports false
+// when there is no frontmatter or no top-level name key.
 func SetFrontmatterName(raw, name string) (string, bool) {
 	const delim = "---"
 	if !strings.HasPrefix(raw, delim) {

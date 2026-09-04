@@ -10,27 +10,19 @@ import (
 	"github.com/sethcarney/mdm/internal/harness"
 )
 
-// ──────────────────────────────────────────────────────────
-// v1 → v2 migration
-//
-// Everyday v2 reads tolerate some legacy oddities (a versionless file, a
-// tombstone); migration must not, because it retires the source files.
-// Every step here re-parses the legacy files strictly - down to the shape
-// of each entry - and aborts on anything unexpected, so a migration never
-// destroys data it could not read. Execution materializes the target from
-// the exact parse the plan validated, never from a second, more tolerant
-// read.
-// ──────────────────────────────────────────────────────────
+// v1 to v2 migration: everyday v2 reads tolerate some legacy oddities (a
+// versionless file, a tombstone); migration must not, because it retires the
+// source files. Every step re-parses the legacy files strictly and aborts on
+// anything unexpected. Execution materializes the target from the exact parse
+// the plan validated, never from a second, more tolerant read.
 
 // LegacyProjectLockNames are the v1 project lock files, in display order.
 var LegacyProjectLockNames = []string{"skills-lock.json", "knowledge-lock.json", "plugins-lock.json"}
 
 // SkillsTombstone is written over skills-lock.json after a migration. The
-// version is deliberately newer than any v1 lock: the final v1 patch
-// releases refuse locks with a version they don't understand and print an
-// upgrade pointer, so a patched v1 binary fails loudly here. Older v1
-// binaries read the file as a valid, empty lock - they cannot be made to
-// error - so the _comment exists for the human who finds it.
+// version is deliberately newer than any v1 lock, so a patched v1 binary
+// refuses it and prints an upgrade pointer. Older v1 binaries read it as a
+// valid empty lock, so the _comment exists for the human who finds it.
 const SkillsTombstone = `{
   "version": 2,
   "skills": {},
@@ -51,9 +43,7 @@ type ProjectMigration struct {
 	// legacy files. Only populated when TargetExists.
 	Orphaned []string
 	// InstallModeBackfill is the install mode inferred from disk, empty when
-	// there is nothing to record: for an existing mdm.lock with no mode, or
-	// the mode a fresh migration will write. Planned here so --dry-run
-	// names the write.
+	// there is nothing to record. Planned here so --dry-run names the write.
 	InstallModeBackfill string
 	// merged is the target lock assembled from the strictly parsed legacy
 	// files. Execution writes exactly this when the target does not exist.
@@ -209,9 +199,8 @@ func (m *ProjectMigration) absorb(d legacyFileData) {
 
 // scanHarnesses returns the harnesses whose install directories are worth
 // scanning: the recorded list, or every harness the scope supports when it is
-// empty. An empty list is common, since configuredHarnesses only records
-// interactive picks and `mdm skills add <src> --harness claude-code -y` leaves it
-// empty.
+// empty. An empty list is common, since configuredHarnesses records only
+// interactive picks.
 func scanHarnesses(harnesses []string, global bool) []string {
 	if len(harnesses) > 0 {
 		return harnesses
@@ -237,14 +226,11 @@ func skillNames[E any](skills map[string]E) []string {
 	return names
 }
 
-// inferInstallMode reports the mode a scope was using from what is on disk
-// at each harness's install path (see scanHarnesses): a real directory holding a
-// SKILL.md means --copy, anything else is no evidence. It returns
-// InstallModeCopy or "", never the literal "symlink", so no evidence leaves
-// the key absent for a later migration. It never reads .agents/skills:
-// a symlink install creates that as a real directory, so it reads as copy
-// for every project. Runs at migration time only; the recorded mode is
-// authoritative once it exists.
+// inferInstallMode reports the mode a scope was using from what is on disk at
+// each harness's install path: a real directory holding a SKILL.md means copy,
+// anything else is no evidence. It returns InstallModeCopy or "", never
+// "symlink", so no evidence leaves the key absent. It never reads
+// .agents/skills, which a symlink install creates as a real directory.
 func inferInstallMode(names, harnesses []string, global bool, cwd string) string {
 	harnesses = scanHarnesses(harnesses, global)
 	for _, name := range names {
@@ -279,11 +265,9 @@ func inferInstallMode(names, harnesses []string, global bool, cwd string) string
 }
 
 // ExecuteProjectMigration performs the migration PlanProjectMigration
-// described: it writes the lock the plan assembled to mdm.lock (when
-// it does not exist yet), replaces skills-lock.json with a tombstone (or
-// deletes it with tombstone=false), and deletes the other legacy files.
-// Call PlanProjectMigration first; a plan with orphaned entries discards
-// them, so the caller must confirm that explicitly.
+// described: it writes the assembled lock to mdm.lock, replaces
+// skills-lock.json with a tombstone (or deletes it with tombstone=false), and
+// deletes the other legacy files. A plan with orphaned entries discards them.
 func ExecuteProjectMigration(cwd string, tombstone bool) error {
 	if cwd == "" {
 		cwd, _ = os.Getwd()
@@ -405,10 +389,9 @@ func strictReadLegacyGlobal(path string) (GlobalState, error) {
 	}, nil
 }
 
-// PlanGlobalMigration inspects the machine's global state and reports what
-// a migration would do. It fails on a legacy file it cannot parse - the
-// file is per-machine state with no copy in version control, so it must
-// never be deleted on the strength of a read that fell back to empty.
+// PlanGlobalMigration inspects the machine's global state and reports what a
+// migration would do. It fails on a legacy file it cannot parse: the file is
+// per-machine state with no copy in version control.
 func PlanGlobalMigration() (GlobalMigration, error) {
 	var plan GlobalMigration
 	var parsed GlobalState
@@ -453,11 +436,9 @@ func PlanGlobalMigration() (GlobalMigration, error) {
 }
 
 // ExecuteGlobalMigration writes the state PlanGlobalMigration assembled to
-// mdm-state.json (when it does not exist yet), backfills the install mode
-// on an existing mdm-state.json that has none, and deletes the v1 global
-// skills-lock.json. The global file is per-machine state, so no tombstone
-// is left behind. A plan with orphaned entries discards them, so the
-// caller must confirm that explicitly.
+// mdm-state.json (when it does not exist yet), backfills the install mode on an
+// existing mdm-state.json that has none, and deletes the v1 global
+// skills-lock.json. A plan with orphaned entries discards them.
 func ExecuteGlobalMigration() error {
 	plan, err := PlanGlobalMigration()
 	if err != nil {

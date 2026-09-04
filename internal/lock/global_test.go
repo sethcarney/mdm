@@ -9,20 +9,11 @@ import (
 	"github.com/sethcarney/mdm/internal/harness"
 )
 
-// isolateGlobal points the global state AND every user-level directory the
-// harness registry resolves at a fresh temp home, so a test that touches
-// global scope can never read or write the developer's real files.
-//
-// The state file alone is not enough: global install paths are built from
-// the user's home directory, so install-mode inference walking every harness
-// the scope supports would otherwise Lstat (and a conversion would rewrite)
-// real directories under the developer's home. That has already happened
-// once during development, which is why this is not left to each test.
-//
-// harness.Reload is what makes the redirect stick: the registry resolves every
-// global path once, at package init. Its cleanup is registered before the
-// t.Setenv calls so it runs after them, rebuilding the registry from the
-// restored environment. Tests using this must not run in parallel.
+// isolateGlobal points the global state and every user-level directory the
+// harness registry resolves at a fresh temp home. The state file alone is not
+// enough: global install paths come from the home directory, so install-mode
+// inference would Lstat real directories under it. harness.Reload makes the
+// redirect stick, and its cleanup runs after the t.Setenv calls. Not parallel.
 func isolateGlobal(t *testing.T) string {
 	t.Helper()
 	// harness.Reload below replaces AllHarnesses wholesale, so calling this after

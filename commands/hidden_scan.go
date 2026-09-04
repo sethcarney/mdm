@@ -58,16 +58,9 @@ func checkBlobSkillsMarkdownForHiddenChars(skills []*blob.BlobSkill, allow bool)
 }
 
 // checkAgentFileMarkdownForHiddenChars is the disk scan for a single agent
-// definition. An agent definition is one markdown file rather than a
-// directory, so it uses ScanMarkdownText on that file instead of
-// ScanMarkdownFiles' walk — everything else (the finding report, the
-// --allow-hidden-chars override, the blocked/allowed verdict) is the same
-// code the skills paths use.
-//
-// This scan matters more here than anywhere else in mdm: an agent
-// definition is third-party markdown installed specifically to become a
-// persona the model adopts, so smuggled instructions in one are executed by
-// construction rather than merely read.
+// definition. A definition is one markdown file, so this uses ScanMarkdownText
+// instead of ScanMarkdownFiles' walk. The scan matters most here: a definition
+// is third-party markdown installed to become a persona the model adopts.
 func checkAgentFileMarkdownForHiddenChars(a *agentfile.AgentFile, allow bool) bool {
 	raw, err := os.ReadFile(a.Path)
 	if err != nil {

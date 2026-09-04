@@ -914,12 +914,10 @@ func promptScopeAndHarnesses(opts AddOptions, cwd string) (bool, []string, bool)
 }
 
 // commitScopeInstallMode settles the scope's install mode and returns the mode
-// to install with: an explicit --copy or --symlink wins, otherwise the
-// recorded mode is inherited, and symlink is the default. Call it immediately
-// before installing and never earlier: committing re-materializes every
-// install in the scope, and doing that while the user can still back out
-// (the harness picker, the audit confirmation, an emptied harness list) leaves a
-// converted scope with nothing installed.
+// to install with: an explicit --copy or --symlink wins, otherwise the recorded
+// mode is inherited, and symlink is the default. Call it immediately before
+// installing: committing re-materializes every install in the scope, and doing
+// that while the user can still back out leaves a converted scope with nothing.
 func commitScopeInstallMode(opts AddOptions, global bool, cwd string) (InstallMode, bool) {
 	requested := InstallModeSymlink
 	switch {

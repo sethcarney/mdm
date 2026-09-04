@@ -5,20 +5,9 @@ import (
 	"testing"
 )
 
-// Mutations this test catches:
-//  1. `mdm install` restores skills but silently skips agents (the call to
-//     restoreAgentsHook is dropped, or never wired in) — the recorded order
-//     would be missing "agents" entirely, failing the length/content check.
-//  2. Agent restore runs BEFORE skills instead of after (the two calls in
-//     runInstallFromLock are swapped) — the recorded order would be
-//     ["agents", "skills"], failing the exact-order check.
-//
-// Neither restoreSkillsFromCurrentLock nor restoreAgentsFromLock has an
-// isolated on-disk side effect a test can assert on without a real network
-// fetch or an interactive prompt (both eventually call runAdd/runAgentAdd),
-// so this swaps them for recorders — the same seam-var pattern already used
-// for copyDirFn/copyFileFn/renameFn/removeFileFn in install_mode.go and
-// agent_artifacts.go. Not parallel-safe, for the same reason those aren't.
+// Guards two mutations: dropping the restoreAgentsHook call, and swapping the
+// two calls in runInstallFromLock. Neither restore step leaves an on-disk trace
+// to assert on, so both are swapped for recorders. Not parallel-safe.
 func TestRunInstallFromLockRestoresSkillsThenAgents(t *testing.T) {
 	origSkills, origAgents := restoreSkillsHook, restoreAgentsHook
 	t.Cleanup(func() { restoreSkillsHook, restoreAgentsHook = origSkills, origAgents })
@@ -35,11 +24,8 @@ func TestRunInstallFromLockRestoresSkillsThenAgents(t *testing.T) {
 	}
 }
 
-// A narrower regression guard than the order test above: even with agent
-// restore correctly wired in, a mutation that calls restoreAgentsHook with
-// the wrong opts value (rather than dropping or reordering the call
-// entirely) would still pass the order test. Pin down that the exact opts
-// value flows through unchanged.
+// The order test above still passes when restoreAgentsHook is called with the
+// wrong opts. This pins that the exact opts value flows through unchanged.
 func TestRunInstallFromLockPassesOptsToAgentRestore(t *testing.T) {
 	origSkills, origAgents := restoreSkillsHook, restoreAgentsHook
 	t.Cleanup(func() { restoreSkillsHook, restoreAgentsHook = origSkills, origAgents })

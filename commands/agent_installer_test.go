@@ -60,12 +60,10 @@ func TestInstallAgentFileSkipsAHarnessWithNoAgentDir(t *testing.T) {
 	}
 }
 
-// AgentFileExt is only meaningful if installAgentFile actually names the
-// file it writes after it. A test that calls AgentFileExt in isolation
-// would keep passing even if installAgentFile ignored the suffix and wrote
-// "<name>.md" unconditionally — Copilot would then silently never read any
-// installed agent. This test looks at the harness directory on disk instead
-// of trusting the InstallResult.
+// AgentFileExt matters only if installAgentFile names the file it writes after
+// it. A test calling AgentFileExt in isolation passes even when installAgentFile
+// writes "<name>.md" unconditionally, which Copilot never reads. This looks at
+// the harness directory on disk instead of the InstallResult.
 func TestInstallAgentFileWritesTheHarnessRequiredFilename(t *testing.T) {
 	tests := []struct {
 		harnessName  string

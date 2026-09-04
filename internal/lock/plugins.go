@@ -7,14 +7,9 @@ import (
 	"time"
 )
 
-// ──────────────────────────────────────────────────────────
-// Agent Plugins lock - the plugins section of mdm.lock
-//
-// v1 kept plugin entries in their own plugins-lock.json so a stable binary
-// rewriting the skills lock could not drop them. In v2 the unified
-// mdm.lock preserves unknown top-level keys on every write (see
-// project.go), so the sections share one file safely.
-// ──────────────────────────────────────────────────────────
+// Agent Plugins lock: the plugins section of mdm.lock. v1 kept plugin entries
+// in their own plugins-lock.json. In v2 mdm.lock preserves unknown top-level
+// keys on every write (see project.go), so the sections share one file safely.
 
 const pluginsLockVersion = 1
 

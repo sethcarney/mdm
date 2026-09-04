@@ -36,12 +36,10 @@ func showLogo(ver string) {
 	fmt.Printf("\n%s%s%s%s %s%s%s\n\n", ansiBold, ansiText, appName, ansiReset, ansiDim, ver, ansiReset)
 }
 
-// multiValueFlags are flags that accept multiple space-separated values after a
-// single flag instance (--harness claude cursor) in addition to the repeated-flag
-// form (--harness claude --harness cursor). Both styles are supported.
-//
-// --harness has no shorthand — -a is deliberately left free for --agent in the
-// agent-definition command — so only its long form is listed here.
+// multiValueFlags are flags that accept several space-separated values after a
+// single flag instance (--harness claude cursor) as well as the repeated-flag
+// form. --harness has no shorthand, since -a is left free for --agent in the
+// agent-definition command, so only its long form is listed here.
 var multiValueFlags = map[string]bool{
 	"harness": true,
 	"skill":   true, "s": true,
