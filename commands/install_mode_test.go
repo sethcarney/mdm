@@ -638,3 +638,307 @@ func TestCopyAndSymlinkFlagsAreMutuallyExclusive(t *testing.T) {
 		}
 	}
 }
+
+// ── Single-file conversions (agent definitions) ─────────────────────────────
+//
+// Agent definitions are single files, not directories: canonical at
+// .agents/agents/<name>.md, installed as <name>.md (or, for a harness with
+// its own required suffix, <name><ext>). These fixtures and tests mirror the
+// directory-shaped ones above, so the converter's file branch gets the same
+// coverage the directory branch already has.
+
+// writeAgentFile writes a canonical-shaped agent-definition file at
+// dir/name+".md" and returns its path.
+func writeAgentFile(t *testing.T, dir, name string) string {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, name+".md")
+	if err := os.WriteFile(path, []byte("---\nname: "+name+"\ndescription: d\n---\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// linkAgentFile lays out a symlink-mode agent install: the canonical
+// .agents/agents/<name>.md and <cwd>/.claude/agents/<name>.md pointing at it.
+func linkAgentFile(t *testing.T, cwd, name string) (canonical, canonicalDir, link string) {
+	t.Helper()
+	canonicalDir = filepath.Join(cwd, ".agents", "agents")
+	canonical = writeAgentFile(t, canonicalDir, name)
+	link = filepath.Join(cwd, ".claude", "agents", name+".md")
+	symlinkOrSkip(t, canonical, link)
+	return canonical, canonicalDir, link
+}
+
+// writeCopiedAgentFile lays out a copy-mode agent install: a real file at
+// the harness path and no canonical file, mirroring writeCopiedSkill.
+func writeCopiedAgentFile(t *testing.T, cwd, name string) string {
+	t.Helper()
+	return writeAgentFile(t, filepath.Join(cwd, ".claude", "agents"), name)
+}
+
+// failCopyFile swaps copyFileFn for one that always errors, since a copy
+// failure cannot be forced reliably at the OS level. Mirrors failCopy.
+func failCopyFile(t *testing.T) {
+	t.Helper()
+	orig := copyFileFn
+	copyFileFn = func(_, _ string) error { return errors.New("forced copy failure") }
+	t.Cleanup(func() { copyFileFn = orig })
+}
+
+// Agent definitions are single files, and they obey the same scope-wide
+// mode as skills. A converter that only understands directories would
+// leave them behind on whichever shape they were installed with.
+func TestRematerializeConvertsASingleFile(t *testing.T) {
+	cwd := t.TempDir()
+	canonicalDir := filepath.Join(cwd, ".agents", "agents")
+	if err := os.MkdirAll(canonicalDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	canonical := filepath.Join(canonicalDir, "critic.md")
+	if err := os.WriteFile(canonical, []byte("---\nname: critic\ndescription: d\n---\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	installDir := filepath.Join(cwd, ".claude", "agents")
+	if err := os.MkdirAll(installDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(installDir, "critic.md")
+	if err := os.Symlink(canonical, target); err != nil {
+		t.Skipf("symlinks unavailable on this host: %v", err)
+	}
+
+	n, err := rematerializeScope(InstallModeCopy, canonicalDir, []string{target})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("converted %d, want 1", n)
+	}
+	info, err := os.Lstat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		t.Error("still a symlink after conversion to copy")
+	}
+	if _, err := os.Stat(canonical); err != nil {
+		t.Errorf("canonical file destroyed: %v", err)
+	}
+}
+
+// A file already installed as a real copy is left alone: nothing to convert.
+func TestRematerializeFileIsANoOpWhenAlreadyReal(t *testing.T) {
+	cwd := t.TempDir()
+	real := writeCopiedAgentFile(t, cwd, "critic")
+
+	n, err := rematerializeScope(InstallModeCopy, filepath.Join(cwd, ".agents", "agents"), []string{real})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Errorf("converted %d, want 0", n)
+	}
+	if _, err := os.Stat(real); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A failed file copy leaves the symlink, and the install path, exactly as
+// they were: no empty gap between old and new.
+func TestRematerializeFileFailureLeavesSymlinkUnchanged(t *testing.T) {
+	cwd := t.TempDir()
+	canonical, canonicalDir, link := linkAgentFile(t, cwd, "critic")
+	failCopyFile(t)
+
+	n, err := rematerializeScope(InstallModeCopy, canonicalDir, []string{link})
+	if err == nil {
+		t.Fatal("expected an error from the forced copy failure")
+	}
+	if n != 0 {
+		t.Errorf("converted %d, want 0", n)
+	}
+	if _, err := os.Lstat(link); err != nil {
+		t.Fatalf("install path is empty after a failed conversion: %v", err)
+	}
+	assertLinkTo(t, link, canonical)
+	assertNoTempDirs(t, filepath.Dir(link))
+}
+
+// When the final rename fails, the symlink is put back, and put back
+// RELATIVE like every other mdm link.
+func TestRematerializeRestoresARelativeSymlinkForAFileAfterARenameFailure(t *testing.T) {
+	cwd := t.TempDir()
+	canonical, canonicalDir, link := linkAgentFile(t, cwd, "critic")
+	failRename(t)
+
+	n, err := rematerializeScope(InstallModeCopy, canonicalDir, []string{link})
+	if err == nil {
+		t.Fatal("expected an error from the forced rename failure")
+	}
+	if n != 0 {
+		t.Errorf("converted %d, want 0", n)
+	}
+	if _, err := os.Lstat(link); err != nil {
+		t.Fatalf("install path is empty after a failed conversion: %v", err)
+	}
+	assertLinkTo(t, link, canonical)
+	if restored, _ := os.Readlink(link); filepath.IsAbs(restored) {
+		t.Errorf("restored link target = %q, want a relative path", restored)
+	}
+	assertNoTempDirs(t, filepath.Dir(link))
+}
+
+// A symlink mdm did not create, pointing outside the canonical directory,
+// is left untouched: it exists so edits propagate, and a frozen copy would
+// break that.
+func TestRematerializeLeavesAForeignFileSymlinkAlone(t *testing.T) {
+	cwd := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "critic.md")
+	if err := os.WriteFile(outside, []byte("mine\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(cwd, ".claude", "agents", "critic.md")
+	symlinkOrSkip(t, outside, link)
+
+	n, err := rematerializeScope(InstallModeCopy, filepath.Join(cwd, ".agents", "agents"), []string{link})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Errorf("converted %d, want 0: a foreign link is not mdm's to replace", n)
+	}
+	assertLinkTo(t, link, outside)
+}
+
+// ── File: copy to symlink ────────────────────────────────────────────────────
+
+// --symlink turns a real file install back into an mdm link, creating the
+// canonical copy first because a copy install never wrote one.
+func TestRematerializeConvertsASingleFileToSymlink(t *testing.T) {
+	cwd := t.TempDir()
+	symlinkOrSkip(t, cwd, filepath.Join(cwd, "probe"))
+	target := writeCopiedAgentFile(t, cwd, "critic")
+	canonicalDir := filepath.Join(cwd, ".agents", "agents")
+
+	n, err := rematerializeScope(InstallModeSymlink, canonicalDir, []string{target})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("converted %d, want 1", n)
+	}
+	assertLinkTo(t, target, filepath.Join(canonicalDir, "critic.md"))
+	if _, err := os.Stat(filepath.Join(canonicalDir, "critic.md")); err != nil {
+		t.Errorf("canonical file missing after conversion: %v", err)
+	}
+}
+
+// An existing canonical file is kept as is, not overwritten from the copy.
+func TestRematerializeToSymlinkKeepsExistingCanonicalFile(t *testing.T) {
+	cwd := t.TempDir()
+	symlinkOrSkip(t, cwd, filepath.Join(cwd, "probe"))
+	target := writeCopiedAgentFile(t, cwd, "critic")
+	canonicalDir := filepath.Join(cwd, ".agents", "agents")
+	canonicalPath := writeAgentFile(t, canonicalDir, "critic")
+	if err := os.WriteFile(canonicalPath, []byte("canonical\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := rematerializeScope(InstallModeSymlink, canonicalDir, []string{target}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "canonical\n" {
+		t.Errorf("link content = %q, want the existing canonical content", got)
+	}
+}
+
+// If the canonical copy cannot be created, the real file stays in place.
+func TestRematerializeToSymlinkCopyFailureLeavesTheFile(t *testing.T) {
+	cwd := t.TempDir()
+	target := writeCopiedAgentFile(t, cwd, "critic")
+	failCopyFile(t)
+
+	n, err := rematerializeScope(InstallModeSymlink, filepath.Join(cwd, ".agents", "agents"), []string{target})
+	if err == nil {
+		t.Fatal("expected an error from the forced copy failure")
+	}
+	if n != 0 {
+		t.Errorf("converted %d, want 0", n)
+	}
+	if isSymlink(t, target) {
+		t.Error("target became a symlink despite the forced copy failure")
+	}
+	if _, err := os.Stat(target); err != nil {
+		t.Fatalf("install path is empty after a failed conversion: %v", err)
+	}
+}
+
+// If the real file cannot be set aside, it stays exactly where it was.
+func TestRematerializeToSymlinkRenameFailureLeavesTheFile(t *testing.T) {
+	cwd := t.TempDir()
+	symlinkOrSkip(t, cwd, filepath.Join(cwd, "probe"))
+	target := writeCopiedAgentFile(t, cwd, "critic")
+	failRename(t)
+
+	n, err := rematerializeScope(InstallModeSymlink, filepath.Join(cwd, ".agents", "agents"), []string{target})
+	if err == nil {
+		t.Fatal("expected an error from the forced rename failure")
+	}
+	if n != 0 {
+		t.Errorf("converted %d, want 0", n)
+	}
+	if isSymlink(t, target) {
+		t.Error("target became a symlink despite the forced rename failure")
+	}
+	if _, err := os.Stat(target); err != nil {
+		t.Fatalf("install path is empty after a failed conversion: %v", err)
+	}
+}
+
+// A real file at a tracked install path that does not parse as an agent
+// definition (no name/description frontmatter) is someone else's — the
+// exact mirror of a real directory with no SKILL.md — and is left
+// untouched: not converted, not counted, and not copied into the
+// canonical directory. This is the concrete case a mode switch must not
+// clobber: a user hand-writes .claude/agents/critic.md for their own
+// purposes, and the lock happens to record an agent definition also named
+// "critic" at that same path.
+func TestRematerializeToSymlinkLeavesANonAgentFileAlone(t *testing.T) {
+	cwd := t.TempDir()
+	target := filepath.Join(cwd, ".claude", "agents", "critic.md")
+	if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, []byte("mine, not an agent definition\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	canonicalDir := filepath.Join(cwd, ".agents", "agents")
+
+	n, err := rematerializeScope(InstallModeSymlink, canonicalDir, []string{target})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Errorf("converted %d, want 0: a file that does not parse as an agent definition is not mdm's to replace", n)
+	}
+	if isSymlink(t, target) {
+		t.Error("target became a symlink despite not parsing as an agent definition")
+	}
+	got, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "mine, not an agent definition\n" {
+		t.Error("target content changed despite not parsing as an agent definition")
+	}
+	if _, err := os.Stat(filepath.Join(canonicalDir, "critic.md")); !os.IsNotExist(err) {
+		t.Errorf("canonical file created for a non-agent file: %v", err)
+	}
+}
