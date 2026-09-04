@@ -158,7 +158,7 @@ func removePluginSkillLinks(pluginName string, entry lock.PluginLockEntry, cwd s
 			}
 			harnessBase := getHarnessBaseDir(harnessName, false, cwd)
 			if harnessBase != "" {
-				removeHarnessSkillDir(harnessBase, skillName, "")
+				_ = removeHarnessSkillDir(harnessBase, skillName, "")
 			}
 		}
 		removeCanonicalSkillDir(canonicalDir)
