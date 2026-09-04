@@ -94,6 +94,39 @@ func cleanAndCreateDir(path string) error {
 	return os.MkdirAll(path, 0755)
 }
 
+// sameExistingDir reports whether src and dst are the same directory on disk.
+//
+// An install whose source is also its destination has nothing to do, and must
+// do nothing: every install path starts by emptying the destination
+// (cleanAndCreateDir is a RemoveAll), so copying a directory onto itself
+// deletes it and then reports success. `mdm skills add .` in a project that
+// already has skills reaches exactly that state, because discovery walks
+// .agents/skills and finds mdm's own canonical copies.
+//
+// The comparison is os.Stat plus os.SameFile rather than string equality on
+// purpose. The usual shape of this is a harness's .claude/skills/<name>
+// symlink discovered as the source while the destination is the canonical
+// .agents/skills/<name> it points at: two different strings, one directory.
+// os.Stat follows symlinks, so the two compare equal, and SameFile also
+// absorbs differences in path spelling — relative against absolute, a
+// symlinked parent, a Windows short name. An empty path or one that does not
+// exist is not the same directory as anything; callers with no source
+// directory at all (well-known skills are written from memory) pass "".
+func sameExistingDir(src, dst string) bool {
+	if src == "" || dst == "" {
+		return false
+	}
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		return false
+	}
+	dstInfo, err := os.Stat(dst)
+	if err != nil {
+		return false
+	}
+	return os.SameFile(srcInfo, dstInfo)
+}
+
 func resolveParentSymlinks(path string) string {
 	abs, err := filepath.Abs(path)
 	if err != nil {
@@ -260,15 +293,25 @@ func writeSkillFiles(targetDir string, files []struct{ Path, Contents string }) 
 	return nil
 }
 
-func performSymlinkInstall(canonicalDir, harnessDir, harnessName string, global bool, mode InstallMode, cp copyFunc) InstallResult {
+// performSymlinkInstall materializes the canonical copy and links the harness
+// at it. srcDir is the directory cp reads from, or "" when the content does
+// not come from a directory; it is here only so the copy onto itself can be
+// recognised before cleanAndCreateDir empties the destination.
+func performSymlinkInstall(canonicalDir, harnessDir, harnessName, srcDir string, global bool, mode InstallMode, cp copyFunc) InstallResult {
 	if err := refuseIfPluginOwned(canonicalDir, global); err != nil {
 		return InstallResult{Success: false, Path: harnessDir, Mode: mode, Error: err.Error()}
 	}
-	if err := cleanAndCreateDir(canonicalDir); err != nil {
-		return InstallResult{Success: false, Path: harnessDir, Mode: mode, Error: err.Error()}
-	}
-	if err := cp(canonicalDir); err != nil {
-		return InstallResult{Success: false, Path: harnessDir, Mode: mode, Error: err.Error()}
+	// The canonical copy is already exactly this content — the source IS the
+	// canonical directory. Re-materializing it would empty it first and copy
+	// nothing back, so skip to the linking, which is still worth doing: the
+	// harness may not have its link yet.
+	if !sameExistingDir(srcDir, canonicalDir) {
+		if err := cleanAndCreateDir(canonicalDir); err != nil {
+			return InstallResult{Success: false, Path: harnessDir, Mode: mode, Error: err.Error()}
+		}
+		if err := cp(canonicalDir); err != nil {
+			return InstallResult{Success: false, Path: harnessDir, Mode: mode, Error: err.Error()}
+		}
 	}
 	if global && harness.UsesSharedSkillsDir(harnessName) {
 		return InstallResult{Success: true, Path: canonicalDir, CanonicalPath: canonicalDir, Mode: InstallModeSymlink}
@@ -276,11 +319,14 @@ func performSymlinkInstall(canonicalDir, harnessDir, harnessName string, global 
 	if createSymlink(canonicalDir, harnessDir) {
 		return InstallResult{Success: true, Path: harnessDir, CanonicalPath: canonicalDir, Mode: InstallModeSymlink}
 	}
-	if err := cleanAndCreateDir(harnessDir); err != nil {
-		return InstallResult{Success: false, Path: harnessDir, Mode: mode, Error: err.Error()}
-	}
-	if err := cp(harnessDir); err != nil {
-		return InstallResult{Success: false, Path: harnessDir, Mode: mode, Error: err.Error()}
+	// Same reasoning as above for the copy the symlink fallback would write.
+	if !sameExistingDir(srcDir, harnessDir) {
+		if err := cleanAndCreateDir(harnessDir); err != nil {
+			return InstallResult{Success: false, Path: harnessDir, Mode: mode, Error: err.Error()}
+		}
+		if err := cp(harnessDir); err != nil {
+			return InstallResult{Success: false, Path: harnessDir, Mode: mode, Error: err.Error()}
+		}
 	}
 	return InstallResult{Success: true, Path: harnessDir, CanonicalPath: canonicalDir, Mode: InstallModeSymlink, SymlinkFailed: true}
 }
@@ -334,6 +380,12 @@ func installSkillForHarness(s *skill.Skill, harnessName string, global bool, mod
 	}
 
 	if mode == InstallModeCopy {
+		// The harness's copy is the source. Nothing to copy, and copying would
+		// mean emptying the source first; report the install that is already
+		// in place rather than destroying it.
+		if sameExistingDir(s.Path, harnessDir) {
+			return InstallResult{Success: true, Path: harnessDir, Mode: InstallModeCopy}
+		}
 		if err := cleanAndCreateDir(harnessDir); err != nil {
 			return InstallResult{Success: false, Path: harnessDir, Mode: mode, Error: err.Error()}
 		}
@@ -343,7 +395,7 @@ func installSkillForHarness(s *skill.Skill, harnessName string, global bool, mod
 		return InstallResult{Success: true, Path: harnessDir, Mode: InstallModeCopy}
 	}
 
-	return performSymlinkInstall(canonicalDir, harnessDir, harnessName, global, mode,
+	return performSymlinkInstall(canonicalDir, harnessDir, harnessName, s.Path, global, mode,
 		func(dst string) error { return copyDirectory(s.Path, dst) })
 }
 
@@ -375,7 +427,9 @@ func installSkillFilesForHarness(skillName string, files []struct{ Path, Content
 		return InstallResult{Success: true, Path: harnessDir, Mode: InstallModeCopy}
 	}
 
-	return performSymlinkInstall(canonicalDir, harnessDir, harnessName, global, mode, cp)
+	// No source directory: these files are held in memory, so no install can
+	// be reading from what it is about to write.
+	return performSymlinkInstall(canonicalDir, harnessDir, harnessName, "", global, mode, cp)
 }
 
 func isSkillInstalled(skillName, harnessName string, global bool) bool {
