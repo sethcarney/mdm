@@ -248,8 +248,25 @@ func TestInstallHelp(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("mdm skills install --help exited %d", code)
 	}
-	if !strings.Contains(stdout, "Restore skills from "+lockName) {
+	// The Long description wraps across lines, so check for its opening
+	// clause and a separate mention of agent definitions rather than one
+	// exact substring spanning the wrap.
+	if !strings.Contains(stdout, "Restore every skill recorded in "+lockName) {
 		t.Errorf("expected install help to contain description, got: %q", stdout)
+	}
+	if !strings.Contains(stdout, "agent") {
+		t.Errorf("expected install help to mention agent definitions, got: %q", stdout)
+	}
+
+	// The Short summary (shown in `mdm skills --help`'s subcommand list, not
+	// here) must say the same thing, so people scanning that list already
+	// know install restores both.
+	parentStdout, _, parentCode := runMdm(t, "skills", "--help")
+	if parentCode != 0 {
+		t.Fatalf("mdm skills --help exited %d", parentCode)
+	}
+	if !strings.Contains(parentStdout, "Restore skills, then agent definitions, from "+lockName) {
+		t.Errorf("expected 'mdm skills' help to summarize install as restoring skills and agent definitions, got: %q", parentStdout)
 	}
 }
 

@@ -1,5 +1,5 @@
 site_name: mdm
-site_description: The markdown management CLI - install skills, sync agent instruction files, and audit them for prompt-injection risks.
+site_description: The markdown management CLI — install skills, sync harness instruction files, and audit them for prompt-injection risks.
 site_author: Seth Carney
 site_url: https://sethcarney.github.io/mdm/
 repo_name: sethcarney/mdm
@@ -98,8 +98,9 @@ nav:
   - Installation: installation.md
   - Command reference: commands.md
   - Guides:
-      - Rules - instruction files: rules.md
-      - Agents: agents.md
+      - Rules — instruction files: rules.md
+      - Harnesses: harnesses.md
+      - Agent definitions: agent-artifacts.md
       - Doctor: doctor.md
       - Experimental features: experimental.md
       - Troubleshooting: troubleshooting.md

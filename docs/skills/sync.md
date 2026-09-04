@@ -1,6 +1,6 @@
 # mdm skills sync
 
-Sync skills from `node_modules` into agent skill directories.
+Sync skills from `node_modules` into harness skill directories.
 
 ## Usage
 
@@ -8,7 +8,7 @@ Sync skills from `node_modules` into agent skill directories.
 mdm skills sync
 ```
 
-Scans `node_modules` in the current directory for packages that contain a `SKILL.md` file. Discovered skills are shown and you can select which ones to install, then choose a scope and target agents.
+Scans `node_modules` in the current directory for packages that contain a `SKILL.md` file. Discovered skills are shown and you can select which ones to install, then choose a scope and target harnesses.
 
 This is the workflow for skill packages distributed through npm, yarn, or pnpm - install the package normally, then run `mdm skills sync` to make it available to your AI tools.
 
@@ -17,9 +17,9 @@ This is the workflow for skill packages distributed through npm, yarn, or pnpm -
 1. `node_modules` is scanned for `SKILL.md` files.
 2. Found skills are listed with their names, descriptions, and paths.
 3. A multiselect lets you pick which skills to sync (all pre-checked by default).
-4. You choose a scope (project or global) and which agents to install to.
+4. You choose a scope (project or global) and which harnesses to install to.
 5. Markdown files are scanned for hidden Unicode characters.
-6. Skills are copied or symlinked into agent directories and recorded in the lock file.
+6. Skills are copied or symlinked into harness directories and recorded in the lock file.
 
 ```
 Scanning node_modules for skills...

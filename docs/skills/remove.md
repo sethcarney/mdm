@@ -14,11 +14,11 @@ Without arguments, an interactive multiselect lets you choose which skills to re
 
 | Flag           | Description                                   |
 | -------------- | --------------------------------------------- |
-| `--global, -g` | Remove from global scope                      |
-| `--agent, -a`  | Remove from specific agents only (repeatable) |
-| `--skill, -s`  | Skill names to remove (repeatable)            |
-| `--yes, -y`    | Skip confirmation prompts                     |
-| `--all`        | Shorthand for `--skill '*' --agent '*' -y`    |
+| `--global, -g` | Remove from global scope                        |
+| `--harness`    | Remove from specific harnesses only (repeatable) |
+| `--skill, -s`  | Skill names to remove (repeatable)              |
+| `--yes, -y`    | Skip confirmation prompts                       |
+| `--all`        | Shorthand for `--skill '*' --harness '*' -y`    |
 
 ## Examples
 
@@ -44,10 +44,10 @@ mdm skills remove --all
 For each skill, mdm removes:
 
 - The canonical skill directory (`.agents/skills/<skill>` for project, `~/.agents/skills/<skill>` for global).
-- Any agent-specific symlinks or copies (e.g. `.claude/skills/<skill>`, `~/.cursor/skills/<skill>`).
+- Any harness-specific symlinks or copies (e.g. `.claude/skills/<skill>`, `~/.cursor/skills/<skill>`).
 - The entry in `mdm.lock`.
 
-If `--agent` is provided, only that agent's symlink or copy is removed - the canonical directory and other agent links remain.
+If `--harness` is provided, only that harness's symlink or copy is removed — the canonical directory and other harness links remain.
 
 ## Orphan cleanup
 

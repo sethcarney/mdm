@@ -12,13 +12,13 @@
 ## Summary
 
 Add an experimental `mdm knowledge` command group that installs, validates, and
-manages **Open Knowledge Format (OKF) bundles** - directories of markdown files
-with YAML frontmatter that give AI agents durable reference context ("LLM-wiki"
+manages **Open Knowledge Format (OKF) bundles** — directories of markdown files
+with YAML frontmatter that give AI harnesses durable reference context ("LLM-wiki"
 pattern). The feature reuses mdm's existing acquisition, locking, and security
 pipeline, ships behind a named experimental gate, and makes no stability
 promises while OKF itself is at v0.1.
 
-Skills tell an agent **how to do a task**. Knowledge bundles tell an agent
+Skills tell a harness **how to do a task**. Knowledge bundles tell a harness
 **what is true about a system**. mdm already solves fetch/verify/place/pin/audit
 for the first; this spec extends the same pipeline to the second.
 
@@ -54,9 +54,9 @@ gate itself.
 2. **Validate bundles** against OKF v0.1: required `type` frontmatter, reserved
    filename rules, cross-link integrity, orphaned-document detection.
 3. **Scan bundles for prompt-injection vectors** (hidden characters, smuggled
-   instructions) before they land in an agent's context. OKF documents are
-   *designed* to be fed to agents and to be written by agents, which makes them
-   a first-class injection surface; no other OKF tooling does this today.
+   instructions) before they land in a harness's context. OKF documents are
+   *designed* to be fed to AI harnesses and to be written by them, which makes
+   them a first-class injection surface; no other OKF tooling does this today.
 4. **Evolve alongside the standard without stability debt**: everything ships
    behind a named experimental gate, records the OKF spec version it targets,
    and is exempt from semver until graduation.
@@ -72,7 +72,7 @@ gate itself.
   OKF yet; `mdm knowledge find` is out of scope until an ecosystem exists.
 - **Rendering/visualization** - the OKF repo ships an HTML visualizer; we
   don't compete with it.
-- **Automatic agent wiring** - injecting bundle references into
+- **Automatic harness wiring** — injecting bundle references into
   CLAUDE.md/AGENTS.md is deferred to a later phase (see Future value); it
   needs its own design because it mutates user-owned files.
 - **Serving knowledge at runtime** (MCP server, HTTP) - out of scope entirely.
@@ -97,7 +97,7 @@ What *is* real today:
    integrity fills a genuine gap - useful even to people who don't use mdm for
    installation, and cheap to build. This is the highest confidence-to-effort
    item in the whole spec.
-2. **The security scan.** Installing agent-bound markdown through a
+2. **The security scan.** Installing harness-bound markdown through a
    hidden-character/prompt-smuggling scanner is a concrete, differentiated
    safety win the moment anyone installs a bundle they didn't author.
 3. **Positioning and learning.** Being early to skills worked for mdm. If
@@ -112,9 +112,9 @@ If OKF stalls, the sunk cost is bounded (see Exit criteria).
 - **Registry integration**: when an OKF registry or `.well-known/knowledge`
   convention appears (mdm already speaks `.well-known/agent-skills` via
   `internal/registry`), `find`/`audit` light up with real data.
-- **Agent wiring**: `mdm knowledge add` appending a managed pointer block to
+- **Harness wiring**: `mdm knowledge add` appending a managed pointer block to
   AGENTS.md/CLAUDE.md (reusing `mdm rules` machinery) turns installed bundles
-  from files-on-disk into context agents actually load. This is likely the
+  from files-on-disk into context harnesses actually load. This is likely the
   step that makes the feature sticky.
 - **Team onboarding**: `mdm knowledge install` restoring an org's pinned
   knowledge bundles in CI/onboarding, exactly like `mdm skills install`.
@@ -150,7 +150,7 @@ func Enabled(f Feature) bool
 1. `MDM_EXPERIMENTAL=knowledge` - ephemeral, CI-friendly, no state.
 2. `mdm experimental enable knowledge` - persists to an
    `Experimental []string` field on the existing global lock file
-   (`SkillLockFile`), alongside the precedent set by `ConfiguredAgents` and
+   (`SkillLockFile`), alongside the precedent set by `ConfiguredHarnesses` and
    `DismissedPrompts`. Losing this field to an older binary's rewrite is
    acceptable - it's a toggle, not data.
 
@@ -196,7 +196,7 @@ mdm knowledge
 Verbs, aliases, and flag conventions mirror `mdm skills` exactly - the group
 should feel like the same tool, not a bolted-on subproject.
 
-**Install destination.** Unlike skills, no per-agent knowledge directory
+**Install destination.** Unlike skills, no per-harness knowledge directory
 convention exists. Default: `./knowledge/<bundle-name>/` at the project root,
 overridable with `--dir`. Project-scoped only for the experimental phase; a
 global scope can follow if a use case appears.
@@ -277,7 +277,7 @@ what makes incremental merging safe.
 | 3 | `feat/knowledge-add` | `add`/`list`/`remove` wired through `source`/`git`/`blob` + security scan + `knowledge-lock.json`. |
 | 4 | `feat/knowledge-update` | `update`, `install`, doctor integration. |
 
-Defer (tracked, not built): agent wiring into AGENTS.md, registry integration,
+Defer (tracked, not built): harness wiring into AGENTS.md, registry integration,
 audit against external data, global scope.
 
 ## Testing strategy
@@ -328,7 +328,7 @@ migration into the mainline) when all of:
    conformant bundles in the wild that aren't Google's samples.
 3. The command surface has survived a full release cycle without breaking
    changes.
-4. The install-destination and agent-wiring questions have settled answers.
+4. The install-destination and harness-wiring questions have settled answers.
 
 ## Exit criteria (kill switch)
 

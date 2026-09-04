@@ -28,8 +28,12 @@ func buildInstallFromLockCmd(ver string) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "install",
-		Short: "Restore skills from " + lockName,
-		Args:  cobra.NoArgs,
+		Short: "Restore skills, then agent definitions, from " + lockName,
+		Long: `Restore every skill recorded in ` + lockName + `, then every agent
+definition recorded there too, each re-fetched from its original source
+and ref. Intended for CI and onboarding — run it after cloning a repo to
+get everything back without remembering each package source.`,
+		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			showLogo(ver)
 			runInstallFromLock(opts)

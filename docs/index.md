@@ -11,8 +11,8 @@ hide:
 # mdm
 
 <p class="mdm-hero__tagline">
-The markdown management CLI. Install skills, keep every agent's instruction file
-in sync, and audit them all for prompt-injection risks - from one fast, Go-native tool.
+The markdown management CLI. Install skills, keep every harness's instruction file
+in sync, and audit them all for prompt-injection risks — from one fast, Go-native tool.
 <strong>No telemetry. Fully open source.</strong>
 </p>
 
@@ -44,7 +44,7 @@ Then link your instruction files and add your first skill:
 
 ```bash
 mdm rules link                          # AGENTS.md becomes the source of truth
-mdm skills add anthropics/skills        # install a skill for every configured agent
+mdm skills add anthropics/skills        # install a skill for every configured harness
 ```
 
 See the [installation guide](installation.md) for other methods and PATH tips.
@@ -60,7 +60,7 @@ solves exactly that.
 
 <div class="grid cards" markdown>
 
--   :material-robot-happy:{ .lg .middle } __45 agents supported__
+-   :material-robot-happy:{ .lg .middle } __45 harnesses supported__
 
     ---
 
@@ -71,7 +71,7 @@ solves exactly that.
 
     ---
 
-    `mdm rules link` makes `AGENTS.md` canonical and symlinks every agent's
+    `mdm rules link` makes `AGENTS.md` canonical and symlinks every harness's
     expected filename to it.
 
     [:octicons-arrow-right-24: Rules guide](rules.md)
@@ -109,7 +109,7 @@ solves exactly that.
     ---
 
     Commit an `mdm.lock` so teammates run `mdm skills install` once and
-    onboard with whatever agent they prefer.
+    onboard with whatever harness they prefer.
 
     [:octicons-arrow-right-24: skills install](skills/install.md)
 
@@ -139,9 +139,10 @@ solves exactly that.
 
 ```text
 mdm
-├── skills        Manage skills for AI agents (add · cherry-pick · remove · list · find · update · audit · init · install · sync)
-├── rules         Link/unlink agent instruction files to a single AGENTS.md
-├── agents        Manage the configured agent list used as default install targets
+├── skills        Manage skills for AI harnesses (add · cherry-pick · remove · list · find · update · audit · init · install · sync)
+├── rules         Link/unlink harness instruction files to a single AGENTS.md
+├── harnesses     Manage the configured harness list used as default install targets
+├── agents        Manage agent definitions installed into harnesses (add · list · remove · update · install)
 ├── knowledge     Manage OKF knowledge bundles
 ├── plugins       Manage Agent Plugins (skills + MCP servers)
 ├── doctor        Check installed skills and project markdown for health issues

@@ -56,7 +56,7 @@ The repo includes intentionally unsafe fixtures for regression and manual smoke 
 Verify install blocking from the repo root:
 
 ```bash
-mdm skills add ./tests/testdata/hidden-skill --project --agent claude-code -y
+mdm skills add ./tests/testdata/hidden-skill --project --harness claude-code -y
 ```
 
 Expected output: scan failure with file/line/column/codepoint details, installation blocked.
@@ -64,7 +64,7 @@ Expected output: scan failure with file/line/column/codepoint details, installat
 Verify the bypass flag allows installation to proceed:
 
 ```bash
-mdm skills add ./tests/testdata/hidden-skill --project --agent claude-code -y --allow-hidden-chars
+mdm skills add ./tests/testdata/hidden-skill --project --harness claude-code -y --allow-hidden-chars
 ```
 
 Expected output: yellow warnings printed, installation continues.

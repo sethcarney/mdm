@@ -22,7 +22,7 @@ mdm
 ├── doctor                                  # Health-check installed skills & project markdown
 ├── completion [bash|zsh|fish|powershell]   # Generate shell completion
 │   └── install                             # Write completion into your shell rc
-├── skills                                  # Manage skills for AI agents
+├── skills                                  # Manage skills for AI harnesses
 │   ├── add <package>                       # Install a skill (alias: a)
 │   ├── cherry-pick <source>                # Fork skills into ./skills as your own (aliases: fork, cp)
 │   ├── remove [skills...]                  # Uninstall skills (aliases: rm, r)
@@ -31,7 +31,7 @@ mdm
 │   ├── update [skills...]                  # Re-fetch from recorded source+ref (alias: check)
 │   ├── audit [skills...]                   # Check for updates & security advisories
 │   ├── init [name]                         # Scaffold a new SKILL.md
-│   ├── install                             # Restore all skills from mdm.lock
+│   ├── install                             # Restore all skills, then agent definitions, from mdm.lock
 │   └── sync                                # Sync skills from node_modules
 ├── knowledge                               # Manage OKF knowledge bundles
 │   ├── add <source>                        # Install a bundle (alias: a)
@@ -54,21 +54,27 @@ mdm
 │   ├── list                                # Show features and status (alias: ls)
 │   ├── enable <feature>                    # Persist an opt-in
 │   └── disable <feature>                   # Remove a persisted opt-in
-├── agents                                  # Manage the configured agent list
-│   ├── list                                # Show configured agents (alias: ls)
-│   ├── add [agents...]                     # Add agents (interactive with no args)
-│   └── remove [agents...]                  # Remove agents & their unique files
-└── rules                                   # Manage agent instruction files
+├── harnesses                                # Manage the configured harness list
+│   ├── list                                # Show configured harnesses (alias: ls)
+│   ├── add [harnesses...]                  # Add harnesses (interactive with no args, alias: a)
+│   └── remove [harnesses...]               # Remove harnesses & their unique files (aliases: rm, r)
+├── agents                                  # Manage agent definitions installed into harnesses
+│   ├── add <source>                        # Install agent definitions (alias: a)
+│   ├── list                                # List installed agent definitions (alias: ls)
+│   ├── remove [names...]                   # Remove agent definitions (aliases: rm, r)
+│   ├── update [names...]                   # Re-fetch agent definitions from recorded source+ref
+│   └── install                             # Restore agent definitions from mdm.lock
+└── rules                                   # Manage harness instruction files
     ├── link                                # Symlink instruction files to one AGENTS.md
     ├── status                              # Show which files exist/are symlinked/missing
-    └── unlink                              # Remove symlinks, restore per-agent files
+    └── unlink                              # Remove symlinks, restore per-harness files
 ```
 
 ---
 
 ## `mdm skills`
 
-Manage skills - reusable markdown prompt libraries - for your AI agents.
+Manage skills — reusable markdown prompt libraries — for your AI harnesses.
 
 ### `skills add` <small>alias: `a`</small>
 
@@ -86,13 +92,13 @@ git URL with a `#ref`, a local path, or a well-known alias (`vercel`,
 | --- | --- |
 | `--global`, `-g` | Install globally (user-level, `~/.agents/skills/`) |
 | `--project`, `-p` | Force project-scope install |
-| `--agent`, `-a` | Agents to install to (repeatable; `*` for all) |
+| `--harness` | Harnesses to install to (repeatable; `*` for all) |
 | `--skill`, `-s` | Skill names to install (repeatable; `*` for all) |
 | `--list`, `-l` | List available skills without installing |
 | `--yes`, `-y` | Skip confirmation prompts |
 | `--copy` | Copy files instead of symlinking; switches the scope to copy mode |
 | `--symlink` | Symlink files from `.agents/skills` (the default); switches a scope back from copy mode |
-| `--all` | Shorthand for `--skill '*' --agent '*' -y` |
+| `--all` | Shorthand for `--skill '*' --harness '*' -y` |
 | `--full-depth` | Search all subdirectories for skills |
 | `--skip-audit` | Skip the security audit check for public skills |
 | `--fail-on-audit` | Exit non-zero on security findings instead of prompting |
@@ -115,8 +121,8 @@ mdm skills cherry-pick <source>
 | `--dir`, `-d` | Directory to fork into (default `skills`) |
 | `--skill`, `-s` | Skill names to fork (repeatable; `*` for all) |
 | `--as` | Rename the forked skill (single skill only) |
-| `--install`, `-i` | Also install the forks into your agents |
-| `--agent`, `-a` | Agents to install the forks to (implies `--install`) |
+| `--install`, `-i` | Also install the forks into your harnesses |
+| `--harness` | Harnesses to install the forks to (implies `--install`) |
 | `--force` | Replace an existing fork, discarding local edits |
 | `--dry-run` | Show what would be forked without writing anything |
 | `--list`, `-l` | List the skills available at the source without forking |
@@ -136,10 +142,10 @@ mdm skills remove [skills...]
 | Flag | Description |
 | --- | --- |
 | `--global`, `-g` | Remove from global scope |
-| `--agent`, `-a` | Remove from specific agents (repeatable) |
+| `--harness` | Remove from specific harnesses (repeatable) |
 | `--skill`, `-s` | Skill names to remove (repeatable) |
 | `--yes`, `-y` | Skip confirmation prompts |
-| `--all` | Shorthand for `--skill '*' --agent '*' -y` |
+| `--all` | Shorthand for `--skill '*' --harness '*' -y` |
 
 [:octicons-arrow-right-24: Details](skills/remove.md)
 
@@ -155,6 +161,7 @@ mdm skills list
 | --- | --- |
 | `--global`, `-g` | List global skills |
 | `--project`, `-p` | List project skills |
+| `--harness` | Filter by specific harnesses (repeatable) |
 | `--json` | Output as JSON |
 
 [:octicons-arrow-right-24: Details](skills/list.md)
@@ -221,7 +228,7 @@ mdm skills init [name]
 
 ### `skills install`
 
-Restore all skills from `mdm.lock` - ideal for CI and onboarding.
+Restore all skills, then any agent definitions, from `mdm.lock` — ideal for CI and onboarding.
 
 ```bash
 mdm skills install
@@ -230,13 +237,15 @@ mdm skills install
 | Flag | Description |
 | --- | --- |
 | `--yes`, `-y` | Skip confirmation prompts |
+| `--copy` | Copy files instead of symlinking; switches the scope to copy mode |
+| `--symlink` | Symlink files from `.agents/skills` (the default); switches a scope back from copy mode |
 | `--allow-hidden-chars` | Allow markdown files with hidden Unicode characters |
 
 [:octicons-arrow-right-24: Details](skills/install.md)
 
 ### `skills sync`
 
-Sync skills from `node_modules` into each agent's skill directories.
+Sync skills from `node_modules` into each harness's skill directories.
 
 ```bash
 mdm skills sync
@@ -253,43 +262,69 @@ mdm skills sync
 
 ## `mdm rules`
 
-Manage agent instruction files (`CLAUDE.md`, `AGENTS.md`, `.cursorrules`, and
+Manage harness instruction files (`CLAUDE.md`, `AGENTS.md`, `.cursorrules`, and
 friends) by pointing them all at a single source of truth.
 
 | Command | Description |
 | --- | --- |
-| `rules link` | Symlink all agent instruction files to one `AGENTS.md` |
+| `rules link` | Symlink all harness instruction files to one `AGENTS.md` |
 | `rules status` | Show which instruction files exist, are symlinked, or missing |
-| `rules unlink` | Remove symlinks and restore per-agent instruction files |
+| `rules unlink` | Remove symlinks and restore per-harness instruction files |
 
 | Flag (on `link` / `status` / `unlink`) | Description |
 | --- | --- |
-| `--agent`, `-a` | Limit to specific agents (repeatable) |
+| `--harness` | Limit to specific harnesses (repeatable) |
 | `--json` | Output status as a JSON array (`status`) |
 
 [:octicons-arrow-right-24: Details](rules.md)
 
 ---
 
-## `mdm agents`
+## `mdm harnesses`
 
-Manage the configured agent list used as default install targets. Works at both
+Manage the configured harness list used as default install targets. Works at both
 project and global scope.
 
 | Command | Description |
 | --- | --- |
-| `agents list` <small>(`ls`)</small> | Show configured agents for the current scope |
-| `agents add [agents...]` | Add agents (interactive picker with no args) |
-| `agents remove [agents...]` | Remove agents and their unique skill/instruction files |
+| `harnesses list` <small>(`ls`)</small> | Show configured harnesses for the current scope |
+| `harnesses add [harnesses...]` <small>(`a`)</small> | Add harnesses (interactive picker with no args) |
+| `harnesses remove [harnesses...]` <small>(`rm`, `r`)</small> | Remove harnesses and their unique skill/instruction files |
 
 | Flag | Applies to | Description |
 | --- | --- | --- |
-| `--global`, `-g` | all | Operate on the global configured-agent list |
+| `--global`, `-g` | all | Operate on the global configured-harness list |
 | `--json` | `list` | Output as JSON |
-| `--available` | `list` | List all agents known to mdm, not just configured ones |
+| `--available` | `list` | List all harnesses known to mdm, not just configured ones |
 | `--yes`, `-y` | `remove` | Skip confirmation prompts |
 
-[:octicons-arrow-right-24: Details](agents.md)
+[:octicons-arrow-right-24: Details](harnesses.md)
+
+---
+
+## `mdm agents`
+
+Manage agent definitions — single markdown files that give a harness a named
+subagent persona, installed into each target harness's own agent directory.
+Distinct from `mdm harnesses` above, which manages the AI tools themselves.
+
+| Command | Description |
+| --- | --- |
+| `agents add <source>` <small>(`a`)</small> | Install agent definitions from GitHub, a URL, or a local path |
+| `agents list` <small>(`ls`)</small> | List installed agent definitions |
+| `agents remove [names...]` <small>(`rm`, `r`)</small> | Remove installed agent definitions |
+| `agents update [names...]` | Update installed agent definitions |
+| `agents install` | Restore agent definitions from `mdm.lock` |
+
+| Flag | Applies to | Description |
+| --- | --- | --- |
+| `--global`, `-g` | all | Operate on the global scope |
+| `--project`, `-p` | `add` / `list` / `remove` / `update` | Force project scope |
+| `--harness` | `add` / `remove` | Harnesses to target (repeatable, use `*` for all) |
+| `--agent`, `-a` | `add` / `remove` | Agent definition names to target (repeatable, use `*` for all) |
+| `--yes`, `-y` | all | Skip confirmation prompts |
+
+[:octicons-arrow-right-24: Details](agent-artifacts.md)
 
 ---
 
@@ -337,7 +372,7 @@ the vendor-neutral [agent-plugins.org](https://agent-plugins.org) standard.
 | Flag | Applies to | Description |
 | --- | --- | --- |
 | `--plugin`, `-p` | `add` | Plugin names to install (repeatable; `*` for all) |
-| `--agent`, `-a` | `add` | Agents to install for (repeatable) |
+| `--harness` | `add` | Harnesses to install for (repeatable) |
 | `--skip-mcp` | `add` / `update` / `install` | Install skills only; do not write MCP config |
 | `--dry-run` | `add` | Show what would be installed without writing anything |
 | `--purge-data` | `remove` | Also delete the plugin's persistent data directory |
@@ -394,9 +429,9 @@ to run this for you when an upgrade crosses a major version.
 
 Migration also records the install mode, for the project and for this
 machine's global state. It reads the skills sitting at each configured
-agent's install directory, or, when no agents are recorded (which is what
-a non-interactive `mdm skills add -a <agent> -y` leaves behind), at the
-install directory of every agent the scope supports. A real directory
+harness's install directory, or, when no harnesses are recorded (which is what
+a non-interactive `mdm skills add --harness <harness> -y` leaves behind), at the
+install directory of every harness the scope supports. A real directory
 holding a `SKILL.md` means the scope was installed with `--copy`, so
 migrating sets `installMode: copy` in `mdm.lock` (or `mdm-state.json`) and
 later restores preserve them. Symlinks there mean the default mode, and
@@ -422,7 +457,7 @@ what's on disk, even when there are no legacy files left to retire.
 ## `mdm bug`
 
 Report a bug with environment details prefilled. Collects the mdm version,
-OS/architecture, shell, Go runtime, and the agent tools detected on this
+OS/architecture, shell, Go runtime, and the AI harnesses detected on this
 machine, builds a GitHub issue-form URL with those fields filled in, prints
 it, and opens it when a browser is available.
 

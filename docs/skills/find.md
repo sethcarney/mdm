@@ -23,7 +23,7 @@ Aliases: `search`, `f`, `s`
 1. Enter a search query (or pass it as an argument).
 2. A spinner shows while results are fetched.
 3. A multiselect list shows matching skills with their descriptions and star counts.
-4. Selecting skills runs `mdm skills add` for each one, letting you choose scope and agents.
+4. Selecting skills runs `mdm skills add` for each one, letting you choose scope and harnesses.
 
 ```
 Search skills: typescript

@@ -24,9 +24,9 @@ mdm skills add <package>
 1. The source is fetched (shallow clone or GitHub API tree query).
 2. `SKILL.md` files inside the repo are discovered.
 3. If the repo contains multiple skills, a picker lets you choose which ones to install.
-4. You are prompted for scope (project or global) and which agents to install to - unless flags are provided.
+4. You are prompted for scope (project or global) and which harnesses to install to — unless flags are provided.
 5. Markdown files are scanned for hidden Unicode characters.
-6. Skill directories are copied into each agent's skills directory.
+6. Skill directories are copied into each harness's skills directory.
 7. The installation is recorded in `mdm.lock`.
 
 ## Flags
@@ -35,66 +35,66 @@ mdm skills add <package>
 | --------------- | ---------------------------------------------------- |
 | `--global, -g`  | Install globally (user-level, `~/.agents/skills/`)   |
 | `--project, -p` | Force project-scope install                          |
-| `--agent, -a`   | Agents to install to (repeatable; use `*` for all)   |
+| `--harness`     | Harnesses to install to (repeatable; use `*` for all) |
 | `--skill, -s`   | Skill names to install (repeatable; use `*` for all) |
 | `--list, -l`    | List available skills without installing             |
 | `--yes, -y`     | Skip all confirmation prompts                        |
 | `--copy`        | Copy files instead of symlinking; switches the scope to copy mode |
 | `--symlink`     | Symlink files from `.agents/skills` (the default); switches a scope back from copy mode |
-| `--all`         | Shorthand for `--skill '*' --agent '*' -y`           |
+| `--all`         | Shorthand for `--skill '*' --harness '*' -y`         |
 | `--full-depth`  | Search all subdirectories for SKILL.md files         |
 | `--skip-audit`  | Skip the security audit check                        |
 | `--fail-on-audit` | Exit non-zero when security findings are detected instead of prompting (CI-friendly) |
 | `--allow-hidden-chars` | Allow markdown files with hidden Unicode characters |
 
-The `--agent` and `--skill` flags accept multiple space-separated values after a single flag or can be repeated:
+The `--harness` and `--skill` flags accept multiple space-separated values after a single flag or can be repeated:
 
 ```bash
-mdm skills add owner/repo -a claude-code cursor
-mdm skills add owner/repo -a claude-code -a cursor   # equivalent
+mdm skills add owner/repo --harness claude-code cursor
+mdm skills add owner/repo --harness claude-code --harness cursor   # equivalent
 ```
 
-## Agent selection
+## Harness selection
 
-The agent picker shows agents with unique skills directories in the left panel. Agents that are always auto-covered (shared `.agents/skills` directory) appear in a locked panel to the right - they are always installed to and cannot be deselected.
+The harness picker shows harnesses with unique skills directories in the left panel. Harnesses that are always auto-covered (shared `.agents/skills` directory) appear in a locked panel to the right — they are always installed to and cannot be deselected.
 
 ```
-Which agents would you like to install to?  │  always included:
-  > filter...                               │  ◉ Codex
-  ❯ ● Claude Code                          │  ◉ Gemini CLI
-    ○ Cursor                               │  ◉ Warp
-    ○ Windsurf                             │  ...
+Which harnesses would you like to install to?  │  always included:
+  > filter...                                  │  ◉ Codex
+  ❯ ● Claude Code                             │  ◉ Gemini CLI
+    ○ Cursor                                  │  ◉ Warp
+    ○ Windsurf                                │  ...
   type to filter · space to toggle · enter to confirm
 ```
 
-If you have a configured agent list (set via `mdm agents add` or `mdm rules link`), those agents are pre-checked. Otherwise agents detected as installed are pre-checked. Your selection is saved back to `configuredAgents` for future installs.
+If you have a configured harness list (set via `mdm harnesses add` or `mdm rules link`), those harnesses are pre-checked. Otherwise harnesses detected as installed are pre-checked. Your selection is saved back to `configuredHarnesses` for future installs.
 
-Agents that use the shared `.agents/skills` directory but also have a unique instruction file (such as GitHub Copilot, which uses `.github/copilot-instructions.md`) do not appear in the left panel - they are always included via the locked panel. If such an agent was previously configured via `mdm rules link`, it is preserved in `configuredAgents` even though it is not shown as a selectable option.
+Harnesses that use the shared `.agents/skills` directory but also have a unique instruction file (such as GitHub Copilot, which uses `.github/copilot-instructions.md`) do not appear in the left panel — they are always included via the locked panel. If such a harness was previously configured via `mdm rules link`, it is preserved in `configuredHarnesses` even though it is not shown as a selectable option.
 
-**Project scope** (default): skills are installed under `.agents/skills/` in the current directory. Each agent that has its own skills directory gets a symlink pointing to the shared location.
+**Project scope** (default): skills are installed under `.agents/skills/` in the current directory. Each harness that has its own skills directory gets a symlink pointing to the shared location.
 
-**Global scope** (`-g`): skills are installed under `~/.agents/skills/`. Agents with a global skills directory get a symlink to that shared location.
+**Global scope** (`-g`): skills are installed under `~/.agents/skills/`. Harnesses with a global skills directory get a symlink to that shared location.
 
-**Copy mode** (`--copy`): instead of symlinking from agent directories to `.agents/skills/`, files are copied directly. Use this if your tools don't follow symlinks.
+**Copy mode** (`--copy`): instead of symlinking from harness directories to `.agents/skills/`, files are copied directly. Use this if your tools don't follow symlinks.
 
-When a symlink cannot be created (Windows without Developer Mode or the symlink privilege, typically), the install is copied instead and nothing is recorded: the scope stays in symlink mode, and a warning after the install summary names the agents that got copies. If copies are what you want on that machine, run with `--copy` once to record it.
+When a symlink cannot be created (Windows without Developer Mode or the symlink privilege, typically), the install is copied instead and nothing is recorded: the scope stays in symlink mode, and a warning after the install summary names the harnesses that got copies. If copies are what you want on that machine, run with `--copy` once to record it.
 
-The install mode is a scope-wide switch, not a per-skill one. Passing `--copy` records `installMode: copy` in the scope's lock, so later installs, updates, and restores in that scope copy without repeating the flag. Passing `--symlink` switches the scope back: it records symlink mode and turns the copied installs back into links, so there is no need to edit the lock by hand. Symlink is the default, so `--symlink` on a scope that has never been switched changes nothing. The two flags cannot be combined. Switching a scope that already has installs re-materializes them into the new mode instead of leaving a mix, and reports how many it converted; the flag itself is the consent, so there is no extra confirmation. The switch is applied only once everything that could still stop the install has passed: the agent selection and the security-audit confirmation. Backing out at either of them leaves the install mode and the skills untouched, though an interactive agent picker already saves your selection to `configuredAgents` before the audit gate, so that part of the record can persist even when you decline it.
+The install mode is a scope-wide switch, not a per-skill one. Passing `--copy` records `installMode: copy` in the scope's lock, so later installs, updates, and restores in that scope copy without repeating the flag. Passing `--symlink` switches the scope back: it records symlink mode and turns the copied installs back into links, so there is no need to edit the lock by hand. Symlink is the default, so `--symlink` on a scope that has never been switched changes nothing. The two flags cannot be combined. Switching a scope that already has installs re-materializes them into the new mode instead of leaving a mix, and reports how many it converted; the flag itself is the consent, so there is no extra confirmation. The switch is applied only once everything that could still stop the install has passed: the harness selection and the security-audit confirmation. Backing out at either of them leaves the install mode and the skills untouched, though an interactive harness picker already saves your selection to `configuredHarnesses` before the audit gate, so that part of the record can persist even when you decline it.
 
-The conversion covers every agent directory the scope supports, not just the agents recorded in `configuredAgents`. That list holds only what you last picked in the interactive agent picker, so an agent you installed to with `-a <agent> -y` is converted along with the rest rather than being left behind on symlinks.
+The conversion covers every harness directory the scope supports, not just the harnesses recorded in `configuredHarnesses`. That list holds only what you last picked in the interactive harness picker, so a harness you installed to with `--harness <harness> -y` is converted along with the rest rather than being left behind on symlinks.
 
-Only what mdm installed is converted. Switching to copy mode converts the symlinks pointing into the scope's `.agents/skills` directory; a symlink you put in an agent's skills directory yourself, pointing somewhere else, is left exactly as it is. The `.agents/skills` copy each converted link pointed at also stays: agents that read that shared directory install into it in copy mode too, so it keeps being refreshed. Switching back to symlink mode converts the real directories that hold a `SKILL.md`, creating the `.agents/skills` copy first when a copy install never wrote one; a directory without a `SKILL.md` is not an mdm install and is left alone.
+Only what mdm installed is converted. Switching to copy mode converts the symlinks pointing into the scope's `.agents/skills` directory; a symlink you put in a harness's skills directory yourself, pointing somewhere else, is left exactly as it is. The `.agents/skills` copy each converted link pointed at also stays: harnesses that read that shared directory install into it in copy mode too, so it keeps being refreshed. Switching back to symlink mode converts the real directories that hold a `SKILL.md`, creating the `.agents/skills` copy first when a copy install never wrote one; a directory without a `SKILL.md` is not an mdm install and is left alone.
 
 ## Examples
 
 ```bash
-# Install interactively - prompts for scope, agents, and skill selection
+# Install interactively — prompts for scope, harnesses, and skill selection
 mdm skills add vercel-labs/agent-skills
 
 # Install a specific skill, skip prompts
 mdm skills add vercel-labs/agent-skills --skill vercel-react-best-practices -y
 
-# Install all skills globally to all agents
+# Install all skills globally to all harnesses
 mdm skills add anthropics/skills --all -g
 
 # Install from a specific branch
@@ -106,8 +106,8 @@ mdm skills add ./my-skill
 # List skills in a package without installing
 mdm skills add vercel-labs/agent-skills --list
 
-# Install to specific agents only
-mdm skills add owner/repo -a claude-code cursor
+# Install to specific harnesses only
+mdm skills add owner/repo --harness claude-code cursor
 ```
 
 ## Installing vs forking
