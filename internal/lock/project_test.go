@@ -171,6 +171,96 @@ func TestProjectLockSectionsAreIsolated(t *testing.T) {
 	}
 }
 
+// Mutation this test catches: writing agent entries under any top-level key
+// other than "agents" (e.g. a typo'd "agent", or reusing "skills"), and
+// dropping AgentPath from the write path. Both would leave a definition mdm
+// installed with no way to find it again on the next read.
+func TestAgentLockEntryWrittenUnderAgentsKey(t *testing.T) {
+	cwd := t.TempDir()
+	if err := AddAgentToLocalLock("critic", AgentLockEntry{
+		Source: "o/r", SourceType: "github", Ref: "main", AgentPath: "agents/critic.md",
+	}, cwd); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(GetProjectLockPath(cwd))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatal(err)
+	}
+	agentsRaw, ok := raw["agents"]
+	if !ok {
+		t.Fatalf("no top-level \"agents\" key in mdm.lock:\n%s", data)
+	}
+	var agents map[string]map[string]json.RawMessage
+	if err := json.Unmarshal(agentsRaw, &agents); err != nil {
+		t.Fatal(err)
+	}
+	if string(agents["critic"]["agentPath"]) != `"agents/critic.md"` {
+		t.Errorf("agentPath not written under the agents key: %s", agents["critic"]["agentPath"])
+	}
+
+	lk := ReadProjectLock(cwd)
+	entry, ok := lk.Agents["critic"]
+	if !ok {
+		t.Fatal("agent entry did not round-trip back through ReadProjectLock")
+	}
+	if entry.AgentPath != "agents/critic.md" || entry.Source != "o/r" || entry.Ref != "main" {
+		t.Errorf("agent entry round-tripped wrong: %+v", entry)
+	}
+}
+
+// A skills write must never touch the agents section, and vice versa —
+// mirrors TestProjectLockSectionsAreIsolated for the new section.
+func TestProjectLockAgentsSectionIsolatedFromSkills(t *testing.T) {
+	cwd := t.TempDir()
+	if err := AddAgentToLocalLock("critic", AgentLockEntry{Source: "o/r", SourceType: "github", AgentPath: "a.md"}, cwd); err != nil {
+		t.Fatal(err)
+	}
+	agentBefore := ReadProjectLock(cwd).Agents["critic"]
+
+	if err := AddSkillToLocalLock("my-skill", LocalSkillLockEntry{Source: "o/r", SourceType: "github"}, cwd); err != nil {
+		t.Fatal(err)
+	}
+	lk := ReadProjectLock(cwd)
+	if lk.Agents["critic"] != agentBefore {
+		t.Errorf("agent entry changed by a skills write: %+v", lk.Agents["critic"])
+	}
+
+	if err := RemoveAgentFromLocalLock("critic", cwd); err != nil {
+		t.Fatal(err)
+	}
+	lk = ReadProjectLock(cwd)
+	if _, ok := lk.Agents["critic"]; ok {
+		t.Error("RemoveAgentFromLocalLock left the entry behind")
+	}
+	if _, ok := lk.Skills["my-skill"]; !ok {
+		t.Error("removing an agent entry must not touch the skills section")
+	}
+}
+
+// AgentLockEntry round-trips through GlobalState the same way it does
+// through the project lock.
+func TestGlobalStateAgentsRoundTrip(t *testing.T) {
+	isolateGlobal(t)
+	if err := AddAgentToGlobalState("critic", AgentLockEntry{Source: "o/r", SourceType: "github", AgentPath: "a.md"}); err != nil {
+		t.Fatal(err)
+	}
+	entry, ok := ReadGlobalState().Agents["critic"]
+	if !ok || entry.AgentPath != "a.md" {
+		t.Fatalf("agent entry did not round-trip through global state: %+v ok=%v", entry, ok)
+	}
+	if err := RemoveAgentFromGlobalState("critic"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := ReadGlobalState().Agents["critic"]; ok {
+		t.Error("RemoveAgentFromGlobalState left the entry behind")
+	}
+}
+
 func TestProjectLockLegacyFallback(t *testing.T) {
 	cwd := t.TempDir()
 	writeJSON := func(name, content string) {

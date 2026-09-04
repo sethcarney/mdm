@@ -51,16 +51,22 @@ type GlobalState struct {
 	Version             int
 	InstallMode         string
 	Skills              map[string]SkillLockEntry
+	Agents              map[string]AgentLockEntry
 	Dismissed           DismissedPrompts
 	ConfiguredHarnesses []string
 	Experimental        []string
 	extra               map[string]json.RawMessage
 	rawSkills           map[string]json.RawMessage
+	rawAgents           map[string]json.RawMessage
 }
 
 // MarshalJSON emits known keys in a fixed order, then unknown keys sorted.
 func (s GlobalState) MarshalJSON() ([]byte, error) {
 	mergedSkills, err := marshalSection(s.Skills, s.rawSkills, knownGlobalSkillEntryKeys)
+	if err != nil {
+		return nil, err
+	}
+	mergedAgents, err := marshalSection(s.Agents, s.rawAgents, knownAgentEntryKeys)
 	if err != nil {
 		return nil, err
 	}
@@ -73,6 +79,9 @@ func (s GlobalState) MarshalJSON() ([]byte, error) {
 		o.write("configuredHarnesses", s.ConfiguredHarnesses)
 	}
 	o.write("skills", mergedSkills)
+	if len(mergedAgents) > 0 {
+		o.write("agents", mergedAgents)
+	}
 	if s.Dismissed != (DismissedPrompts{}) {
 		o.write("dismissed", s.Dismissed)
 	}
@@ -123,7 +132,11 @@ func (s *GlobalState) UnmarshalJSON(data []byte) error {
 		}
 	}
 	s.rawSkills = captureRawEntries(raw["skills"])
+	s.rawAgents = captureRawEntries(raw["agents"])
 	if err := decode("skills", &s.Skills); err != nil {
+		return err
+	}
+	if err := decode("agents", &s.Agents); err != nil {
 		return err
 	}
 	if err := decode("dismissed", &s.Dismissed); err != nil {
@@ -199,6 +212,9 @@ func readGlobalStateE() (GlobalState, error) {
 	if s.Skills == nil {
 		s.Skills = map[string]SkillLockEntry{}
 	}
+	if s.Agents == nil {
+		s.Agents = map[string]AgentLockEntry{}
+	}
 	return s, nil
 }
 
@@ -228,6 +244,7 @@ func readLegacyGlobalLock() GlobalState {
 	return GlobalState{
 		Version:             globalStateVersion,
 		Skills:              legacy.Skills,
+		Agents:              map[string]AgentLockEntry{},
 		Dismissed:           legacy.Dismissed,
 		ConfiguredHarnesses: legacy.ConfiguredHarnesses,
 		Experimental:        legacy.Experimental,
@@ -251,7 +268,30 @@ func EmptyGlobalState() GlobalState {
 	return GlobalState{
 		Version: globalStateVersion,
 		Skills:  map[string]SkillLockEntry{},
+		Agents:  map[string]AgentLockEntry{},
 	}
+}
+
+// AddAgentToGlobalState records one installed agent definition in
+// mdm-state.json, mirroring AddSkillToGlobalState. Unlike skills, an agent
+// entry carries no installed/updated timestamps — AgentLockEntry has none,
+// matching the local (project) lock's entry shape, since agent definitions
+// are new in v2 and have no v1 global-lock precedent to stay compatible with.
+func AddAgentToGlobalState(name string, entry AgentLockEntry) error {
+	state := ReadGlobalState()
+	state.Agents[name] = entry
+	return WriteGlobalState(state)
+}
+
+// RemoveAgentFromGlobalState removes one agent definition's entry from
+// mdm-state.json, mirroring RemoveSkillFromGlobalState.
+func RemoveAgentFromGlobalState(name string) error {
+	state := ReadGlobalState()
+	if _, ok := state.Agents[name]; !ok {
+		return nil
+	}
+	delete(state.Agents, name)
+	return WriteGlobalState(state)
 }
 
 func AddSkillToGlobalState(skillName string, entry SkillLockEntry) error {

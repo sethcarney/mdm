@@ -120,6 +120,7 @@ func BuildRootCmd(ver string) *cobra.Command {
 
 	root.AddCommand(
 		buildSkillsCmd(ver),
+		buildAgentArtifactsCmd(),
 		buildKnowledgeCmd(),
 		buildPluginsCmd(),
 		buildHarnessesCmd(),

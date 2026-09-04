@@ -504,7 +504,7 @@ func TestGlobalMigrationBackfillsInstallMode(t *testing.T) {
 
 // With no harnesses recorded the global sweep walks every harness's directory
 // under the home, so this asserts the redirect reached the registry.
-func TestGlobalMigrationInfersCopyWithoutConfiguredAgents(t *testing.T) {
+func TestGlobalMigrationInfersCopyWithoutConfiguredHarnesses(t *testing.T) {
 	isolateGlobal(t)
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -568,7 +568,7 @@ func TestGlobalMigrationLeavesModeEmptyForSymlinks(t *testing.T) {
 
 // `mdm skills add <src> --harness claude-code -y` leaves configuredHarnesses empty,
 // so inference has to sweep every harness to find that install.
-func TestMigrationInfersCopyWithoutConfiguredAgents(t *testing.T) {
+func TestMigrationInfersCopyWithoutConfiguredHarnesses(t *testing.T) {
 	cwd := t.TempDir()
 	legacySkillsLock(t, cwd)
 	writeSkillDir(t, filepath.Join(cwd, ".claude", "skills", "s1"))
@@ -598,7 +598,7 @@ func TestMigrationIgnoresDirectoriesWithoutSkillMd(t *testing.T) {
 }
 
 // The wider sweep still only reports a mode for a real directory.
-func TestMigrationWithoutConfiguredAgentsStillHonorsSymlinks(t *testing.T) {
+func TestMigrationWithoutConfiguredHarnessesStillHonorsSymlinks(t *testing.T) {
 	cwd := t.TempDir()
 	legacySkillsLock(t, cwd)
 	linkSkill(t, cwd)

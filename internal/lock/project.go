@@ -107,10 +107,12 @@ type ProjectLockFile struct {
 	Skills              map[string]LocalSkillLockEntry
 	Knowledge           map[string]KnowledgeLockEntry
 	Plugins             map[string]PluginLockEntry
+	Agents              map[string]AgentLockEntry
 	extra               map[string]json.RawMessage
 	rawSkills           map[string]json.RawMessage
 	rawKnowledge        map[string]json.RawMessage
 	rawPlugins          map[string]json.RawMessage
+	rawAgents           map[string]json.RawMessage
 }
 
 // knownJSONKeys lists a struct's json field names, so entry marshalling can
@@ -133,6 +135,7 @@ var (
 	knownKnowledgeEntryKeys   = knownJSONKeys(KnowledgeLockEntry{})
 	knownPluginEntryKeys      = knownJSONKeys(PluginLockEntry{})
 	knownGlobalSkillEntryKeys = knownJSONKeys(SkillLockEntry{})
+	knownAgentEntryKeys       = knownJSONKeys(AgentLockEntry{})
 )
 
 // mergeEntryExtras marshals a typed entry, then folds back any keys from
@@ -216,6 +219,13 @@ func (l ProjectLockFile) mergedSections() ([]mergedSection, error) {
 		}
 		out = append(out, mergedSection{"plugins", v})
 	}
+	if len(l.Agents) > 0 {
+		v, err := marshalSection(l.Agents, l.rawAgents, knownAgentEntryKeys)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, mergedSection{"agents", v})
+	}
 	return out, nil
 }
 
@@ -234,7 +244,7 @@ func captureRawEntries(section json.RawMessage) map[string]json.RawMessage {
 
 func (l ProjectLockFile) isEmpty() bool {
 	return len(l.Skills) == 0 && len(l.Knowledge) == 0 && len(l.Plugins) == 0 &&
-		len(l.ConfiguredHarnesses) == 0 && len(l.extra) == 0 && l.InstallMode == ""
+		len(l.Agents) == 0 && len(l.ConfiguredHarnesses) == 0 && len(l.extra) == 0 && l.InstallMode == ""
 }
 
 // orderedObject builds a JSON object whose keys come out in the order they
@@ -360,6 +370,7 @@ func (l *ProjectLockFile) UnmarshalJSON(data []byte) error {
 	l.rawSkills = captureRawEntries(raw["skills"])
 	l.rawKnowledge = captureRawEntries(raw["knowledge"])
 	l.rawPlugins = captureRawEntries(raw["plugins"])
+	l.rawAgents = captureRawEntries(raw["agents"])
 	if err := decode("skills", &l.Skills); err != nil {
 		return err
 	}
@@ -367,6 +378,9 @@ func (l *ProjectLockFile) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	if err := decode("plugins", &l.Plugins); err != nil {
+		return err
+	}
+	if err := decode("agents", &l.Agents); err != nil {
 		return err
 	}
 	if len(raw) > 0 {
@@ -461,6 +475,9 @@ func normalizeProjectLock(lk *ProjectLockFile) {
 	}
 	if lk.Plugins == nil {
 		lk.Plugins = map[string]PluginLockEntry{}
+	}
+	if lk.Agents == nil {
+		lk.Agents = map[string]AgentLockEntry{}
 	}
 }
 

@@ -633,16 +633,38 @@ func TestCherryPickDryRunWritesNothing(t *testing.T) {
 	}
 }
 
-// The rename is breaking on purpose: `mdm agents` is reclaimed for agent
-// definitions in this same release, so an alias would mean one command
-// name silently changing meaning between two commits.
+// `mdm harnesses` owns what `mdm agents` used to mean (the configured AI
+// harness list). `mdm agents` is reclaimed in this same release for agent
+// definitions, a different concept — so the two commands must both resolve,
+// and their help text must not read as the same thing under two names.
 func TestHarnessesReplacesAgentsCommand(t *testing.T) {
 	out, _, code := runMdm(t, "harnesses", "--help")
 	if code != 0 {
 		t.Fatalf("`mdm harnesses` exited %d, want 0\n%s", code, out)
 	}
-	if _, _, code := runMdm(t, "agents", "--help"); code == 0 {
-		t.Error("`mdm agents` still resolves; it must not until agent definitions land")
+	if strings.Contains(out, "agent definitions") {
+		t.Errorf("`mdm harnesses --help` reads like the agent-definitions command:\n%s", out)
+	}
+}
+
+// `mdm agents` is the reclaimed name. It must exist by the end of the
+// release that removed the old one, and it must take --agent/-a.
+func TestAgentsCommandManagesDefinitions(t *testing.T) {
+	out, _, code := runMdm(t, "agents", "--help")
+	if code != 0 {
+		t.Fatalf("`mdm agents` exited %d, want 0\n%s", code, out)
+	}
+	for _, sub := range []string{"add", "list", "remove"} {
+		if !strings.Contains(out, sub) {
+			t.Errorf("`mdm agents --help` does not mention %q:\n%s", sub, out)
+		}
+	}
+	addOut, _, _ := runMdm(t, "agents", "add", "--help")
+	if !strings.Contains(addOut, "-a, --agent") {
+		t.Errorf("`mdm agents add` must take -a, --agent:\n%s", addOut)
+	}
+	if strings.Contains(addOut, "-a, --harness") {
+		t.Errorf("`mdm agents add`'s --harness must not take the -a shorthand; it collides with --agent:\n%s", addOut)
 	}
 }
 
@@ -657,6 +679,6 @@ func TestHarnessFlagHasNoShorthand(t *testing.T) {
 		t.Errorf("--harness must not take the -a shorthand:\n%s", out)
 	}
 	if strings.Contains(out, "--agent ") {
-		t.Errorf("--agent must be gone in this commit:\n%s", out)
+		t.Errorf("`skills add` must not gain --agent; that belongs to `mdm agents add`:\n%s", out)
 	}
 }

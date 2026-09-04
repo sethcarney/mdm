@@ -20,6 +20,20 @@ type LocalSkillLockEntry struct {
 	SkillPath  string `json:"skillPath,omitempty"`
 }
 
+// AgentLockEntry records one installed agent-definition file. It mirrors
+// LocalSkillLockEntry: the same source fields, plus AgentPath — where the
+// file sat inside the source tree — so a later update can find it again.
+// Unlike SkillPath, AgentPath has no omitempty: a definition is a single
+// file, not a directory, so there is no well-known name (like SKILL.md) an
+// update could fall back to guessing; losing this path silently would make
+// the entry impossible to refresh from its source.
+type AgentLockEntry struct {
+	Source     string `json:"source"`
+	SourceType string `json:"sourceType"`
+	Ref        string `json:"ref,omitempty"`
+	AgentPath  string `json:"agentPath"`
+}
+
 // LocalSkillLockFile is a view of the skills section of the project lock.
 // Reading and writing it goes through mdm.lock (with legacy
 // skills-lock.json fallback on read); the other sections are preserved.
@@ -112,6 +126,31 @@ func RemoveSkillFromLocalLock(skillName string, cwd string) error {
 	}
 	delete(lock.Skills, skillName)
 	return WriteLocalLock(lock, cwd)
+}
+
+// AddAgentToLocalLock records one installed agent definition in mdm.lock.
+// It mirrors AddSkillToLocalLock but goes through ProjectLockFile directly
+// rather than the LocalSkillLockFile view: that view carries only the
+// skills and configuredHarnesses sections across a read/write round trip,
+// not agents.
+func AddAgentToLocalLock(name string, entry AgentLockEntry, cwd string) error {
+	pl := ReadProjectLock(cwd)
+	if pl.Agents == nil {
+		pl.Agents = map[string]AgentLockEntry{}
+	}
+	pl.Agents[name] = entry
+	return WriteProjectLock(pl, cwd)
+}
+
+// RemoveAgentFromLocalLock removes one agent definition's entry from
+// mdm.lock, mirroring RemoveSkillFromLocalLock.
+func RemoveAgentFromLocalLock(name string, cwd string) error {
+	pl := ReadProjectLock(cwd)
+	if _, ok := pl.Agents[name]; !ok {
+		return nil
+	}
+	delete(pl.Agents, name)
+	return WriteProjectLock(pl, cwd)
 }
 
 func HasProjectSkills(cwd string) bool {
