@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/sethcarney/mdm/internal/pathsafe"
 	"github.com/sethcarney/mdm/internal/skill"
 )
 
@@ -42,62 +43,18 @@ func ParseAgentMd(path string) (*AgentFile, error) {
 	return &AgentFile{Name: name, Description: desc, Path: path}, nil
 }
 
-// isSafeRelDir reports whether d is a repo-relative directory that cannot
-// escape the search root, judged purely from the path STRING. Both the
-// caller's subpath and the manifest's agentsDirs go through it, because the
-// manifest lives inside the source being installed and that source is
-// third-party.
-//
-// This is a cheap first pass only. It cannot see that a directory entry
-// which lexically looks fine (e.g. "custom-agents") is actually a symlink
-// pointing somewhere else on disk; DiscoverAgentFiles additionally resolves
-// every candidate directory and file against the real search root before
-// reading it. filepath.IsAbs alone is not enough here either: on Windows
-// it reports false for a rooted-but-driveless path like "/etc/passwd", so
-// a naive absolute check would let that through. filepath.IsLocal covers
-// that, plus "..", empty, and (on Windows) reserved device names in one
-// lexical pass; "." is rejected on top because a source declaring "." would
-// make the search root scan itself as a "declared" subdirectory, which is
-// harmless but not what agentsDirs means.
-func isSafeRelDir(d string) bool {
-	if d == "" || d == "." {
-		return false
-	}
-	return filepath.IsLocal(d)
-}
-
-// resolvedContains reports whether candidate, once symlinks are resolved,
-// still lies inside resolvedRoot (itself already resolved by the caller).
-//
-// This data comes from the source being installed, which is untrusted: a
-// directory or file inside it can be a symlink whose target lies anywhere
-// on the victim's disk (e.g. a "custom-agents" entry that is really a link
-// to the user's Documents folder). isSafeRelDir only inspects the path
-// string declared in agentsDirs and can't see that; only resolving the
-// entry on disk and comparing it against the real root closes that gap. Any
-// resolution error, including a broken or looping symlink, is treated as
-// unsafe rather than followed.
-//
-// This still leaves a check-then-use window: the caller resolves candidate
-// here and then reopens the same unresolved path by name (os.ReadDir /
-// os.ReadFile), so an attacker who can swap a real entry for a symlink
-// between the two defeats it. That is accepted, not missed: closing it
-// needs handle-based open-then-verify APIs Go does not expose portably,
-// this is a one-shot scan at install time, and an attacker able to write
-// into the source tree concurrently during an install can already just
-// drop a hostile agent file in it directly, which is the threat this
-// package already assumes.
-func resolvedContains(resolvedRoot, candidate string) bool {
-	resolved, err := filepath.EvalSymlinks(candidate)
-	if err != nil {
-		return false
-	}
-	rel, err := filepath.Rel(resolvedRoot, resolved)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return false
-	}
-	return true
-}
+// The two containment checks this package applies — to the caller's subpath,
+// to the manifest's agentsDirs, and to every directory and file discovered
+// below them — live in internal/pathsafe, because internal/skill needs the
+// same pair and a security guard that exists twice drifts. See that package
+// for what each one covers, why the lexical check uses filepath.IsLocal
+// rather than filepath.IsAbs, and the check-then-use window it deliberately
+// leaves open. They are named here so this file reads the same as it did
+// when it owned them.
+var (
+	isSafeRelDir     = pathsafe.IsSafeRelDir
+	resolvedContains = pathsafe.ResolvedContains
+)
 
 // manifestAgentDirs reads agentsDirs from .claude-plugin/marketplace.json.
 // An unsafe entry is dropped silently, the same treatment an invalid agent

@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/sethcarney/mdm/internal/pathsafe"
 )
 
 type Skill struct {
@@ -189,60 +191,23 @@ type DiscoverOptions struct {
 	FullDepth       bool
 }
 
-// isSafeRelDir reports whether d is a source-relative directory that cannot
-// escape the search root, judged purely from the path STRING. Every directory
-// a plugin manifest declares goes through it, because the manifest lives
-// inside the source being installed and that source is third-party.
+// The two containment checks this package applies to manifest-declared
+// directories live in internal/pathsafe, because internal/agentfile needs the
+// same pair and a security guard that exists twice drifts. See that package
+// for what each one covers, why the lexical check uses filepath.IsLocal rather
+// than filepath.IsAbs, and the check-then-use window it deliberately leaves
+// open. They are named here so this file reads the same as it did when it
+// owned them.
 //
-// This is a cheap first pass only. It cannot see that a directory entry which
-// lexically looks fine (e.g. "extra-skills") is actually a symlink pointing
-// somewhere else on disk; the callers additionally resolve every candidate
-// against the real search root, see resolvedContains. filepath.IsAbs alone is
-// not enough here either: on Windows it reports false for a rooted-but-
-// driveless path like "/Users/victim", so a naive absolute check would let
-// that through. filepath.IsLocal covers that, plus "..", empty, and (on
-// Windows) reserved device names in one lexical pass; "." is rejected on top
-// because a source declaring "." would make the search root scan itself as a
-// "declared" subdirectory, which is harmless but not what skillDirs means.
-func isSafeRelDir(d string) bool {
-	if d == "" || d == "." {
-		return false
-	}
-	return filepath.IsLocal(d)
-}
-
-// resolvedContains reports whether candidate, once symlinks are resolved,
-// still lies inside resolvedRoot (itself already resolved by the caller).
-//
-// The manifest comes from the source being installed, which is untrusted: a
-// directory inside that source can be a symlink whose target lies anywhere on
-// the victim's disk (e.g. an "extra-skills" entry that is really a link to the
-// user's Documents folder), and mdm would then scan it and install whatever it
-// found there as skills. isSafeRelDir only inspects the declared path string
-// and cannot see that; only resolving the entry on disk and comparing it with
-// the real root closes that gap. Any resolution error, including a broken or
-// looping symlink, is treated as unsafe rather than followed.
-//
-// Two things this deliberately does not close. First, a check-then-use window:
-// the candidate is resolved here and then reopened by its unresolved name
-// (os.ReadFile / os.ReadDir), so an attacker who swaps a real entry for a
-// symlink between the two defeats it. Closing that needs handle-based
-// open-then-verify APIs Go does not expose portably, and an attacker able to
-// write into the source tree mid-install can simply drop a hostile skill
-// directly into it instead. Second, this guards manifest-declared paths only;
-// the conventional directories DiscoverSkills always scans are still opened by
-// name, so a symlinked "skills" directory inside a source remains a way out.
-func resolvedContains(resolvedRoot, candidate string) bool {
-	resolved, err := filepath.EvalSymlinks(candidate)
-	if err != nil {
-		return false
-	}
-	rel, err := filepath.Rel(resolvedRoot, resolved)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return false
-	}
-	return true
-}
+// The scope limit is this package's own, and stays here: the guards cover
+// manifest-declared paths ONLY. The conventional directories DiscoverSkills
+// always scans (priorityDirs, and the FindSkillDirs walk) are still opened by
+// name, so a symlinked "skills" directory inside a source remains a way out of
+// the source tree. That was left alone on purpose rather than missed.
+var (
+	isSafeRelDir     = pathsafe.IsSafeRelDir
+	resolvedContains = pathsafe.ResolvedContains
+)
 
 // readPluginManifest returns the raw .claude-plugin/marketplace.json bytes for
 // searchPath together with the resolved search root its declared directories
