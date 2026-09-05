@@ -180,7 +180,7 @@ func TestManifestBehindASymlinkIsNotRead(t *testing.T) {
 	writeSkill(t, filepath.Join(src, "extra", "reached"), "reached")
 	symlinkOrSkip(t, filepath.Join(root, "attacker"), filepath.Join(src, ".claude-plugin"))
 
-	// "extra" is in-tree and would be honoured from a real manifest; it is
+	// "extra" is in-tree and would be honored from a real manifest; it is
 	// dropped here only because the manifest declaring it is not in the source.
 	if paths := GetPluginSkillPaths(src); len(paths) != 0 {
 		t.Errorf("GetPluginSkillPaths = %v, want none", paths)
