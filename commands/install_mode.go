@@ -120,9 +120,10 @@ func rematerializeGroups(to InstallMode, groups []conversionGroup) (int, error) 
 
 // scopeAgentInstallPaths is scopeInstallPaths for agent definitions: the
 // on-disk file of every definition the scope's lock records, per harness with
-// an agent concept, deduplicated. Harnesses are walked in sorted order, since
-// the caller reports "converted N of them". Each path carries the canonical file
-// name, name+agentCanonicalExt, not the target's basename.
+// an agent-definition directory recorded, deduplicated. Harnesses are walked
+// in sorted order, since the caller reports "converted N of them". Each path
+// carries the canonical file name, name+agentCanonicalExt, not the target's
+// basename.
 func scopeAgentInstallPaths(global bool, cwd string) []conversionPath {
 	names, _ := agentLockEntries(global, cwd)
 

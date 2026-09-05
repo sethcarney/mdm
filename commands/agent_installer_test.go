@@ -23,9 +23,9 @@ func TestAgentFileExtHonorsTheHarnessSuffix(t *testing.T) {
 	}
 }
 
-// A harness with no agent concept has nowhere to put a definition. It is
-// skipped, not failed: installing to five harnesses where one has no agent
-// support is a normal thing to do.
+// A harness with no agent-definition directory recorded has nowhere to put a
+// definition. It is skipped, not failed: installing to five harnesses where
+// one has no directory recorded is a normal thing to do.
 func TestInstallAgentFileSkipsAHarnessWithNoAgentDir(t *testing.T) {
 	cwd := t.TempDir()
 	src := filepath.Join(cwd, "critic.md")
@@ -221,8 +221,9 @@ func TestInstallAgentFileDoesNotTruncateThroughAHarnessSymlink(t *testing.T) {
 	}
 }
 
-// A harness with no agent concept is a skip, and callers have to be able to
-// tell that from a failure without string-matching the reason.
+// A harness with no agent-definition directory recorded is a skip, and
+// callers have to be able to tell that from a failure without
+// string-matching the reason.
 func TestInstallAgentFileMarksANoAgentHarnessAsSkipped(t *testing.T) {
 	cwd := t.TempDir()
 	src := filepath.Join(cwd, "critic.md")

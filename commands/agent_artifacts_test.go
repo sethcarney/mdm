@@ -37,8 +37,8 @@ func agentHarnessTarget(harnessName, cwd string) string {
 // Mutation this test catches: deleting the `if !installedAny { ...continue
 // }` guard in installAgentsForHarnesses (i.e. always writing the lock entry
 // regardless of whether any harness actually got the file). A harness with
-// no agent concept is a guaranteed, harmless way to force every install in
-// the batch to fail, without needing a filesystem fault.
+// no directory recorded forces every install in the batch to fail, harmlessly
+// and without needing a filesystem fault.
 func TestInstallAgentsForHarnessesSkipsLockOnTotalFailure(t *testing.T) {
 	cwd := t.TempDir()
 	src := filepath.Join(t.TempDir(), "critic.md")

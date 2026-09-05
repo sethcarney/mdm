@@ -207,11 +207,13 @@ See [mdm doctor](doctor.md) for the full check list.
 
 ## Harness support
 
-Not every harness has an agent-definition concept. The five that do are
-listed below, each checked against its own vendor documentation. A harness
-that is not listed here has no agent concept at all — `mdm agents add`
+These five harnesses are the ones mdm can install agent definitions to, each
+checked against its own vendor documentation. A harness that is not listed
+here has no agent-definition directory recorded in mdm — `mdm agents add`
 installs to it are skipped with a notice rather than failing, the same way a
-harness with no skills directory would be.
+harness with no skills directory would be. That is a statement about what
+mdm has configured, not a claim about whether the harness itself supports
+agent definitions; most other harnesses have not been checked either way.
 
 | Harness | Project directory | User directory | File extension | Source |
 | --- | --- | --- | --- | --- |
@@ -247,3 +249,17 @@ For OpenCode, Cursor, and Gemini CLI, no such precedence rule is confirmed
 either way in the vendor documentation checked above. Treat installing the
 same name to both scopes on those harnesses as undefined rather than
 assuming either side wins.
+
+### Codex has agents — mdm still skips it, on purpose
+
+Codex is not in the table above, but it is not an unchecked negative either:
+Codex supports custom agents as standalone `.toml` files (`.codex/agents` for
+project scope, `~/.codex/agents` for user scope), with required fields
+`name`, `description`, and `developer_instructions`. Source:
+[learn.chatgpt.com/docs/agent-configuration/subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents)
+— checked 2026-09-05. mdm's agent definitions are markdown with YAML
+frontmatter, a different format entirely, so `mdm agents add` does not
+install to Codex's agents directory — writing a `.md` file there would be a
+file Codex silently never reads, the same failure mode as Copilot's
+`.agent.md` requirement above. Supporting Codex would mean generating TOML,
+which is a feature to build, not a correction to this doc.

@@ -280,7 +280,8 @@ type agentInstallOutcome struct {
 
 // installAgentsForHarnesses installs each selected definition into every
 // requested harness, and records it in the lock only when at least one harness
-// received it. A harness with no agent concept is a skip with a reason.
+// received it. A harness with no agent-definition directory recorded is a
+// skip with a reason.
 func installAgentsForHarnesses(agents []*agentfile.AgentFile, harnesses []string, global bool, mode InstallMode, baseEntry lock.AgentLockEntry, cloneDir, cwd string) agentInstallOutcome {
 	var fallbacks symlinkFallbacks
 	outcome := agentInstallOutcome{fallbacks: &fallbacks}
@@ -415,9 +416,10 @@ func agentLockEntries(global bool, cwd string) ([]string, map[string]lock.AgentL
 	return names, m
 }
 
-// agentInstalledHarnesses returns, sorted, every harness with an agent concept
-// in this scope that has a file on disk for this definition. A harness copy can
-// go missing while the canonical file stays untouched.
+// agentInstalledHarnesses returns, sorted, every harness with an
+// agent-definition directory recorded for this scope that has a file on disk
+// for this definition. A harness copy can go missing while the canonical file
+// stays untouched.
 func agentInstalledHarnesses(name string, global bool, cwd string) []string {
 	var found []string
 	for harnessName := range harness.AllHarnesses {

@@ -36,8 +36,9 @@ type HarnessConfig struct {
 	NativeInstructions bool
 
 	// AgentsInstallDir is the project-relative directory this harness reads
-	// agent definitions from. Empty means no agent concept, and an install
-	// skips it with a notice. GlobalAgentsInstallDir is the user-level one.
+	// agent definitions from. Empty means mdm has no directory recorded for
+	// this harness, and an install skips it with a notice — not a claim that
+	// the harness lacks the concept. GlobalAgentsInstallDir is the user-level one.
 	AgentsInstallDir       string
 	GlobalAgentsInstallDir string
 
@@ -200,6 +201,11 @@ func Reload() {
 			NativeInstructions: true,
 			DetectInstalled:    func() bool { return pathExists(filepath.Join(home, ".gemini/antigravity")) },
 		},
+		// Codex has custom agents: standalone .toml files (name, description,
+		// developer_instructions) in .codex/agents and ~/.codex/agents. mdm's
+		// agent definitions are markdown, a different format, so do NOT set
+		// AgentsInstallDir/GlobalAgentsInstallDir here without adding TOML
+		// generation first. See docs/agent-artifacts.md, checked 2026-09-05.
 		"codex": {
 			Name:               "codex",
 			DisplayName:        "Codex",
@@ -705,8 +711,9 @@ func AgentFileExt(harnessName string) string {
 }
 
 // AgentsInstallDirFor resolves where harnessName reads agent definitions
-// for a scope. It returns "" when the harness has no agent concept, or when
-// global scope is asked of a harness with no user-level directory.
+// for a scope. It returns "" when mdm has no directory recorded for the
+// harness, or when global scope is asked of a harness with no user-level
+// directory.
 func AgentsInstallDirFor(name string, global bool, cwd string) string {
 	h, ok := AllHarnesses[name]
 	if !ok {

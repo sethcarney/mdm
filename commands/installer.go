@@ -30,8 +30,9 @@ type InstallResult struct {
 	Error         string
 
 	// Skipped marks a not-installed result that is nobody's fault: an agent
-	// definition aimed at a harness with no agent concept. Error carries the
-	// reason; a caller must report it as a skip, not a failure.
+	// definition aimed at a harness with no agent-definition directory
+	// recorded. Error carries the reason; a caller must report it as a skip,
+	// not a failure.
 	Skipped bool
 }
 

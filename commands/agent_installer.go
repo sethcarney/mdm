@@ -77,7 +77,7 @@ func copyAgentIntoHarness(canonicalPath, harnessDir, harnessPath string) error {
 // canonical copy is written first at .agents/agents/<name>.md, then linked (or
 // copied, on symlink failure) into the harness's own agents directory under
 // <name><ext>, where ext is harness.AgentFileExt(harnessName). A harness with no
-// agent concept is a skip, not a failure.
+// agent-definition directory recorded is a skip, not a failure.
 func installAgentFile(a *agentfile.AgentFile, harnessName string, global bool, cwd string, mode InstallMode) InstallResult {
 	if cwd == "" {
 		cwd, _ = os.Getwd()
@@ -90,9 +90,9 @@ func installAgentFile(a *agentfile.AgentFile, harnessName string, global bool, c
 
 	harnessDir := harness.AgentsInstallDirFor(harnessName, global, cwd)
 	if harnessDir == "" {
-		reason := h.DisplayName + " has no agent concept"
+		reason := "no agent-definition directory is recorded for " + h.DisplayName
 		if global {
-			reason = h.DisplayName + " does not support global agent installation"
+			reason = "no global agent-definition directory is recorded for " + h.DisplayName
 		}
 		return InstallResult{Success: false, Skipped: true, Mode: mode, Error: reason}
 	}

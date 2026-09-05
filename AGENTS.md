@@ -557,9 +557,9 @@ specifically:
   file name and the lock key. If those two ever disagree, `mdm agents remove`
   drops the lock entry, finds nothing to delete, and leaves the definition live
   in the harness with no record of it.
-- A harness with no agent concept is a **skip** with a printed reason, not a
-  failure — but a run that installed nothing anywhere prints no success line and
-  exits non-zero.
+- A harness with no agent-definition directory recorded is a **skip** with a
+  printed reason, not a failure — but a run that installed nothing anywhere
+  prints no success line and exits non-zero.
 
 `mdm skills cherry-pick` → `cherrypick.go` reuses steps 1–3, then diverges:
 
@@ -583,8 +583,9 @@ loads subagent persona files, set `AgentsInstallDir` (and
 `GlobalAgentsInstallDir`), plus `AgentFileSuffix` when it wants something other
 than `.md` — GitHub Copilot CLI wants `.agent.md`, and writing a plain `.md`
 there installs a file the harness silently never loads. Leaving those fields
-empty is how a harness declares it has no agent concept, which every
-agent-definition path treats as a skip.
+empty means mdm has no directory recorded for that harness yet, not that the
+harness lacks the concept, and every agent-definition path treats it as a
+skip.
 
 Resolve paths through the helpers (`SkillsInstallDir`, `AgentsInstallDirFor`,
 `CanonicalSkillsDir`, `CanonicalAgentsDir`, `UsesSharedSkillsDir`), not by

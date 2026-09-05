@@ -178,11 +178,11 @@ func TestAgentsAddOnTheProjectItselfLeavesTheDefinitionIntact(t *testing.T) {
 	}
 }
 
-// A harness with no agent concept is a skip, not a failure — but a run that
-// installed nothing anywhere is still a failed run. Printing "✓ Installed 1
-// agent definition" and exiting 0 after writing no files and no lock entry
-// tells a CI script the opposite of what happened.
-func TestAgentsAddSkipsAHarnessWithNoAgentConceptAndFailsWhenNothingLands(t *testing.T) {
+// A harness with no agent-definition directory recorded is a skip, not a
+// failure — but a run that installed nothing anywhere is still a failed run.
+// Printing "✓ Installed 1 agent definition" and exiting 0 after writing no
+// files and no lock entry tells a CI script the opposite of what happened.
+func TestAgentsAddSkipsAHarnessWithNoAgentDirAndFailsWhenNothingLands(t *testing.T) {
 	projectDir := t.TempDir()
 	stateDir := t.TempDir()
 	src := writeAgentSource(t, "critic", "critic")
@@ -197,7 +197,7 @@ func TestAgentsAddSkipsAHarnessWithNoAgentConceptAndFailsWhenNothingLands(t *tes
 	if strings.Contains(combined, "Installed 1 agent definition") {
 		t.Errorf("a success line was printed for an install that wrote nothing:\n%s", combined)
 	}
-	if !strings.Contains(combined, "skipped") || !strings.Contains(combined, "no agent concept") {
+	if !strings.Contains(combined, "skipped") || !strings.Contains(combined, "no agent-definition directory is recorded") {
 		t.Errorf("expected a skip with its reason, got:\n%s", combined)
 	}
 	if strings.Contains(combined, "failed for") {
