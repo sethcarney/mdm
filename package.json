@@ -5,6 +5,6 @@
   "description": "Build-tooling manifest. Not a published package and not part of the mdm CLI - it exists so the devcontainer CLI used by CI is installed from a hash-pinned lockfile (npm ci) instead of an unpinned `npm install -g`.",
   "license": "Apache-2.0",
   "devDependencies": {
-    "@devcontainers/cli": "0.88.0"
+    "@devcontainers/cli": "0.89.0"
   }
 }
