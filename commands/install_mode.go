@@ -387,9 +387,12 @@ func isMdmOwnedCopyInstall(target string, info os.FileInfo) (bool, error) {
 		}
 		return true, nil
 	}
-	// ParseAgentMd returns (nil, nil) for a file with no name/description
-	// frontmatter, so a read error still surfaces as an error here.
-	agent, err := agentfile.ParseAgentMd(target)
+	// ParseAgentFile, not ParseAgentMd: a Codex install of a TOML canonical is
+	// an ordinary symlink install, so its copy is one this converter owns, and
+	// a .toml file carries no `---` frontmatter for the markdown parser to
+	// find. It returns (nil, nil) for a file with no name/description, so a
+	// read error still surfaces as an error here.
+	agent, err := agentfile.ParseAgentFile(target)
 	if err != nil {
 		return false, fmt.Errorf("checking %s: %w", target, err)
 	}

@@ -1202,9 +1202,9 @@ func TestApplyScopeInstallModeLeavesAMaterializedAgentInstallAlone(t *testing.T)
 		// when no harness in this case does. It must convert both ways.
 		linked string
 	}{
-		// Codex passes with or without the skip today: a .toml install does
-		// not parse as markdown, so isMdmOwnedCopyInstall already refuses it.
-		// The skip is what stops that protection from being an accident.
+		// isMdmOwnedCopyInstall parses a .toml install as a definition, so the
+		// materialized skip is the only thing keeping Codex's re-encoded copy
+		// of a markdown canonical from being linked back at markdown bytes.
 		{"codex reads toml", ".md", "codex", "claude-code"},
 		{"copilot commits its agents directory", ".md", "github-copilot", "claude-code"},
 		{"a toml canonical converts for markdown harnesses", ".toml", "claude-code", ""},
@@ -1265,6 +1265,39 @@ func TestApplyScopeInstallModeStillConvertsAnOrdinaryAgentInstall(t *testing.T) 
 	if isSymlink(t, installed) {
 		t.Fatalf("%s is still a symlink after the scope switched to copy mode", installed)
 	}
+	if mode, ok := applyScopeInstallMode(InstallModeSymlink, false, cwd); !ok || mode != InstallModeSymlink {
+		t.Fatalf("switch back to symlink: mode = %q ok = %v", mode, ok)
+	}
+	assertLinkTo(t, installed, agentCanonicalPath(name, a.Format, false, cwd))
+}
+
+// A TOML canonical is the one definition Codex takes as a plain symlink, so
+// nothing marks its install materialized and the copy→symlink direction has to
+// convert it like any other. Mutation this test catches: isMdmOwnedCopyInstall
+// reading the target with agentfile.ParseAgentMd rather than ParseAgentFile. A
+// .toml file carries no `---` frontmatter, so ParseAgentMd returns (nil, nil),
+// the copy is judged foreign, and the switch back to symlink mode converts
+// nothing while recording `installMode: symlink` for the scope.
+func TestApplyScopeInstallModeConvertsATomlCopyBackToASymlink(t *testing.T) {
+	if !symlinkProbe(t) {
+		t.Skip("symlinks unavailable on this host; a copy here proves nothing")
+	}
+	cwd := t.TempDir()
+	a := writeParsedAgent(t, ".toml")
+	name := agentDiskName(a.Name)
+	installed := installAgentForTest(t, a, "codex", cwd)
+	lockAgentInFormat(t, cwd, name, a.Format)
+	if !isSymlink(t, installed) {
+		t.Fatalf("%s did not install as a symlink; this test proves nothing", installed)
+	}
+
+	if mode, ok := applyScopeInstallMode(InstallModeCopy, false, cwd); !ok || mode != InstallModeCopy {
+		t.Fatalf("switch to copy: mode = %q ok = %v", mode, ok)
+	}
+	if isSymlink(t, installed) {
+		t.Fatalf("%s is still a symlink after the scope switched to copy mode", installed)
+	}
+
 	if mode, ok := applyScopeInstallMode(InstallModeSymlink, false, cwd); !ok || mode != InstallModeSymlink {
 		t.Fatalf("switch back to symlink: mode = %q ok = %v", mode, ok)
 	}
