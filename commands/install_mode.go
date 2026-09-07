@@ -324,10 +324,55 @@ func materializeLinkReplacement(installDir, name, resolved string, srcInfo os.Fi
 	return temp, removeTemp, nil
 }
 
+// replaceLinkWithCopy moves the replacement built at temp into place over the
+// symlink at target, clearing temp on every path that leaves the link standing.
+//
+// A file is renamed straight over the link. os.Rename replaces the name itself
+// on both platforms, so nothing is removed first: the install path holds the
+// link right up to the moment it holds the copy, and a failed rename leaves it
+// exactly as it was, with nothing to restore.
+//
+// A directory cannot be renamed over a symlink — MoveFileEx will not replace a
+// reparse point with a directory, and rename(2) refuses a directory over a
+// non-directory — so that link is renamed aside first and renamed back if the
+// move in fails. A rename, not a fresh createSymlink: copy mode exists for hosts
+// that are not allowed to create a symlink at all, and a link can be sitting
+// there anyway, cloned or committed by a teammate. There, restoring by creating
+// one could only fail, leaving the install path empty.
+func replaceLinkWithCopy(installDir, name, target, temp string, removeTemp func(), isDir bool) error {
+	if !isDir {
+		if err := renameFn(temp, target); err != nil {
+			removeTemp()
+			return fmt.Errorf("finalizing %s: rename failed (%w); the original symlink at %s is untouched", name, err, target)
+		}
+		return nil
+	}
+
+	backup, err := reserveSiblingName(installDir, name)
+	if err != nil {
+		removeTemp()
+		return fmt.Errorf("preparing backup for %s: %w", name, err)
+	}
+	if err := renameFn(target, backup); err != nil {
+		removeTemp()
+		return fmt.Errorf("setting aside %s: %w", name, err)
+	}
+	if err := renameFn(temp, target); err != nil {
+		if rerr := renameFn(backup, target); rerr != nil {
+			return fmt.Errorf("finalizing %s: rename to %s failed (%v), and moving the original symlink back also failed (%v); the symlink is at %s and the copied content at %s, and they need manual repair", name, target, err, rerr, backup, temp)
+		}
+		removeTemp()
+		return fmt.Errorf("finalizing %s: rename failed (%w); restored the original symlink at %s", name, err, target)
+	}
+	// The backup is the symlink itself, never what it points at.
+	_ = os.Remove(backup)
+	return nil
+}
+
 // linkToCopy replaces one mdm symlink at target with a real copy of what it
 // points at, reporting whether it converted anything. The copy is built beside
-// the target and renamed into place, so a failed copy leaves the link untouched
-// and a failed rename puts the link back.
+// the target and moved into place by replaceLinkWithCopy, so a failed copy
+// leaves the link untouched and a failed move leaves it standing too.
 func linkToCopy(canonical, target string) (bool, error) {
 	installDir := filepath.Dir(target)
 	name := filepath.Base(target)
@@ -357,20 +402,8 @@ func linkToCopy(canonical, target string) (bool, error) {
 		return false, err
 	}
 
-	// Remove the link only, never what it points at.
-	if err := os.Remove(target); err != nil {
-		removeTemp()
+	if err := replaceLinkWithCopy(installDir, name, target, temp, removeTemp, srcInfo.IsDir()); err != nil {
 		return false, err
-	}
-	if err := renameFn(temp, target); err != nil {
-		// Put the link back through createSymlink, which writes it relative
-		// like every other mdm link. If that fails, keep temp: it is the only
-		// thing left holding the content.
-		if !createSymlink(resolved, target) {
-			return false, fmt.Errorf("finalizing %s: rename to %s failed (%v), and restoring the original symlink also failed; the copied content is stranded at %s and needs manual repair", name, target, err, temp)
-		}
-		removeTemp()
-		return false, fmt.Errorf("finalizing %s: rename failed (%w); restored the original symlink at %s", name, err, target)
 	}
 	return true, nil
 }

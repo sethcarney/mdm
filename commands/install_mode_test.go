@@ -124,6 +124,45 @@ func failRename(t *testing.T) {
 	t.Cleanup(func() { renameFn = orig })
 }
 
+// failRenameNth fails only the nth rename of the test and performs every other,
+// so a conversion that renames more than once can be broken at one step and its
+// recovery watched. Mirrors failRename; equally not parallel-safe.
+func failRenameNth(t *testing.T, n int) {
+	t.Helper()
+	orig := renameFn
+	calls := 0
+	renameFn = func(from, to string) error {
+		calls++
+		if calls == n {
+			return errors.New("forced rename failure")
+		}
+		return orig(from, to)
+	}
+	t.Cleanup(func() { renameFn = orig })
+}
+
+// failSymlink swaps symlinkFn for one that always errors, standing in for a
+// Windows host without the symlink privilege — the host class copy mode exists
+// for. Shared mutable state, so not parallel-safe.
+func failSymlink(t *testing.T) {
+	t.Helper()
+	orig := symlinkFn
+	symlinkFn = func(_, _ string) error { return errors.New("symlinks unavailable") }
+	t.Cleanup(func() { symlinkFn = orig })
+}
+
+// readlinkOrFail returns a symlink's target exactly as it is stored, so a test
+// can assert a recovery put back the link it found rather than a link of its
+// own making.
+func readlinkOrFail(t *testing.T, link string) string {
+	t.Helper()
+	got, err := os.Readlink(link)
+	if err != nil {
+		t.Fatalf("reading the link at %s: %v", link, err)
+	}
+	return got
+}
+
 // ── Assertions ─────────────────────────────────────────────────────────────────
 
 func isSymlink(t *testing.T, path string) bool {
@@ -362,12 +401,13 @@ func TestRematerializeFailureLeavesModeAndSymlinkUnchanged(t *testing.T) {
 	assertNoTempDirs(t, filepath.Dir(link))
 }
 
-// When the final rename fails the symlink is put back, and put back RELATIVE
-// like every other mdm link, or anything comparing link targets would read
-// the recovered one as foreign.
-func TestRematerializeRestoresARelativeSymlinkAfterARenameFailure(t *testing.T) {
+// A directory cannot be renamed over a symlink on either platform, so its link
+// is set aside with a rename first. When that first rename fails the install
+// path was never touched and there is nothing to recover.
+func TestRematerializeRenameFailureLeavesTheSymlinkAsItWas(t *testing.T) {
 	cwd := t.TempDir()
 	canonical, link := linkSkill(t, cwd, "s1")
+	want := readlinkOrFail(t, link)
 	failRename(t)
 
 	n, err := rematerializeScope(InstallModeCopy, getCanonicalSkillsDir(false, cwd), []conversionPath{selfNamedConversionPath(link)})
@@ -378,8 +418,39 @@ func TestRematerializeRestoresARelativeSymlinkAfterARenameFailure(t *testing.T) 
 		t.Errorf("converted %d, want 0", n)
 	}
 	assertLinkTo(t, link, canonical)
-	if restored, _ := os.Readlink(link); filepath.IsAbs(restored) {
-		t.Errorf("restored link target = %q, want a relative path", restored)
+	if got := readlinkOrFail(t, link); got != want {
+		t.Errorf("link target = %q, want it untouched (%q)", got, want)
+	}
+	assertNoTempDirs(t, filepath.Dir(link))
+}
+
+// The recovery from a failed move-in has to work on a host that cannot create
+// a symlink at all. Windows without Developer Mode is that host, and copy mode
+// is what it runs; a link can still be sitting at the install path, cloned or
+// committed by a teammate on a platform that has them. Restoring by calling
+// createSymlink there could only fail, and the install path would stay empty
+// while the run reported the content stranded in a temp directory.
+//
+// Mutation this test catches: recovering with createSymlink(resolved, target)
+// instead of renaming the set-aside link back into place.
+func TestRematerializeRestoresTheSymlinkWithoutCreatingOne(t *testing.T) {
+	cwd := t.TempDir()
+	canonical, link := linkSkill(t, cwd, "s1")
+	want := readlinkOrFail(t, link)
+	// 1 sets the link aside, 2 moves the copy in, 3 puts the link back.
+	failRenameNth(t, 2)
+	failSymlink(t)
+
+	n, err := rematerializeScope(InstallModeCopy, getCanonicalSkillsDir(false, cwd), []conversionPath{selfNamedConversionPath(link)})
+	if err == nil {
+		t.Fatal("expected an error from the forced rename failure")
+	}
+	if n != 0 {
+		t.Errorf("converted %d, want 0", n)
+	}
+	assertLinkTo(t, link, canonical)
+	if got := readlinkOrFail(t, link); got != want {
+		t.Errorf("restored link target = %q, want the link that was there (%q)", got, want)
 	}
 	assertNoTempDirs(t, filepath.Dir(link))
 }
@@ -810,12 +881,20 @@ func TestRematerializeFileFailureLeavesSymlinkUnchanged(t *testing.T) {
 	assertNoTempDirs(t, filepath.Dir(link))
 }
 
-// When the final rename fails, the symlink is put back, and put back
-// RELATIVE like every other mdm link.
-func TestRematerializeRestoresARelativeSymlinkForAFileAfterARenameFailure(t *testing.T) {
+// A file is renamed straight over its link, so the install path is never
+// emptied first and a failed rename needs no recovery: the link is still there,
+// exactly as it was. failSymlink is what makes that load-bearing — a conversion
+// that removes the link first can only put one back by creating it, and this
+// host cannot.
+//
+// Mutation this test catches: an os.Remove(target) before the rename in the
+// file arm of replaceLinkWithCopy, which leaves the install path empty.
+func TestRematerializeFileRenameFailureLeavesTheLinkUntouched(t *testing.T) {
 	cwd := t.TempDir()
 	canonical, canonicalDir, link := linkAgentFile(t, cwd, "critic")
+	want := readlinkOrFail(t, link)
 	failRename(t)
+	failSymlink(t)
 
 	n, err := rematerializeScope(InstallModeCopy, canonicalDir, []conversionPath{selfNamedConversionPath(link)})
 	if err == nil {
@@ -828,8 +907,8 @@ func TestRematerializeRestoresARelativeSymlinkForAFileAfterARenameFailure(t *tes
 		t.Fatalf("install path is empty after a failed conversion: %v", err)
 	}
 	assertLinkTo(t, link, canonical)
-	if restored, _ := os.Readlink(link); filepath.IsAbs(restored) {
-		t.Errorf("restored link target = %q, want a relative path", restored)
+	if got := readlinkOrFail(t, link); got != want {
+		t.Errorf("link target = %q, want it untouched (%q)", got, want)
 	}
 	assertNoTempDirs(t, filepath.Dir(link))
 }
