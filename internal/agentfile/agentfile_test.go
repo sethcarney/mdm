@@ -224,7 +224,13 @@ func TestDiscoverManifestDirWinsOverConventional(t *testing.T) {
 // subdirectory but is a symlink pointing outside the search root. isSafeRelDir
 // only inspects the declared name. Built with t.TempDir rather than a committed
 // fixture, since a symlink materializing depends on the checkout environment.
-func TestDiscoverRejectsSymlinkedDirEscape(t *testing.T) {
+//
+// This is the end-to-end statement, and it holds with either containment check
+// in place: the file inside the escaped directory resolves outside the root
+// too, so the per-file check catches this fixture on its own. It is named for
+// what it proves rather than for the directory check, which
+// TestDiscoverDoesNotReadADirectoryResolvingOutsideTheRoot isolates.
+func TestDiscoverRejectsADefinitionReachedThroughASymlinkedDir(t *testing.T) {
 	root := t.TempDir()
 
 	// Outside the search root entirely. If the symlink below is followed,
@@ -391,5 +397,67 @@ func TestDiscoverSkipsAnUnparseableFile(t *testing.T) {
 				t.Errorf("noted %v, want a single note naming %q: a silent skip leaves the user with no reason", noted, tc.file)
 			}
 		})
+	}
+}
+
+// The directory-level containment check has its own job, distinct from the
+// per-file one: a directory resolving outside the search root is not read at
+// all. TestDiscoverRejectsADefinitionReachedThroughASymlinkedDir cannot show
+// that, because the file it plants inside the escaped directory resolves
+// outside the root as well, so the per-file check alone rejects that fixture.
+//
+// This one plants a file that resolves back INSIDE the root: a symlink in the
+// escaped directory pointing at a definition in the repo. The per-file check
+// is satisfied by it, so the only thing standing between DiscoverAgentFiles
+// and reading, listing and installing from a directory somewhere else on disk
+// is the directory check.
+//
+// Mutation this detects: delete `if !resolvedContains(resolvedRoot, dirPath) {
+// continue }` from DiscoverAgentFiles. Discovery then lists the outside
+// directory and returns the definition it found there.
+func TestDiscoverDoesNotReadADirectoryResolvingOutsideTheRoot(t *testing.T) {
+	root := t.TempDir()
+	repo := filepath.Join(root, "repo")
+	if err := os.MkdirAll(filepath.Join(repo, ".claude-plugin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// A real definition inside the repo, in a directory discovery never scans
+	// on its own, so reaching it means the escaped directory was read.
+	inside := filepath.Join(repo, "not-a-scanned-dir")
+	if err := os.MkdirAll(inside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(inside, "real.md")
+	agentMd := "---\nname: reached-through-the-escape\ndescription: Only an unread directory hides this\n---\n\nBody.\n"
+	if err := os.WriteFile(target, []byte(agentMd), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// The directory the manifest declares is a symlink out of the root.
+	outside := t.TempDir()
+	link := filepath.Join(repo, "escaped-agents")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Skipf("cannot create a directory symlink on this system: %v", err)
+	}
+	// Its one entry is a symlink pointing back inside the root, so the
+	// per-file containment check passes on it.
+	if err := os.Symlink(target, filepath.Join(outside, "linked.md")); err != nil {
+		t.Skipf("cannot create a file symlink on this system: %v", err)
+	}
+
+	manifest := `{"agentsDirs":["escaped-agents"]}`
+	if err := os.WriteFile(filepath.Join(repo, ".claude-plugin", "marketplace.json"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := DiscoverAgentFiles(repo, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range got {
+		if a.Name == "reached-through-the-escape" {
+			t.Fatalf("read a directory resolving outside the search root: discovered %q at %s", a.Name, a.Path)
+		}
 	}
 }
