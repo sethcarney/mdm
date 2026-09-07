@@ -550,6 +550,104 @@ func TestInstallAgentsForHarnessesCountsWhatActuallyInstalled(t *testing.T) {
 	}
 }
 
+// writeNamedAgent lays down a minimal definition source whose frontmatter
+// name is rawName and returns the parsed struct pointing at it.
+func writeNamedAgent(t *testing.T, rawName string) *agentfile.AgentFile {
+	t.Helper()
+	src := filepath.Join(t.TempDir(), "agent.md")
+	body := "---\nname: " + rawName + "\ndescription: d\n---\n"
+	if err := os.WriteFile(src, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return &agentfile.AgentFile{Name: rawName, Description: "d", Path: src}
+}
+
+// Mutation this test catches: removing the name-pattern warning entirely.
+// "Code Reviewer" has a space and capitals, which Claude Code's docs say it
+// will not load, and the install must still happen despite the warning.
+func TestAgentInstallWarnsWhenNameWontSatisfyClaudeCode(t *testing.T) {
+	cwd := t.TempDir()
+	a := writeNamedAgent(t, "Code Reviewer")
+	baseEntry := lock.AgentLockEntry{Source: "o/r", SourceType: "github"}
+
+	out := captureStdout(t, func() {
+		installAgentsForHarnesses([]*agentfile.AgentFile{a}, []string{"claude-code"}, false, InstallModeCopy, baseEntry, "", cwd)
+	})
+
+	if !strings.Contains(out, "Code Reviewer") {
+		t.Errorf("the warning does not name the definition:\n%s", out)
+	}
+	if !strings.Contains(out, "Claude Code") {
+		t.Errorf("the warning does not name the harness:\n%s", out)
+	}
+	if _, ok := lock.ReadProjectLock(cwd).Agents["code-reviewer"]; !ok {
+		t.Error("the install did not happen despite the warning")
+	}
+}
+
+// Mutation this test catches: warning unconditionally, regardless of whether
+// the name actually satisfies the harness's rule. "code-reviewer" is already
+// lowercase letters and hyphens, so Claude Code has nothing to complain about.
+func TestAgentInstallNoWarningWhenNameAlreadySatisfiesHarness(t *testing.T) {
+	cwd := t.TempDir()
+	a := writeNamedAgent(t, "code-reviewer")
+	baseEntry := lock.AgentLockEntry{Source: "o/r", SourceType: "github"}
+
+	out := captureStdout(t, func() {
+		installAgentsForHarnesses([]*agentfile.AgentFile{a}, []string{"claude-code"}, false, InstallModeCopy, baseEntry, "", cwd)
+	})
+
+	if strings.Contains(out, "will not satisfy") {
+		t.Errorf("a name that already satisfies claude-code's rule should not warn:\n%s", out)
+	}
+}
+
+// Mutation this test catches: treating an empty AgentNamePattern as "matches
+// nothing" instead of "no documented rule to check". OpenCode takes its name
+// from the filename and documents no naming constraint, so even a bad name
+// must not warn against it.
+func TestAgentInstallNoWarningForHarnessWithNoDocumentedPattern(t *testing.T) {
+	cwd := t.TempDir()
+	a := writeNamedAgent(t, "Code Reviewer")
+	baseEntry := lock.AgentLockEntry{Source: "o/r", SourceType: "github"}
+
+	out := captureStdout(t, func() {
+		installAgentsForHarnesses([]*agentfile.AgentFile{a}, []string{"opencode"}, false, InstallModeCopy, baseEntry, "", cwd)
+	})
+
+	if strings.Contains(out, "will not satisfy") {
+		t.Errorf("opencode documents no naming pattern, so nothing should warn:\n%s", out)
+	}
+}
+
+// Mutation this test catches: emitting the warning once per failing harness
+// instead of once per definition. The same bad name fails both claude-code's
+// and gemini-cli's documented rule; the two harnesses must be named together
+// on a single line, not on two separate warning lines.
+func TestAgentInstallNameWarningNamesEachFailingHarnessOnce(t *testing.T) {
+	cwd := t.TempDir()
+	a := writeNamedAgent(t, "Code Reviewer")
+	baseEntry := lock.AgentLockEntry{Source: "o/r", SourceType: "github"}
+
+	out := captureStdout(t, func() {
+		installAgentsForHarnesses([]*agentfile.AgentFile{a}, []string{"claude-code", "gemini-cli"}, false, InstallModeCopy, baseEntry, "", cwd)
+	})
+
+	warnLines := 0
+	for _, line := range strings.Split(out, "\n") {
+		if !strings.Contains(line, "will not satisfy") {
+			continue
+		}
+		warnLines++
+		if !strings.Contains(line, "Claude Code") || !strings.Contains(line, "Gemini CLI") {
+			t.Errorf("the single warning line must name both harnesses:\n%s", line)
+		}
+	}
+	if warnLines != 1 {
+		t.Errorf("got %d warning line(s) for the name-pattern violation, want exactly 1:\n%s", warnLines, out)
+	}
+}
+
 // writeParsedAgent lays down a definition source in the format its extension
 // names and returns it parsed, so Format is set the way discovery sets it.
 func writeParsedAgent(t *testing.T, ext string) *agentfile.AgentFile {

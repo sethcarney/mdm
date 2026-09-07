@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -298,6 +299,48 @@ type agentInstallOutcome struct {
 	materialized *materializedInstalls
 }
 
+// agentNameCharsFor returns the regex character class harnessName's
+// documented AgentNamePattern allows. Letters and hyphens are always in it;
+// digits and underscores are added only when the pattern's own text says so.
+// Empty means no documented pattern, so mdm has nothing to check against.
+func agentNameCharsFor(pattern string) string {
+	if pattern == "" {
+		return ""
+	}
+	chars := "a-z-"
+	if strings.Contains(pattern, "digit") {
+		chars += "0-9"
+	}
+	if strings.Contains(pattern, "underscore") {
+		chars += "_"
+	}
+	return chars
+}
+
+// warnAgentNamePattern warns once, naming every target harness whose
+// documented naming rule this definition's frontmatter name does not
+// satisfy. mdm does not rewrite the name — the source owns it, which is what
+// keeps a symlink install possible — so the install still happens; this only
+// says what to fix.
+func warnAgentNamePattern(rawName string, harnesses []string) {
+	var bad []string
+	for _, harnessName := range harnesses {
+		cfg := harness.AllHarnesses[harnessName]
+		if cfg == nil {
+			continue
+		}
+		chars := agentNameCharsFor(cfg.AgentNamePattern)
+		if chars == "" || regexp.MustCompile("^["+chars+"]+$").MatchString(rawName) {
+			continue
+		}
+		bad = append(bad, fmt.Sprintf("%s (%s)", cfg.DisplayName, cfg.AgentNamePattern))
+	}
+	if len(bad) == 0 {
+		return
+	}
+	ui.LogWarn(fmt.Sprintf("%s: its name will not satisfy %s", rawName, strings.Join(bad, ", ")))
+}
+
 // installAgentsForHarnesses installs each selected definition into every
 // requested harness, and records it in the lock only when at least one harness
 // received it. A harness with no agent-definition directory recorded is a
@@ -311,6 +354,7 @@ func installAgentsForHarnesses(agents []*agentfile.AgentFile, harnesses []string
 	for _, a := range agents {
 		name := agentDiskName(a.Name)
 		fmt.Printf("%sInstalling %s%s%s...\n", ansiDim, ansiText, a.Name, ansiReset)
+		warnAgentNamePattern(a.Name, harnesses)
 
 		var failures agentFailures
 		var skipReasons []string
