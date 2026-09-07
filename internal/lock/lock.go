@@ -24,12 +24,16 @@ type LocalSkillLockEntry struct {
 // LocalSkillLockEntry, plus AgentPath, where the file sat inside the source
 // tree. AgentPath has no omitempty: a definition is a single file with no
 // well-known name like SKILL.md, so losing the path makes the entry impossible
-// to refresh.
+// to refresh. Format is the shape of the canonical file, which mirrors the
+// source, so the canonical file's extension need never be guessed. It is
+// omitempty, and absent means markdown: every canonical file written before
+// this field existed is a .md.
 type AgentLockEntry struct {
 	Source     string `json:"source"`
 	SourceType string `json:"sourceType"`
 	Ref        string `json:"ref,omitempty"`
 	AgentPath  string `json:"agentPath"`
+	Format     string `json:"format,omitempty"`
 }
 
 // LocalSkillLockFile is a view of the skills section of the project lock.

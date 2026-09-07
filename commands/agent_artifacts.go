@@ -296,12 +296,14 @@ func installAgentsForHarnesses(agents []*agentfile.AgentFile, harnesses []string
 		name := agentDiskName(a.Name)
 		fmt.Printf("%sInstalling %s%s%s...\n", ansiDim, ansiText, a.Name, ansiReset)
 
-		var failedHarnesses, skipReasons []string
+		var failures agentFailures
+		var skipReasons []string
 		installedAny := false
 		for _, harnessName := range harnesses {
 			result := installAgentFile(a, harnessName, global, cwd, mode)
 			fallbacks.note(harnessName, result)
 			materialized.note(harnessName, result)
+			failures.note(harnessName, result)
 			switch {
 			case result.Success:
 				installedAny = true
@@ -311,8 +313,6 @@ func installAgentsForHarnesses(agents []*agentfile.AgentFile, harnesses []string
 				}
 			case result.Skipped:
 				skipReasons = append(skipReasons, result.Error)
-			default:
-				failedHarnesses = append(failedHarnesses, harnessName)
 			}
 		}
 
@@ -321,20 +321,19 @@ func installAgentsForHarnesses(agents []*agentfile.AgentFile, harnesses []string
 		}
 
 		if !installedAny {
-			if len(failedHarnesses) > 0 {
-				ui.LogWarn(fmt.Sprintf("%s (failed for: %s)", a.Name, strings.Join(failedHarnesses, ", ")))
-			}
+			reportAgentFailure(a.Name, &failures)
 			continue
 		}
-		if len(failedHarnesses) == 0 {
-			ui.LogSuccess(a.Name)
+		if failures.any() {
+			reportAgentFailure(a.Name, &failures)
 		} else {
-			ui.LogWarn(fmt.Sprintf("%s (failed for: %s)", a.Name, strings.Join(failedHarnesses, ", ")))
+			ui.LogSuccess(a.Name)
 		}
 		outcome.installed++
 
 		entry := baseEntry
 		entry.AgentPath = agentFileRepoPath(a.Path, cloneDir)
+		entry.Format = string(agentCanonicalFormat(a))
 
 		if global {
 			if err := lock.AddAgentToGlobalState(name, entry); err != nil {
@@ -456,8 +455,8 @@ type agentEntryStatus struct {
 	InstalledIn      []string // harness names, sorted; empty means installed nowhere
 }
 
-func agentStatusFor(name string, global bool, cwd string) agentEntryStatus {
-	canonical := agentCanonicalPath(name, global, cwd)
+func agentStatusFor(name string, format agentfile.Format, global bool, cwd string) agentEntryStatus {
+	canonical := agentCanonicalPath(name, format, global, cwd)
 	_, err := os.Stat(canonical)
 	return agentEntryStatus{
 		CanonicalMissing: err != nil,
@@ -501,7 +500,7 @@ func runAgentList(globalFlag, projectFlag bool) {
 		fmt.Printf("%s%s agent definitions:%s\n\n", ansiText, scopeTitle, ansiReset)
 		for _, name := range names {
 			entry := agents[name]
-			st := agentStatusFor(name, global, cwd)
+			st := agentStatusFor(name, lockedAgentFormat(entry), global, cwd)
 
 			var problems []string
 			if st.CanonicalMissing {
@@ -630,7 +629,7 @@ var removeFileFn = os.Remove
 // file and the lock entry only once no harness, including harnesses outside
 // harnessFilter, still has a copy. It returns fullyRemoved=false with a nil
 // error when the copies in scope went but the definition lives elsewhere.
-func removeAgentFromDisk(name string, harnessFilter []string, global bool, cwd string) (fullyRemoved bool, err error) {
+func removeAgentFromDisk(name string, harnessFilter []string, format agentfile.Format, global bool, cwd string) (fullyRemoved bool, err error) {
 	harnesses := harnessFilter
 	if len(harnesses) == 0 {
 		for n := range harness.AllHarnesses {
@@ -660,7 +659,7 @@ func removeAgentFromDisk(name string, harnessFilter []string, global bool, cwd s
 	}
 
 	canonicalDir := harness.CanonicalAgentsDir(global, cwd)
-	canonicalPath := agentCanonicalPath(name, global, cwd)
+	canonicalPath := agentCanonicalPath(name, format, global, cwd)
 	if isPathSafe(canonicalDir, canonicalPath) {
 		if rmErr := removeFileFn(canonicalPath); rmErr != nil && !os.IsNotExist(rmErr) {
 			return false, fmt.Errorf("could not remove the canonical file: %w", rmErr)
@@ -688,7 +687,7 @@ func runAgentRemove(positional []string, opts AgentOptions) {
 		return
 	}
 
-	lockNames, _ := agentLockEntries(global, cwd)
+	lockNames, lockEntries := agentLockEntries(global, cwd)
 	if len(lockNames) == 0 {
 		fmt.Printf("%sNo agent definitions installed.%s\n", ansiDim, ansiReset)
 		return
@@ -709,7 +708,7 @@ func runAgentRemove(positional []string, opts AgentOptions) {
 
 	fmt.Println()
 	for _, name := range toRemove {
-		fullyRemoved, err := removeAgentFromDisk(name, opts.Harnesses, global, cwd)
+		fullyRemoved, err := removeAgentFromDisk(name, opts.Harnesses, lockedAgentFormat(lockEntries[name]), global, cwd)
 		switch {
 		case err != nil:
 			ui.LogError(fmt.Sprintf("%s: %v", name, err))
@@ -1001,6 +1000,7 @@ func runAgentUpdateGroups(groups []updateGroup, global bool, cwd string, allowHi
 
 			entry := baseEntry
 			entry.AgentPath = agentFileRepoPath(a.Path, cloneDir)
+			entry.Format = string(agentCanonicalFormat(a))
 			recordAgentUpdate(name, entry, global, cwd)
 			stats.updated++
 		}

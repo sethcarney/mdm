@@ -130,7 +130,7 @@ func TestInstallAgentFileSanitizesTheNameForEveryPath(t *testing.T) {
 	}
 	// Both paths must be the ones the lock key resolves to, which is what
 	// list, remove, update, and doctor all look for.
-	if want := agentCanonicalPath(name, false, cwd); res.CanonicalPath != want {
+	if want := agentCanonicalPath(name, agentfile.FormatMarkdown, false, cwd); res.CanonicalPath != want {
 		t.Errorf("canonical path = %q, want %q", res.CanonicalPath, want)
 	}
 	if want := agentHarnessPath(name, "claude-code", false, cwd); res.Path != want {
@@ -427,17 +427,21 @@ func TestInstallAgentFileReportsAnUnencodableDefinition(t *testing.T) {
 	if res.Success {
 		t.Fatalf("install reported success for a definition that cannot be encoded; %s holds whatever was written", res.Path)
 	}
-	if !strings.Contains(res.Error, a.Name) {
-		t.Errorf("error = %q; it must name the definition, because the summary prints only harness names", res.Error)
-	}
+	// This used to assert the error named the definition, because the summary
+	// printed only harness names. The summary now prints this error under a
+	// line that names the definition, so what the error owes the user is the
+	// offending key and the reason.
 	if !strings.Contains(res.Error, "standup") {
 		t.Errorf("error = %q; it must name the offending key", res.Error)
+	}
+	if !strings.Contains(res.Error, "cannot be re-encoded") {
+		t.Errorf("error = %q; it must say why the key cannot be converted", res.Error)
 	}
 	if _, err := os.Lstat(res.Path); !os.IsNotExist(err) {
 		t.Errorf("something was written to %s despite the failure (stat err=%v)", res.Path, err)
 	}
 
-	canonical := agentCanonicalPath(agentDiskName(a.Name), false, cwd)
+	canonical := agentCanonicalPath(agentDiskName(a.Name), agentfile.FormatTOML, false, cwd)
 	if _, err := os.Lstat(canonical); !os.IsNotExist(err) {
 		t.Errorf("the canonical file survives a failed install at %s (stat err=%v); nothing names it, so nothing can remove it", canonical, err)
 	}
@@ -466,7 +470,7 @@ func TestInstallAgentFileKeepsTheCanonicalWhenAnotherHarnessSucceeded(t *testing
 		t.Fatal("install to claude-code reported success for a definition that cannot be encoded")
 	}
 
-	canonical := agentCanonicalPath(agentDiskName(a.Name), false, cwd)
+	canonical := agentCanonicalPath(agentDiskName(a.Name), agentfile.FormatTOML, false, cwd)
 	if _, err := os.Stat(canonical); err != nil {
 		t.Fatalf("the canonical file is gone at %s (%v); codex's install points at it", canonical, err)
 	}

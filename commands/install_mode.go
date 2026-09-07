@@ -122,10 +122,10 @@ func rematerializeGroups(to InstallMode, groups []conversionGroup) (int, error) 
 // on-disk file of every definition the scope's lock records, per harness with
 // an agent-definition directory recorded, deduplicated. Harnesses are walked
 // in sorted order, since the caller reports "converted N of them". Each path
-// carries the canonical file name, name+agentCanonicalExt, not the target's
-// basename.
+// carries the canonical file name, which the lock's format decides, not the
+// target's basename.
 func scopeAgentInstallPaths(global bool, cwd string) []conversionPath {
-	names, _ := agentLockEntries(global, cwd)
+	names, entries := agentLockEntries(global, cwd)
 
 	harnesses := make([]string, 0, len(harness.AllHarnesses))
 	for name := range harness.AllHarnesses {
@@ -136,6 +136,7 @@ func scopeAgentInstallPaths(global bool, cwd string) []conversionPath {
 	seen := map[string]bool{}
 	var paths []conversionPath
 	for _, name := range names {
+		canonicalName := name + agentCanonicalExt(lockedAgentFormat(entries[name]))
 		for _, harnessName := range harnesses {
 			target := agentHarnessPath(name, harnessName, global, cwd)
 			if target == "" || seen[target] {
@@ -145,7 +146,7 @@ func scopeAgentInstallPaths(global bool, cwd string) []conversionPath {
 			if _, err := os.Lstat(target); err != nil {
 				continue
 			}
-			paths = append(paths, conversionPath{target: target, canonicalName: name + agentCanonicalExt})
+			paths = append(paths, conversionPath{target: target, canonicalName: canonicalName})
 		}
 	}
 	return paths

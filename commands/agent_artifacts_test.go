@@ -10,6 +10,8 @@ import (
 	"github.com/sethcarney/mdm/internal/agentfile"
 	"github.com/sethcarney/mdm/internal/harness"
 	"github.com/sethcarney/mdm/internal/lock"
+	"github.com/sethcarney/mdm/internal/skill"
+	"github.com/sethcarney/mdm/internal/ui"
 )
 
 // installCriticTo installs a minimal "critic" definition to every named
@@ -138,7 +140,7 @@ func TestRemoveAgentScopedToHarnessLeavesOtherHarnessAndLockIntact(t *testing.T)
 	cwd := t.TempDir()
 	installCriticTo(t, cwd, []string{"claude-code", "cursor"})
 
-	fullyRemoved, err := removeAgentFromDisk("critic", []string{"claude-code"}, false, cwd)
+	fullyRemoved, err := removeAgentFromDisk("critic", []string{"claude-code"}, agentfile.FormatMarkdown, false, cwd)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -167,7 +169,7 @@ func TestRemoveAgentWithNoFilterRemovesEverything(t *testing.T) {
 	cwd := t.TempDir()
 	installCriticTo(t, cwd, []string{"claude-code", "cursor"})
 
-	fullyRemoved, err := removeAgentFromDisk("critic", nil, false, cwd)
+	fullyRemoved, err := removeAgentFromDisk("critic", nil, agentfile.FormatMarkdown, false, cwd)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -206,7 +208,7 @@ func TestRemoveAgentDeletionFailureKeepsLockEntry(t *testing.T) {
 	}
 	defer func() { removeFileFn = orig }()
 
-	fullyRemoved, err := removeAgentFromDisk("critic", []string{"claude-code"}, false, cwd)
+	fullyRemoved, err := removeAgentFromDisk("critic", []string{"claude-code"}, agentfile.FormatMarkdown, false, cwd)
 	if err == nil {
 		t.Fatal("expected an error when the per-harness deletion fails")
 	}
@@ -230,7 +232,7 @@ func TestAgentStatusForFlagsMissingCanonical(t *testing.T) {
 	if err := lock.AddAgentToLocalLock("critic", lock.AgentLockEntry{Source: "o/r", SourceType: "github", AgentPath: "a.md"}, cwd); err != nil {
 		t.Fatal(err)
 	}
-	st := agentStatusFor("critic", false, cwd)
+	st := agentStatusFor("critic", agentfile.FormatMarkdown, false, cwd)
 	if !st.CanonicalMissing {
 		t.Error("CanonicalMissing = false; no canonical file exists on disk")
 	}
@@ -250,7 +252,7 @@ func TestAgentStatusForReportsPerHarnessBreakage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	st := agentStatusFor("critic", false, cwd)
+	st := agentStatusFor("critic", agentfile.FormatMarkdown, false, cwd)
 	if st.CanonicalMissing {
 		t.Error("canonical file untouched by this scenario; CanonicalMissing must be false")
 	}
@@ -545,5 +547,249 @@ func TestInstallAgentsForHarnessesCountsWhatActuallyInstalled(t *testing.T) {
 	}
 	if len(outcome.harnesses) != 1 || outcome.harnesses[0] != "claude-code" {
 		t.Errorf("harnesses = %v, want [claude-code]", outcome.harnesses)
+	}
+}
+
+// writeParsedAgent lays down a definition source in the format its extension
+// names and returns it parsed, so Format is set the way discovery sets it.
+func writeParsedAgent(t *testing.T, ext string) *agentfile.AgentFile {
+	t.Helper()
+	body := "---\nname: critic\ndescription: d\n---\nbody\n"
+	if ext == ".toml" {
+		body = "name = \"critic\"\ndescription = \"d\"\ndeveloper_instructions = \"be critical\"\n"
+	}
+	src := filepath.Join(t.TempDir(), "critic"+ext)
+	if err := os.WriteFile(src, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a, err := agentfile.ParseAgentFile(src)
+	if err != nil || a == nil {
+		t.Fatalf("parsing %s: a=%v err=%v", src, a, err)
+	}
+	return a
+}
+
+// Mutation this test catches: hardcoding ".md" in agentCanonicalPath again.
+// The canonical file mirrors its source, so a TOML source must not be parked
+// under a name that says markdown.
+func TestCanonicalFileMirrorsTheSourceFormat(t *testing.T) {
+	cases := []struct{ ext, harnessName string }{
+		{".md", "claude-code"},
+		{".toml", "codex"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.ext, func(t *testing.T) {
+			cwd := t.TempDir()
+			a := writeParsedAgent(t, tc.ext)
+
+			res := installAgentFile(a, tc.harnessName, false, cwd, InstallModeCopy)
+			if !res.Success {
+				t.Fatalf("install failed: %s", res.Error)
+			}
+
+			want := filepath.Join(harness.CanonicalAgentsDir(false, cwd), "critic"+tc.ext)
+			if res.CanonicalPath != want {
+				t.Errorf("canonical path = %q, want %q", res.CanonicalPath, want)
+			}
+			entries, err := os.ReadDir(harness.CanonicalAgentsDir(false, cwd))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(entries) != 1 || entries[0].Name() != "critic"+tc.ext {
+				t.Errorf("canonical directory holds %v, want only critic%s", entries, tc.ext)
+			}
+		})
+	}
+}
+
+// The lock has to say which format the canonical file is in, because every
+// command that reaches for that file now has two extensions to choose from.
+func TestInstallAgentsForHarnessesRecordsTheCanonicalFormat(t *testing.T) {
+	cwd := t.TempDir()
+	a := writeParsedAgent(t, ".toml")
+
+	baseEntry := lock.AgentLockEntry{Source: "o/r", SourceType: "github"}
+	installAgentsForHarnesses([]*agentfile.AgentFile{a}, []string{"codex"}, false, InstallModeCopy, baseEntry, "", cwd)
+
+	entry, ok := lock.ReadProjectLock(cwd).Agents["critic"]
+	if !ok {
+		t.Fatal("expected an agents lock entry for critic")
+	}
+	if entry.Format != string(agentfile.FormatTOML) {
+		t.Errorf("Format = %q, want %q", entry.Format, agentfile.FormatTOML)
+	}
+}
+
+// Mutation this test catches: removing the collision check, which lets the
+// install succeed and leaves one name with two canonical files in two
+// formats — and silently changes the format every harness gets.
+func TestAddingTheSameNameInTheOtherFormatIsRefused(t *testing.T) {
+	cwd := t.TempDir()
+	installCriticTo(t, cwd, []string{"claude-code"})
+
+	canonicalDir := harness.CanonicalAgentsDir(false, cwd)
+	existing := filepath.Join(canonicalDir, "critic.md")
+	before, err := os.ReadFile(existing)
+	if err != nil {
+		t.Fatalf("setup: no markdown canonical at %s: %v", existing, err)
+	}
+
+	a := writeParsedAgent(t, ".toml")
+	res := installAgentFile(a, "codex", false, cwd, InstallModeCopy)
+	if res.Success {
+		t.Fatalf("install succeeded; %s and %s now both claim the name critic", existing, filepath.Join(canonicalDir, "critic.toml"))
+	}
+	if !strings.Contains(res.Error, existing) {
+		t.Errorf("error = %q; it must name the canonical file that already exists (%s)", res.Error, existing)
+	}
+	if !strings.Contains(res.Error, a.Path) {
+		t.Errorf("error = %q; it must name the incoming source (%s)", res.Error, a.Path)
+	}
+
+	after, err := os.ReadFile(existing)
+	if err != nil || string(after) != string(before) {
+		t.Errorf("the existing canonical file changed (err=%v): %q, want %q", err, after, before)
+	}
+	if _, err := os.Stat(filepath.Join(canonicalDir, "critic.toml")); !os.IsNotExist(err) {
+		t.Errorf("a second canonical file was written despite the refusal (stat err=%v)", err)
+	}
+}
+
+// Mutation this test catches: reading an absent lock format as anything but
+// markdown. Every canonical file mdm wrote before it recorded the format is
+// a .md, so those entries have to keep resolving.
+func TestLockEntryWithoutFormatResolvesTheMarkdownCanonical(t *testing.T) {
+	cwd := t.TempDir()
+	installCriticTo(t, cwd, []string{"claude-code"})
+
+	entry := lock.ReadProjectLock(cwd).Agents["critic"]
+	entry.Format = ""
+	if err := lock.AddAgentToLocalLock("critic", entry, cwd); err != nil {
+		t.Fatal(err)
+	}
+	format := lockedAgentFormat(entry)
+
+	if st := agentStatusFor("critic", format, false, cwd); st.CanonicalMissing {
+		t.Error("a lock entry with no format reports its canonical file missing")
+	}
+
+	fullyRemoved, err := removeAgentFromDisk("critic", nil, format, false, cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fullyRemoved {
+		t.Error("removal did not complete for a lock entry with no format")
+	}
+	canonical := filepath.Join(harness.CanonicalAgentsDir(false, cwd), "critic.md")
+	if _, err := os.Stat(canonical); !os.IsNotExist(err) {
+		t.Errorf("the markdown canonical survived the removal at %s (stat err=%v)", canonical, err)
+	}
+}
+
+// reasonLine returns the single line of out holding needle, with ANSI codes
+// and indentation stripped, so a test can assert on the reason alone.
+func reasonLine(t *testing.T, out, needle string) string {
+	t.Helper()
+	for _, line := range strings.Split(out, "\n") {
+		if !strings.Contains(line, needle) {
+			continue
+		}
+		line = strings.ReplaceAll(line, ansiDim, "")
+		return strings.TrimSpace(strings.ReplaceAll(line, ansiReset, ""))
+	}
+	t.Fatalf("no line of the output holds %q:\n%s", needle, out)
+	return ""
+}
+
+// Mutation this test catches: discarding InstallResult.Error again, so the run
+// prints only the harness name. Encode computes the offending key path
+// precisely so the user knows what to change; a summary that drops it just
+// relocates the confusion.
+func TestInstallAgentsForHarnessesPrintsWhyAnInstallFailed(t *testing.T) {
+	cwd := t.TempDir()
+	a := writeUnencodableAgent(t)
+	baseEntry := lock.AgentLockEntry{Source: "o/r", SourceType: "github"}
+
+	out := captureStdout(t, func() {
+		installAgentsForHarnesses([]*agentfile.AgentFile{a}, []string{"claude-code"}, false, InstallModeCopy, baseEntry, "", cwd)
+	})
+	if !strings.Contains(out, "failed for: claude-code") {
+		t.Fatalf("the failure itself is not reported:\n%s", out)
+	}
+	if !strings.Contains(out, "standup") {
+		t.Fatalf("the output never names the offending key, so there is nothing to act on:\n%s", out)
+	}
+
+	// The reason sits under a line that already names the definition, and it
+	// is read by a person, not a Go caller.
+	reason := reasonLine(t, out, "standup")
+	if strings.Contains(reason, a.Name) {
+		t.Errorf("the reason repeats the definition name from the line above it: %q", reason)
+	}
+	if strings.Contains(reason, "agentfile:") {
+		t.Errorf("the reason carries a Go package prefix: %q", reason)
+	}
+	if !strings.Contains(reason, "cannot be re-encoded") {
+		t.Errorf("the reason does not explain why the key cannot be converted: %q", reason)
+	}
+
+	// One reason shared by two harnesses is stated once, not per harness.
+	other := t.TempDir()
+	out = captureStdout(t, func() {
+		installAgentsForHarnesses([]*agentfile.AgentFile{a}, []string{"claude-code", "cursor"}, false, InstallModeCopy, baseEntry, "", other)
+	})
+	if !strings.Contains(out, "failed for: claude-code, cursor") {
+		t.Errorf("both harnesses should be named on the failure line:\n%s", out)
+	}
+	if got := strings.Count(out, "standup"); got != 1 {
+		t.Errorf("the same reason is printed %d times, want once:\n%s", got, out)
+	}
+}
+
+// Mutation this test catches: discarding InstallResult.Error for the
+// format-collision refusal. The refusal is only useful if the user can see
+// which file already holds the name and which source was rejected.
+func TestInstallAgentsForHarnessesPrintsBothFilesOnAFormatCollision(t *testing.T) {
+	cwd := t.TempDir()
+	installCriticTo(t, cwd, []string{"claude-code"})
+	existing := filepath.Join(harness.CanonicalAgentsDir(false, cwd), "critic.md")
+
+	a := writeParsedAgent(t, ".toml")
+	out := captureStdout(t, func() {
+		installAgentsForHarnesses([]*agentfile.AgentFile{a}, []string{"codex"}, false, InstallModeCopy, lock.AgentLockEntry{Source: "o/r", SourceType: "github"}, "", cwd)
+	})
+	if !strings.Contains(out, existing) {
+		t.Errorf("the output does not name the canonical file that already exists (%s):\n%s", existing, out)
+	}
+	if !strings.Contains(out, a.Path) {
+		t.Errorf("the output does not name the rejected source (%s):\n%s", a.Path, out)
+	}
+}
+
+// The reason lines are the agent path's own reporting. The skills installer
+// still reports a failed harness by name and nothing else, pinned here by
+// exact text so a later change to the agent path cannot drift it.
+func TestSkillsInstallFailureOutputIsUnchanged(t *testing.T) {
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+	src := filepath.Join(cwd, "src")
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "SKILL.md"), []byte("---\nname: s1\ndescription: d\n---\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	out := captureStdout(t, func() {
+		installSkillsForHarnesses([]*skill.Skill{{Name: "s1", Path: src}}, []string{"no-such-harness"},
+			false, InstallModeCopy, lock.SkillLockEntry{Source: "o/r", SourceType: "github"}, cwd, "")
+	})
+
+	want := "  " + ui.Text + "!" + ui.Reset + " s1 (failed for: no-such-harness)\n"
+	if !strings.Contains(out, want) {
+		t.Errorf("the skills failure line changed.\ngot:\n%q\nwant it to contain:\n%q", out, want)
+	}
+	if strings.Contains(out, "unknown harness") {
+		t.Errorf("the skills path started printing install error text:\n%s", out)
 	}
 }

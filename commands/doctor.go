@@ -503,10 +503,10 @@ func checkAgentInstalls(cwd string) []doctorIssue {
 
 // diagnoseAgentInstall checks one locked project-scoped agent definition: the
 // canonical file, and every harness that has something on disk for it.
-func diagnoseAgentInstall(name string, _ lock.AgentLockEntry, cwd string) []doctorIssue {
+func diagnoseAgentInstall(name string, entry lock.AgentLockEntry, cwd string) []doctorIssue {
 	var issues []doctorIssue
 
-	canonical := agentCanonicalPath(name, false, cwd)
+	canonical := agentCanonicalPath(name, lockedAgentFormat(entry), false, cwd)
 	if _, err := os.Stat(canonical); err != nil {
 		issues = append(issues, doctorIssue{
 			Level:   "error",

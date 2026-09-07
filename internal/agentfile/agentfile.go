@@ -79,12 +79,13 @@ func ParseAgentMd(path string) (*AgentFile, error) {
 // Encode renders a in format f. It refuses a definition whose Extra carries a
 // TOML local date, local time, or local date-time: neither target format can
 // express that value's "no UTC offset" meaning, so re-encoding it would
-// silently change what it says rather than merely reformat it. The error
-// names the offending key.
+// silently change what it says rather than merely reformat it. The error names
+// the offending key and carries no package prefix: the installer prints it to
+// the user verbatim, under a line that already names the definition.
 func Encode(a *AgentFile, f Format) ([]byte, error) {
 	for k, v := range a.Extra {
 		if key, ok := firstUnsafeTemporalKey(v, k); ok {
-			return nil, fmt.Errorf("agentfile: cannot encode %q: TOML local date/time values cannot be re-encoded without changing their meaning", key)
+			return nil, fmt.Errorf("cannot encode %q: TOML local date/time values cannot be re-encoded without changing their meaning", key)
 		}
 	}
 	if f == FormatTOML {
