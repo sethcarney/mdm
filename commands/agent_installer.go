@@ -121,6 +121,11 @@ func materializes(canonicalFormat agentfile.Format, harnessName string) bool {
 // names the definition and every harness it failed for, and a reason carrying
 // neither is one string however many harnesses share it.
 func encodeForHarness(a *agentfile.AgentFile, harnessName string) ([]byte, error) {
+	// Checked before the materialization test because a TOML source reaches
+	// Codex as a symlink, which encodes nothing and would skip the guard.
+	if harness.AgentFormat(harnessName) == agentfile.FormatTOML && strings.TrimSpace(a.Instructions) == "" {
+		return nil, fmt.Errorf("it has an empty body, and a TOML agent definition requires developer_instructions")
+	}
 	if !materializes(agentCanonicalFormat(a), harnessName) {
 		return nil, nil
 	}

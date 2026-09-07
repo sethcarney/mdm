@@ -341,6 +341,12 @@ Frontmatter is YAML, which holds nested maps, so a passthrough key like
 `mcp_servers` or `skills.config` survives a round trip in either direction.
 TOML comments and key order do not.
 
+`developer_instructions` is required, so a markdown definition whose body is
+empty cannot be converted for Codex. That harness is refused by name, with
+the reason, and the definition still installs to every markdown harness you
+targeted. Substituting the description would invent content the author did
+not write.
+
 ### The canonical file mirrors the source
 
 mdm's own canonical copy takes its extension from whichever format the

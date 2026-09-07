@@ -478,3 +478,44 @@ func TestInstallAgentFileKeepsTheCanonicalWhenAnotherHarnessSucceeded(t *testing
 		t.Errorf("codex's install no longer resolves at %s: %v", ok.Path, err)
 	}
 }
+
+// writeEmptyBodyAgent returns a markdown definition carrying frontmatter and
+// no instructions, the shape a Codex install cannot be made from.
+func writeEmptyBodyAgent(t *testing.T) *agentfile.AgentFile {
+	t.Helper()
+	src := filepath.Join(t.TempDir(), "hollow.md")
+	if err := os.WriteFile(src, []byte("---\nname: hollow\ndescription: d\n---\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return &agentfile.AgentFile{Name: "hollow", Description: "d", Path: src}
+}
+
+// Mutation this test catches: dropping the empty-instructions guard in
+// encodeForHarness. Codex requires developer_instructions, so an empty body
+// installs a file the harness will not load, reported as a success.
+func TestInstallAgentFileRefusesAnEmptyBodyForATOMLHarness(t *testing.T) {
+	cwd := t.TempDir()
+	a := writeEmptyBodyAgent(t)
+
+	res := installAgentFile(a, "codex", false, cwd, InstallModeSymlink)
+	if res.Success {
+		t.Fatalf("install reported success for a definition Codex cannot load; %s holds whatever was written", res.Path)
+	}
+	if !strings.Contains(res.Error, "developer_instructions") {
+		t.Errorf("error = %q; it must name the field Codex requires", res.Error)
+	}
+	if _, err := os.Lstat(res.Path); !os.IsNotExist(err) {
+		t.Errorf("something was written to %s despite the refusal (stat err=%v)", res.Path, err)
+	}
+}
+
+// The refusal is Codex's alone: the same definition is legitimate markdown.
+func TestInstallAgentFileInstallsAnEmptyBodyToAMarkdownHarness(t *testing.T) {
+	cwd := t.TempDir()
+	a := writeEmptyBodyAgent(t)
+
+	res := installAgentFile(a, "claude-code", false, cwd, InstallModeCopy)
+	if !res.Success {
+		t.Fatalf("install failed for a markdown harness that accepts an empty body: %s", res.Error)
+	}
+}
