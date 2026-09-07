@@ -778,6 +778,14 @@ func runAgentRemove(positional []string, opts AgentOptions) {
 		return
 	}
 
+	// An unrecognized name would otherwise match no harness and report a
+	// removal that never happened. `agents add` rejects the same typo.
+	if len(opts.Harnesses) > 0 {
+		if _, valid := validateNamedHarnesses(opts.Harnesses); !valid {
+			os.Exit(1)
+		}
+	}
+
 	lockNames, lockEntries := agentLockEntries(global, cwd)
 	if len(lockNames) == 0 {
 		fmt.Printf("%sNo agent definitions installed.%s\n", ansiDim, ansiReset)

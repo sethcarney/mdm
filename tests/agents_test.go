@@ -320,3 +320,39 @@ func TestAgentsAddLeavesNothingBehindWhenTheDefinitionCannotBeConverted(t *testi
 		t.Errorf("a failed install left files behind, none of which any lock entry names: %v", left)
 	}
 }
+
+// Mutation this test catches: dropping the --harness validation from
+// runAgentRemove. An unrecognized harness name is not a no-op — it reports
+// "removed from the given harness(es)" about a harness that does not exist,
+// leaves the definition installed, and exits 0. `mdm agents add` rejects the
+// same typo, so removal accepting it is the inconsistency that hides it.
+func TestAgentsRemoveRejectsAnUnknownHarness(t *testing.T) {
+	projectDir := t.TempDir()
+	stateDir := t.TempDir()
+	src := writeAgentSource(t, "critic", "critic")
+
+	env := isolatedEnv(projectDir, stateDir)
+	if _, stderr, code := runMdmInDir(t, projectDir, env,
+		"agents", "add", src, "--harness", "claude-code", "--project", "-y"); code != 0 {
+		t.Fatalf("setup: agents add exited %d: %s", code, stderr)
+	}
+	harnessFile := filepath.Join(projectDir, ".claude", "agents", "critic.md")
+
+	// "copilot" is not a harness name; the real one is "github-copilot".
+	stdout, stderr, code := runMdmInDir(t, projectDir, env,
+		"agents", "remove", "critic", "--harness", "copilot", "--project", "-y")
+	combined := stdout + stderr
+
+	if code == 0 {
+		t.Errorf("exit code = 0 for an unrecognized harness; a script cannot tell this removal did nothing:\n%s", combined)
+	}
+	if !strings.Contains(combined, "copilot") {
+		t.Errorf("output does not name the harness it rejected:\n%s", combined)
+	}
+	if strings.Contains(combined, "removed from the given harness") {
+		t.Errorf("reported a removal from a harness that does not exist:\n%s", combined)
+	}
+	if _, err := os.Lstat(harnessFile); err != nil {
+		t.Errorf("the definition was disturbed by a failed removal (stat err=%v)", err)
+	}
+}
