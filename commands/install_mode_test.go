@@ -691,6 +691,17 @@ func TestInstallForksDoesNotConvertWhenEveryHarnessIsDropped(t *testing.T) {
 
 // The two mode flags contradict each other, so every command taking them
 // must refuse the pair.
+//
+// Each command's Run is replaced with a stub first. Cobra rejects the pair in
+// ValidateFlagGroups, before Run, so the real handler must never be reached
+// here — and reaching it is not harmless. "o/r" is a GitHub shorthand: with a
+// MarkFlagsMutuallyExclusive registration lost, which is the one regression
+// this test exists to catch, `add` and `agents add` would clone
+// https://github.com/o/r.git for real and then call os.Exit(1) on the
+// authentication failure from inside the command. os.Exit takes the whole
+// test binary down with it, so the regression would show up as a crashed,
+// network-dependent run with no `--- FAIL` line for this or any other test
+// queued behind it. The stub keeps the failure a plain assertion, offline.
 func TestCopyAndSymlinkFlagsAreMutuallyExclusive(t *testing.T) {
 	cases := []struct {
 		name string
@@ -704,12 +715,18 @@ func TestCopyAndSymlinkFlagsAreMutuallyExclusive(t *testing.T) {
 		{"agents install", buildAgentsInstallCmd(), []string{"--copy", "--symlink"}},
 	}
 	for _, tc := range cases {
+		ran := false
+		tc.cmd.Run = func(*cobra.Command, []string) { ran = true }
+		tc.cmd.RunE = nil
 		tc.cmd.SetArgs(tc.args)
 		tc.cmd.SetOut(io.Discard)
 		tc.cmd.SetErr(io.Discard)
 		err := tc.cmd.Execute()
 		if err == nil || !strings.Contains(err.Error(), "none of the others can be") {
 			t.Errorf("%s --copy --symlink: err = %v, want a mutual-exclusion error", tc.name, err)
+		}
+		if ran {
+			t.Errorf("%s --copy --symlink: the command ran; the flag pair was accepted", tc.name)
 		}
 	}
 }
