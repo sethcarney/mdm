@@ -341,10 +341,30 @@ func warnAgentNamePattern(rawName string, harnesses []string) {
 	ui.LogWarn(fmt.Sprintf("%s: its name will not satisfy %s", rawName, strings.Join(bad, ", ")))
 }
 
+// canonicalRollback returns the undo for the canonical copy this run is about
+// to write for one definition. installAgentFile writes that copy before the
+// first harness write, so a definition no harness accepts after that point
+// would otherwise leave a file at .agents/agents/<name> that no lock entry
+// names: `agents list` and `agents remove` read the lock and cannot see it,
+// `mdm agents add .` rediscovers it as a source, and checkAgentFormatCollision
+// refuses the name in the other format forever, pointing at a remove that
+// reports the name is not installed.
+//
+// A canonical file already on disk is not this run's to delete. It belongs to
+// an earlier install the lock still names, or it is the source itself, which is
+// what discovery hands back for `mdm agents add .`.
+func canonicalRollback(a *agentfile.AgentFile, name string, global bool, cwd string) func() {
+	path := agentCanonicalPath(name, agentCanonicalFormat(a), global, cwd)
+	if _, err := os.Stat(path); err == nil {
+		return func() {}
+	}
+	return func() { _ = removeFileFn(path) }
+}
+
 // installAgentsForHarnesses installs each selected definition into every
 // requested harness, and records it in the lock only when at least one harness
 // received it. A harness with no agent-definition directory recorded is a
-// skip with a reason.
+// skip with a reason. A definition no harness accepted leaves nothing behind.
 func installAgentsForHarnesses(agents []*agentfile.AgentFile, harnesses []string, global bool, mode InstallMode, baseEntry lock.AgentLockEntry, cloneDir, cwd string) agentInstallOutcome {
 	var fallbacks symlinkFallbacks
 	var materialized materializedInstalls
@@ -364,6 +384,7 @@ func installAgentsForHarnesses(agents []*agentfile.AgentFile, harnesses []string
 		claimed[name] = a.Path
 		fmt.Printf("%sInstalling %s%s%s...\n", ansiDim, ansiText, a.Name, ansiReset)
 		warnAgentNamePattern(a.Name, harnesses)
+		rollback := canonicalRollback(a, name, global, cwd)
 
 		var failures agentFailures
 		var skipReasons []string
@@ -390,6 +411,7 @@ func installAgentsForHarnesses(agents []*agentfile.AgentFile, harnesses []string
 		}
 
 		if !installedAny {
+			rollback()
 			reportAgentFailure(a.Name, &failures)
 			continue
 		}
@@ -1068,8 +1090,14 @@ func runAgentUpdateGroups(groups []updateGroup, global bool, cwd string, allowHi
 
 			installedAny, failedHarnesses := reinstallAgentIntoHarnesses(a, installedHarnesses, global, cwd, mode)
 
-			// The lock must describe the disk. If every harness install
-			// failed, nothing changed on disk.
+			// The lock must describe the disk. When no harness took the new
+			// version, every harness copy still holds the version the entry
+			// already names, so the entry stays. The canonical file is the one
+			// thing that may have moved on: installAgentFile writes it before
+			// the first harness write, so it can hold the new bytes while the
+			// lock and every harness hold the old ones. The entry is not this
+			// run's to rewrite for that alone — the recorded source is what
+			// every harness is still running.
 			if !installedAny {
 				ui.LogWarn(fmt.Sprintf("%s: update failed for every installed harness (%s) — lock entry left unchanged", a.Name, strings.Join(failedHarnesses, ", ")))
 				continue

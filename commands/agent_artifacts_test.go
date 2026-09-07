@@ -68,6 +68,88 @@ func TestInstallAgentsForHarnessesSkipsLockOnTotalFailure(t *testing.T) {
 	}
 }
 
+// blockAgentsDir puts a regular file where harnessName's agents directory
+// belongs, so the os.MkdirAll every harness write starts with fails. It is the
+// cheapest write failure that happens after the canonical copy rather than
+// before it, which is the window this fixture exists to open.
+func blockAgentsDir(t *testing.T, harnessName, cwd string) {
+	t.Helper()
+	dir := harness.AgentsInstallDirFor(harnessName, false, cwd)
+	if dir == "" {
+		t.Fatalf("%s has no project agents directory", harnessName)
+	}
+	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dir, []byte("not a directory\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// installAgentFile writes the canonical copy before the first harness write, so
+// a definition that fails for every harness after that point leaves a file at
+// .agents/agents/<name> that no lock entry names. `agents list` and `agents
+// remove` read the lock and cannot see it, `mdm agents add .` rediscovers it as
+// a source, and checkAgentFormatCollision then refuses the name in the other
+// format forever, pointing at a remove that reports the name is not installed.
+//
+// Mutation this test catches: dropping the rollback() call from the
+// !installedAny arm of installAgentsForHarnesses.
+func TestInstallAgentsForHarnessesLeavesNoOrphanCanonicalFile(t *testing.T) {
+	cwd := t.TempDir()
+	src := filepath.Join(t.TempDir(), "critic.md")
+	if err := os.WriteFile(src, []byte("---\nname: critic\ndescription: d\n---\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a := &agentfile.AgentFile{Name: "critic", Description: "d", Path: src}
+	blockAgentsDir(t, "claude-code", cwd)
+
+	baseEntry := lock.AgentLockEntry{Source: "o/r", SourceType: "github", Ref: "main"}
+	outcome := installAgentsForHarnesses([]*agentfile.AgentFile{a}, []string{"claude-code"}, false, InstallModeCopy, baseEntry, "", cwd)
+	if outcome.installed != 0 {
+		t.Fatalf("installed = %d, want 0; the blocked directory did not fail the write", outcome.installed)
+	}
+	if _, ok := lock.ReadProjectLock(cwd).Agents["critic"]; ok {
+		t.Fatal("lock records the failed install; this test cannot tell an orphan from a normal install")
+	}
+
+	canonicalPath := agentCanonicalPath("critic", agentfile.FormatMarkdown, false, cwd)
+	if _, err := os.Stat(canonicalPath); !os.IsNotExist(err) {
+		t.Errorf("canonical file left at %s (stat err = %v) with no lock entry naming it", canonicalPath, err)
+	}
+}
+
+// The rollback undoes this run's canonical write, not somebody else's file. A
+// canonical already on disk belongs to an earlier install the lock still names,
+// or is the source itself for `mdm agents add .`; deleting it would turn one
+// failed harness write into the loss of a definition every other harness holds.
+//
+// Mutation this test catches: rolling back unconditionally, i.e. dropping
+// canonicalRollback's os.Stat check on the path.
+func TestInstallAgentsForHarnessesKeepsACanonicalItDidNotCreate(t *testing.T) {
+	cwd := t.TempDir()
+	canonicalPath := agentCanonicalPath("critic", agentfile.FormatMarkdown, false, cwd)
+	if err := os.MkdirAll(filepath.Dir(canonicalPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(canonicalPath, []byte("---\nname: critic\ndescription: d\n---\nold\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	src := filepath.Join(t.TempDir(), "critic.md")
+	if err := os.WriteFile(src, []byte("---\nname: critic\ndescription: d\n---\nnew\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a := &agentfile.AgentFile{Name: "critic", Description: "d", Path: src}
+	blockAgentsDir(t, "claude-code", cwd)
+
+	baseEntry := lock.AgentLockEntry{Source: "o/r", SourceType: "github", Ref: "main"}
+	installAgentsForHarnesses([]*agentfile.AgentFile{a}, []string{"claude-code"}, false, InstallModeCopy, baseEntry, "", cwd)
+
+	if _, err := os.Stat(canonicalPath); err != nil {
+		t.Errorf("canonical file that predates the run was deleted: %v", err)
+	}
+}
+
 // Guards the `entry.AgentPath = agentFileRepoPath(...)` assignment in
 // installAgentsForHarnesses, which a later update needs to find the file in its
 // source. It also catches writing the entry to any key besides mdm.lock's
