@@ -29,6 +29,13 @@ type InstallResult struct {
 	SymlinkFailed bool
 	Error         string
 
+	// Materialized marks a real file written by design rather than by
+	// fallback: the harness reads another format, or its directory is one
+	// people commit. SymlinkFailed means a link was attempted and refused,
+	// which is a different fact about a different cause, so the two are
+	// separate fields and never both set.
+	Materialized bool
+
 	// Skipped marks a not-installed result that is nobody's fault: an agent
 	// definition aimed at a harness with no agent-definition directory
 	// recorded. Error carries the reason; a caller must report it as a skip,

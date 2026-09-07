@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -73,11 +74,68 @@ func copyAgentIntoHarness(canonicalPath, harnessDir, harnessPath string) error {
 	return copyAgentFileUnlessSame(canonicalPath, harnessPath)
 }
 
-// installAgentFile installs one agent-definition file into one harness. The
-// canonical copy is written first at .agents/agents/<name>.md, then linked (or
-// copied, on symlink failure) into the harness's own agents directory under
-// <name><ext>, where ext is harness.AgentFileExt(harnessName). A harness with no
-// agent-definition directory recorded is a skip, not a failure.
+// agentCanonicalFormat is the shape of the bytes mdm keeps in its canonical
+// directory, which is whatever shape the source was in. A definition assembled
+// in code can leave Format unset, so the source extension is the fallback.
+func agentCanonicalFormat(a *agentfile.AgentFile) agentfile.Format {
+	if a.Format != "" {
+		return a.Format
+	}
+	return agentfile.FormatForExt(filepath.Ext(a.Path))
+}
+
+// materializes reports whether harnessName needs a real file rather than a
+// symlink. A symlink hands the harness the canonical bytes verbatim, so it
+// only works when those bytes are already what the harness reads and the
+// directory is generated output nobody commits.
+func materializes(canonicalFormat agentfile.Format, harnessName string) bool {
+	if h, ok := harness.AllHarnesses[harnessName]; ok && h.AgentAlwaysMaterialize {
+		return true
+	}
+	return harness.AgentFormat(harnessName) != canonicalFormat
+}
+
+// encodeForHarness renders the definition in harnessName's format, or returns
+// nil when a link or a plain copy of the canonical file will do. Encode refuses
+// a definition carrying a TOML local date or time, and this runs before
+// anything is written so that refusal costs nothing on disk.
+func encodeForHarness(a *agentfile.AgentFile, harnessName string) ([]byte, error) {
+	if !materializes(agentCanonicalFormat(a), harnessName) {
+		return nil, nil
+	}
+	data, err := agentfile.Encode(a, harness.AgentFormat(harnessName))
+	if err != nil {
+		return nil, fmt.Errorf("%s for %s: %w", a.Name, harnessName, err)
+	}
+	return data, nil
+}
+
+// writeMaterializedAgent writes already-encoded bytes into the harness's own
+// directory as a real file.
+func writeMaterializedAgent(data []byte, harnessDir, harnessPath, canonicalPath string, mode InstallMode) InstallResult {
+	if err := os.MkdirAll(harnessDir, 0755); err != nil {
+		return InstallResult{Success: false, Path: harnessPath, Mode: mode, Error: err.Error()}
+	}
+	if err := os.WriteFile(harnessPath, data, 0644); err != nil {
+		return InstallResult{Success: false, Path: harnessPath, Mode: mode, Error: err.Error()}
+	}
+	// The scope keeps its recorded mode. Materialized, not SymlinkFailed: no
+	// link was attempted, so the run must not tell the user a symlink failed
+	// and offer --copy, which would change nothing.
+	return InstallResult{
+		Success:       true,
+		Path:          harnessPath,
+		CanonicalPath: canonicalPath,
+		Mode:          mode,
+		Materialized:  true,
+	}
+}
+
+// installAgentFile installs one definition into one harness: a canonical copy
+// at .agents/agents/<name>.md, and under it a link, a copy, or a converted real
+// file at <name><ext>. Every conversion is done in memory before the first
+// write, so a definition mdm cannot convert leaves no canonical file stranded
+// where discovery would find it. No agents directory recorded is a skip.
 func installAgentFile(a *agentfile.AgentFile, harnessName string, global bool, cwd string, mode InstallMode) InstallResult {
 	if cwd == "" {
 		cwd, _ = os.Getwd()
@@ -106,6 +164,13 @@ func installAgentFile(a *agentfile.AgentFile, harnessName string, global bool, c
 		return InstallResult{Success: false, Path: harnessPath, Mode: mode, Error: "potential path traversal detected"}
 	}
 
+	// Before any write: a refusal here must not leave a canonical file behind
+	// that no lock entry names and that list, remove and doctor cannot see.
+	encoded, err := encodeForHarness(a, harnessName)
+	if err != nil {
+		return InstallResult{Success: false, Path: harnessPath, Mode: mode, Error: err.Error()}
+	}
+
 	if err := os.MkdirAll(canonicalBase, 0755); err != nil {
 		return InstallResult{Success: false, Path: harnessPath, Mode: mode, Error: err.Error()}
 	}
@@ -113,6 +178,10 @@ func installAgentFile(a *agentfile.AgentFile, harnessName string, global bool, c
 	// definition mdm already owns is a no-op.
 	if err := copyAgentFileUnlessSame(a.Path, canonicalPath); err != nil {
 		return InstallResult{Success: false, Path: harnessPath, Mode: mode, Error: err.Error()}
+	}
+
+	if encoded != nil {
+		return writeMaterializedAgent(encoded, harnessDir, harnessPath, canonicalPath, mode)
 	}
 
 	if mode == InstallModeCopy {

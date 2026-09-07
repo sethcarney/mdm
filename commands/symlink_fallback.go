@@ -56,3 +56,65 @@ func (f *symlinkFallbacks) warn() {
 	fmt.Printf("%s  If copies are what you want on this machine, run with --copy once to record it.%s\n", ansiDim, ansiReset)
 	fmt.Println()
 }
+
+// materializedInstalls collects the harnesses in one run that received a real
+// file by design: they read another format, or their directory is one people
+// commit. It is deliberately not symlinkFallbacks. That type records a link
+// that was attempted and refused by the machine, which --copy can settle;
+// this one records a decision the harness itself forces, which nothing can.
+type materializedInstalls struct {
+	harnesses []string
+	seen      map[string]bool
+}
+
+// note records one install. Results that were not materialized are ignored,
+// so every install loop can call it unconditionally.
+func (m *materializedInstalls) note(harnessName string, r InstallResult) {
+	if !r.Materialized {
+		return
+	}
+	if m.seen == nil {
+		m.seen = map[string]bool{}
+	}
+	if m.seen[harnessName] {
+		return
+	}
+	m.seen[harnessName] = true
+	m.harnesses = append(m.harnesses, harnessName)
+}
+
+// any reports whether at least one install was materialized.
+func (m *materializedInstalls) any() bool {
+	return m != nil && len(m.harnesses) > 0
+}
+
+// materializeReason says why one harness never takes a symlink, in the same
+// order installAgentFile decides it.
+func materializeReason(harnessName string) string {
+	h := harness.AllHarnesses[harnessName]
+	if h == nil {
+		return "it does not take symlinks"
+	}
+	if h.AgentAlwaysMaterialize {
+		return "its agents directory is committed to the repository"
+	}
+	return "it reads " + strings.ToUpper(string(harness.AgentFormat(harnessName)))
+}
+
+// explain prints the one-per-run note. Nothing went wrong, so it offers no
+// remedy: --copy would change nothing, because the reason is the harness and
+// not the machine. It prints nothing when no install was materialized.
+func (m *materializedInstalls) explain() {
+	if !m.any() {
+		return
+	}
+	fmt.Printf("%sSome harnesses always receive a real file rather than a symlink:%s\n", ansiDim, ansiReset)
+	for _, a := range m.harnesses {
+		name := a
+		if cfg := harness.AllHarnesses[a]; cfg != nil {
+			name = cfg.DisplayName
+		}
+		fmt.Printf("%s  %s: %s.%s\n", ansiDim, name, materializeReason(a), ansiReset)
+	}
+	fmt.Println()
+}

@@ -276,6 +276,10 @@ type agentInstallOutcome struct {
 	installed int      // definitions that reached at least one harness
 	harnesses []string // harnesses that actually received something, in the order given
 	fallbacks *symlinkFallbacks
+	// materialized is kept apart from fallbacks: a real file by design and a
+	// real file because a symlink was refused have different causes and
+	// different remedies, and merging them tells the user the wrong one.
+	materialized *materializedInstalls
 }
 
 // installAgentsForHarnesses installs each selected definition into every
@@ -284,7 +288,8 @@ type agentInstallOutcome struct {
 // skip with a reason.
 func installAgentsForHarnesses(agents []*agentfile.AgentFile, harnesses []string, global bool, mode InstallMode, baseEntry lock.AgentLockEntry, cloneDir, cwd string) agentInstallOutcome {
 	var fallbacks symlinkFallbacks
-	outcome := agentInstallOutcome{fallbacks: &fallbacks}
+	var materialized materializedInstalls
+	outcome := agentInstallOutcome{fallbacks: &fallbacks, materialized: &materialized}
 	received := map[string]bool{}
 
 	for _, a := range agents {
@@ -296,6 +301,7 @@ func installAgentsForHarnesses(agents []*agentfile.AgentFile, harnesses []string
 		for _, harnessName := range harnesses {
 			result := installAgentFile(a, harnessName, global, cwd, mode)
 			fallbacks.note(harnessName, result)
+			materialized.note(harnessName, result)
 			switch {
 			case result.Success:
 				installedAny = true
@@ -370,6 +376,7 @@ func printAgentInstallSummary(outcome agentInstallOutcome, global bool, mode Ins
 		fmt.Printf("%s  Harnesses: %s%s\n", ansiDim, strings.Join(harnessDisplayNames(outcome.harnesses), ", "), ansiReset)
 	}
 	fmt.Println()
+	outcome.materialized.explain()
 	outcome.fallbacks.warn()
 }
 

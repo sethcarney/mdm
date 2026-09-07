@@ -179,9 +179,10 @@ func TestAgentsAddOnTheProjectItselfLeavesTheDefinitionIntact(t *testing.T) {
 }
 
 // A harness with no agent-definition directory recorded is a skip, not a
-// failure — but a run that installed nothing anywhere is still a failed run.
-// Printing "✓ Installed 1 agent definition" and exiting 0 after writing no
-// files and no lock entry tells a CI script the opposite of what happened.
+// failure — but a run that installed nothing anywhere is still a failed run,
+// and "✓ Installed 1 agent definition" with exit 0 tells CI the opposite. The
+// example is "universal", mdm's own convention rather than a vendor product,
+// so no release can give it a directory and make it stale as Codex's did.
 func TestAgentsAddSkipsAHarnessWithNoAgentDirAndFailsWhenNothingLands(t *testing.T) {
 	projectDir := t.TempDir()
 	stateDir := t.TempDir()
@@ -189,7 +190,7 @@ func TestAgentsAddSkipsAHarnessWithNoAgentDirAndFailsWhenNothingLands(t *testing
 
 	env := isolatedEnv(projectDir, stateDir)
 	stdout, stderr, code := runMdmInDir(t, projectDir, env,
-		"agents", "add", src, "--harness", "codex", "--project", "-y")
+		"agents", "add", src, "--harness", "universal", "--project", "-y")
 	combined := stdout + stderr
 	if code == 0 {
 		t.Fatalf("expected a non-zero exit when nothing was installed, got 0:\n%s", combined)
@@ -210,7 +211,7 @@ func TestAgentsAddSkipsAHarnessWithNoAgentDirAndFailsWhenNothingLands(t *testing
 	// The same definition aimed at a harness that DOES take one still
 	// succeeds, and the summary names only the harness that received it.
 	stdout, stderr, code = runMdmInDir(t, projectDir, env,
-		"agents", "add", src, "--harness", "codex", "--harness", "claude-code", "--project", "-y")
+		"agents", "add", src, "--harness", "universal", "--harness", "claude-code", "--project", "-y")
 	combined = stdout + stderr
 	if code != 0 {
 		t.Fatalf("mixed harness install exited %d:\n%s", code, combined)
@@ -218,7 +219,104 @@ func TestAgentsAddSkipsAHarnessWithNoAgentDirAndFailsWhenNothingLands(t *testing
 	if !strings.Contains(combined, "Installed 1 agent definition") {
 		t.Errorf("expected a success line, got:\n%s", combined)
 	}
-	if strings.Contains(combined, "Harnesses: Codex") || strings.Contains(combined, ", Codex") {
+	if strings.Contains(combined, "Harnesses: Universal") || strings.Contains(combined, ", Universal") {
 		t.Errorf("the summary names a harness that installed nothing:\n%s", combined)
+	}
+}
+
+// The end of an install is the part a user reads. Codex and Copilot always
+// receive real files by design, and the run has to say so without claiming a
+// symlink failed or pointing at --copy, which cannot change a decision the
+// harness itself forces. This drives the real binary because the wiring from
+// the install result to the printed line is where the wrong message came from.
+func TestAgentsAddExplainsMaterializationWithoutClaimingASymlinkFailure(t *testing.T) {
+	projectDir := t.TempDir()
+	stateDir := t.TempDir()
+	src := writeAgentSource(t, "critic", "critic")
+
+	env := isolatedEnv(projectDir, stateDir)
+	stdout, stderr, code := runMdmInDir(t, projectDir, env,
+		"agents", "add", src, "--harness", "codex", "--harness", "github-copilot", "--project", "-y")
+	combined := stdout + stderr
+	if code != 0 {
+		t.Fatalf("mdm agents add exited %d:\n%s", code, combined)
+	}
+	for _, unwanted := range []string{"Could not create symlinks", "--copy", "symlinks failed", "those skills were copied"} {
+		if strings.Contains(combined, unwanted) {
+			t.Errorf("output says %q for an install where no symlink was attempted:\n%s", unwanted, combined)
+		}
+	}
+	for _, want := range []string{
+		"always receive a real file rather than a symlink",
+		"GitHub Copilot: its agents directory is committed to the repository.",
+		"Codex: it reads TOML.",
+	} {
+		if !strings.Contains(combined, want) {
+			t.Errorf("output missing %q:\n%s", want, combined)
+		}
+	}
+
+	// The note has to describe what actually landed.
+	for _, p := range []string{
+		filepath.Join(projectDir, ".codex", "agents", "critic.toml"),
+		filepath.Join(projectDir, ".github", "agents", "critic.agent.md"),
+	} {
+		info, err := os.Lstat(p)
+		if err != nil {
+			t.Fatalf("nothing at %s: %v", p, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			t.Errorf("%s is a symlink; the note says it is a real file", p)
+		}
+	}
+}
+
+// A definition mdm cannot convert must cost nothing on disk. Encoding after
+// the canonical write left raw TOML at .agents/agents/critic.md that no lock
+// entry named, in a directory `mdm agents add .` scans, so list, remove and
+// doctor could not see it and the next add would rediscover it.
+func TestAgentsAddLeavesNothingBehindWhenTheDefinitionCannotBeConverted(t *testing.T) {
+	projectDir := t.TempDir()
+	stateDir := t.TempDir()
+	root := t.TempDir()
+	dir := filepath.Join(root, "agents")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// standup is a TOML local time. Codex reads it as written; nothing can
+	// re-encode it, because the value's "no UTC offset" meaning is not portable.
+	body := "name = \"critic\"\n" +
+		"description = \"a test agent definition\"\n" +
+		"standup = 09:30:00\n"
+	if err := os.WriteFile(filepath.Join(dir, "critic.toml"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	env := isolatedEnv(projectDir, stateDir)
+	stdout, stderr, code := runMdmInDir(t, projectDir, env,
+		"agents", "add", root, "--harness", "claude-code", "--project", "-y")
+	combined := stdout + stderr
+	if code == 0 {
+		t.Fatalf("expected a non-zero exit when nothing was installed, got 0:\n%s", combined)
+	}
+	if !strings.Contains(combined, "failed for") {
+		t.Errorf("expected the definition to be reported as failed, got:\n%s", combined)
+	}
+
+	var left []string
+	err := filepath.WalkDir(projectDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() {
+			left = append(left, path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(left) > 0 {
+		t.Errorf("a failed install left files behind, none of which any lock entry names: %v", left)
 	}
 }

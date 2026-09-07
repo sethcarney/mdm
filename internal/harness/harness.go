@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/sethcarney/mdm/internal/agentfile"
 )
 
 // HarnessConfig describes a single AI coding harness. SharedSkillsDir and
@@ -46,6 +48,22 @@ type HarnessConfig struct {
 	// reads from AgentsInstallDir. GitHub Copilot CLI is the known
 	// exception: it loads only files ending in ".agent.md".
 	AgentFileSuffix string
+
+	// AgentFileFormat is the on-disk shape of a definition this harness
+	// reads: markdown frontmatter or TOML. AgentFileSuffix says what the
+	// file is called; this says what it is. Empty defaults to markdown via
+	// AgentFormat, so most entries leave it unset.
+	AgentFileFormat agentfile.Format
+
+	// AgentAlwaysMaterialize is true when a symlinked agent definition is
+	// unsafe for this harness's AgentsInstallDir and a real file copy must
+	// be written instead. See the github-copilot entry for why.
+	AgentAlwaysMaterialize bool
+
+	// AgentNamePattern documents this harness's naming constraint on agent
+	// definition names, as prose or a regex fragment. Empty means mdm has
+	// not recorded a constraint for this harness.
+	AgentNamePattern string
 
 	DetectInstalled func() bool
 }
@@ -165,7 +183,11 @@ func Reload() {
 			// Project and user dirs both hold plain .md files.
 			AgentsInstallDir:       ".gemini/agents",
 			GlobalAgentsInstallDir: filepath.Join(home, ".gemini/agents"),
-			DetectInstalled:        func() bool { return pathExists(filepath.Join(home, ".gemini")) },
+			// https://github.com/google-gemini/gemini-cli/blob/main/docs/core/subagents.md
+			// — checked 2026-09-05. Lowercase letters, digits, hyphens,
+			// underscores.
+			AgentNamePattern: "lowercase letters, digits, hyphens, underscores",
+			DetectInstalled:  func() bool { return pathExists(filepath.Join(home, ".gemini")) },
 		},
 		"github-copilot": {
 			Name:               "github-copilot",
@@ -183,6 +205,12 @@ func Reload() {
 			AgentsInstallDir:       ".github/agents",
 			GlobalAgentsInstallDir: filepath.Join(home, ".copilot/agents"),
 			AgentFileSuffix:        ".agent.md",
+			// .github is committed and holds workflows and CODEOWNERS, so it
+			// is never ignored wholesale. GitHub documents repo-scoped agents
+			// as the way to share them through the repository. A symlink
+			// committed there arrives on a teammate's Windows checkout as a
+			// text file holding a path, not the agent definition.
+			AgentAlwaysMaterialize: true,
 			DetectInstalled:        func() bool { return pathExists(filepath.Join(home, ".copilot")) },
 		},
 	}
@@ -202,19 +230,22 @@ func Reload() {
 			DetectInstalled:    func() bool { return pathExists(filepath.Join(home, ".gemini/antigravity")) },
 		},
 		// Codex has custom agents: standalone .toml files (name, description,
-		// developer_instructions) in .codex/agents and ~/.codex/agents. mdm's
-		// agent definitions are markdown, a different format, so do NOT set
-		// AgentsInstallDir/GlobalAgentsInstallDir here without adding TOML
-		// generation first. See docs/agent-artifacts.md, checked 2026-09-05.
+		// developer_instructions) in .codex/agents and ~/.codex/agents.
+		// https://learn.chatgpt.com/docs/agent-configuration/subagents —
+		// checked 2026-09-05.
 		"codex": {
-			Name:               "codex",
-			DisplayName:        "Codex",
-			SkillsDir:          ".agents/skills",
-			GlobalSkillsDir:    filepath.Join(codexHome, "skills"),
-			InstructionsFile:   "AGENTS.md",
-			SharedSkillsDir:    true,
-			NativeInstructions: true,
-			DetectInstalled:    func() bool { return pathExists(codexHome) || pathExists("/etc/codex") },
+			Name:                   "codex",
+			DisplayName:            "Codex",
+			SkillsDir:              ".agents/skills",
+			GlobalSkillsDir:        filepath.Join(codexHome, "skills"),
+			InstructionsFile:       "AGENTS.md",
+			SharedSkillsDir:        true,
+			NativeInstructions:     true,
+			AgentsInstallDir:       ".codex/agents",
+			GlobalAgentsInstallDir: filepath.Join(codexHome, "agents"),
+			AgentFileSuffix:        ".toml",
+			AgentFileFormat:        agentfile.FormatTOML,
+			DetectInstalled:        func() bool { return pathExists(codexHome) || pathExists("/etc/codex") },
 		},
 		"deepagents": {
 			Name:               "deepagents",
@@ -310,7 +341,10 @@ func Reload() {
 			// description frontmatter, scanned recursively.
 			AgentsInstallDir:       ".claude/agents",
 			GlobalAgentsInstallDir: filepath.Join(claudeHome, "agents"),
-			DetectInstalled:        func() bool { return pathExists(claudeHome) },
+			// https://code.claude.com/docs/en/sub-agents — checked
+			// 2026-09-05. Lowercase letters and hyphens; must not contain ":".
+			AgentNamePattern: "lowercase letters and hyphens, no colon",
+			DetectInstalled:  func() bool { return pathExists(claudeHome) },
 		},
 		"roo": {
 			Name:               "roo",
@@ -708,6 +742,16 @@ func AgentFileExt(harnessName string) string {
 		return h.AgentFileSuffix
 	}
 	return ".md"
+}
+
+// AgentFormat returns the on-disk shape harnessName reads agent definitions
+// in, defaulting to markdown for a harness with no override and for an
+// unknown name.
+func AgentFormat(harnessName string) agentfile.Format {
+	if h, ok := AllHarnesses[harnessName]; ok && h.AgentFileFormat != "" {
+		return h.AgentFileFormat
+	}
+	return agentfile.FormatMarkdown
 }
 
 // AgentsInstallDirFor resolves where harnessName reads agent definitions

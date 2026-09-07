@@ -3,6 +3,7 @@ package commands
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/sethcarney/mdm/internal/agentfile"
@@ -254,5 +255,222 @@ func TestInstallAgentFileMarksANoAgentHarnessAsSkipped(t *testing.T) {
 	// for something that does not exist.
 	if res := installAgentFile(a, "no-such-harness", false, cwd, InstallModeSymlink); res.Skipped {
 		t.Error("an unknown harness was reported as a skip")
+	}
+}
+
+// symlinkProbe reports whether this host can create a symlink at all. A test
+// that asserts an install is a symlink otherwise reads a copy fallback as a
+// bug in the link/materialize decision.
+func symlinkProbe(t *testing.T) bool {
+	t.Helper()
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target")
+	if err := os.WriteFile(target, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return os.Symlink(target, filepath.Join(dir, "link")) == nil
+}
+
+// writeMarkdownAgent lays down one markdown definition and returns its path.
+func writeMarkdownAgent(t *testing.T, dir, name string) string {
+	t.Helper()
+	path := filepath.Join(dir, name+".md")
+	body := "---\nname: " + name + "\ndescription: a definition\n---\n\nYou are " + name + ".\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// Codex reads TOML. A symlink hands it the canonical markdown bytes under a
+// .toml name, which Codex ignores without saying so, and the install still
+// reports success. So the install has to convert: a real file, in TOML, that
+// parses back to the same definition.
+func TestInstallAgentFileMaterializesForAHarnessThatReadsAnotherFormat(t *testing.T) {
+	cwd := t.TempDir()
+	src := writeMarkdownAgent(t, t.TempDir(), "critic")
+	a, err := agentfile.ParseAgentFile(src)
+	if err != nil || a == nil {
+		t.Fatalf("parsing the source: a=%v err=%v", a, err)
+	}
+
+	res := installAgentFile(a, "codex", false, cwd, InstallModeSymlink)
+	if !res.Success {
+		t.Fatalf("install failed: %s", res.Error)
+	}
+	if filepath.Ext(res.Path) != ".toml" {
+		t.Errorf("installed path = %q, want a .toml name", res.Path)
+	}
+
+	info, err := os.Lstat(res.Path)
+	if err != nil {
+		t.Fatalf("nothing at %s: %v", res.Path, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("%s is a symlink; Codex would read markdown bytes under a .toml name", res.Path)
+	}
+
+	got, err := agentfile.ParseAgentFile(res.Path)
+	if err != nil {
+		t.Fatalf("the installed file does not parse as TOML: %v", err)
+	}
+	if got == nil {
+		t.Fatal("the installed file parsed as nothing, so it carries no name or description")
+	}
+	if got.Name != a.Name || got.Format != agentfile.FormatTOML {
+		t.Errorf("installed definition = {Name:%q Format:%q}, want {%q %q}", got.Name, got.Format, a.Name, agentfile.FormatTOML)
+	}
+
+	// The scope keeps its recorded mode; only the thing on disk differs.
+	if res.Mode != InstallModeSymlink {
+		t.Errorf("result mode = %q, want the scope's recorded %q", res.Mode, InstallModeSymlink)
+	}
+	if !res.Materialized {
+		t.Error("a real file written by design must be marked Materialized, or the summary cannot describe it")
+	}
+	if res.SymlinkFailed {
+		t.Error("no symlink was attempted, so reporting a failed one sends the user to --copy for nothing")
+	}
+}
+
+// Copilot reads markdown, so format alone would say "link". Its directory is
+// .github/agents, which people commit: a symlink arrives on a teammate's
+// checkout as a text file holding a path. The always-materialize flag has to
+// override the format match.
+func TestInstallAgentFileMaterializesForAnAlwaysMaterializeHarness(t *testing.T) {
+	if !symlinkProbe(t) {
+		t.Skip("symlinks unavailable on this host; a copy here proves nothing")
+	}
+	cwd := t.TempDir()
+	src := writeMarkdownAgent(t, t.TempDir(), "critic")
+	a, err := agentfile.ParseAgentFile(src)
+	if err != nil || a == nil {
+		t.Fatalf("parsing the source: a=%v err=%v", a, err)
+	}
+	if harness.AgentFormat("github-copilot") != a.Format {
+		t.Fatalf("this test only means something while the formats match: %q vs %q", harness.AgentFormat("github-copilot"), a.Format)
+	}
+
+	res := installAgentFile(a, "github-copilot", false, cwd, InstallModeSymlink)
+	if !res.Success {
+		t.Fatalf("install failed: %s", res.Error)
+	}
+	info, err := os.Lstat(res.Path)
+	if err != nil {
+		t.Fatalf("nothing at %s: %v", res.Path, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		t.Errorf("%s is a symlink; .github is committed, so this reaches a teammate as a text file holding a path", res.Path)
+	}
+}
+
+// The bug is fixable by materializing everything, and that would be worse:
+// Claude Code reads markdown out of a generated directory, where a symlink is
+// what keeps the harness copy in step with the canonical file.
+func TestInstallAgentFileStillSymlinksForAMatchingHarness(t *testing.T) {
+	if !symlinkProbe(t) {
+		t.Skip("symlinks unavailable on this host; a copy here proves nothing")
+	}
+	cwd := t.TempDir()
+	src := writeMarkdownAgent(t, t.TempDir(), "critic")
+	a, err := agentfile.ParseAgentFile(src)
+	if err != nil || a == nil {
+		t.Fatalf("parsing the source: a=%v err=%v", a, err)
+	}
+
+	res := installAgentFile(a, "claude-code", false, cwd, InstallModeSymlink)
+	if !res.Success {
+		t.Fatalf("install failed: %s", res.Error)
+	}
+	info, err := os.Lstat(res.Path)
+	if err != nil {
+		t.Fatalf("nothing at %s: %v", res.Path, err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("%s is a real file; a matching format in a generated directory must stay a symlink", res.Path)
+	}
+	if res.SymlinkFailed {
+		t.Error("a real symlink was reported as a fallback copy")
+	}
+}
+
+// writeUnencodableAgent lays down a TOML definition carrying a local time,
+// which Encode refuses because BurntSushi's encoder shifts one by the host's
+// UTC offset. It parses fine; only re-encoding it fails.
+func writeUnencodableAgent(t *testing.T) *agentfile.AgentFile {
+	t.Helper()
+	src := filepath.Join(t.TempDir(), "critic.toml")
+	body := `name = "critic"
+description = "a definition"
+developer_instructions = "be critical"
+standup = 09:30:00
+`
+	if err := os.WriteFile(src, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a, err := agentfile.ParseAgentFile(src)
+	if err != nil || a == nil {
+		t.Fatalf("parsing the source: a=%v err=%v", a, err)
+	}
+	return a
+}
+
+// The installer has to surface Encode's refusal against the definition, and
+// leave nothing behind. Encoding after the canonical write stranded raw TOML
+// at .agents/agents/critic.md that no lock entry named and that list, remove
+// and doctor could not see, in a directory discovery scans.
+func TestInstallAgentFileReportsAnUnencodableDefinition(t *testing.T) {
+	cwd := t.TempDir()
+	a := writeUnencodableAgent(t)
+
+	res := installAgentFile(a, "claude-code", false, cwd, InstallModeSymlink)
+	if res.Success {
+		t.Fatalf("install reported success for a definition that cannot be encoded; %s holds whatever was written", res.Path)
+	}
+	if !strings.Contains(res.Error, a.Name) {
+		t.Errorf("error = %q; it must name the definition, because the summary prints only harness names", res.Error)
+	}
+	if !strings.Contains(res.Error, "standup") {
+		t.Errorf("error = %q; it must name the offending key", res.Error)
+	}
+	if _, err := os.Lstat(res.Path); !os.IsNotExist(err) {
+		t.Errorf("something was written to %s despite the failure (stat err=%v)", res.Path, err)
+	}
+
+	canonical := agentCanonicalPath(agentDiskName(a.Name), false, cwd)
+	if _, err := os.Lstat(canonical); !os.IsNotExist(err) {
+		t.Errorf("the canonical file survives a failed install at %s (stat err=%v); nothing names it, so nothing can remove it", canonical, err)
+	}
+	if entries, err := os.ReadDir(harness.CanonicalAgentsDir(false, cwd)); err == nil && len(entries) > 0 {
+		t.Errorf("the canonical directory is not empty after a failed install: %v", entries)
+	}
+}
+
+// The canonical file is written once per definition and shared by every
+// harness targeted. One harness refusing the definition must not cost another
+// the file it legitimately installed, which is why the fix is to encode
+// before writing rather than to clean up afterward.
+func TestInstallAgentFileKeepsTheCanonicalWhenAnotherHarnessSucceeded(t *testing.T) {
+	cwd := t.TempDir()
+	a := writeUnencodableAgent(t)
+
+	// codex reads TOML, so this source needs no conversion and installs.
+	ok := installAgentFile(a, "codex", false, cwd, InstallModeSymlink)
+	if !ok.Success {
+		t.Fatalf("install to codex failed: %s", ok.Error)
+	}
+	// claude-code reads markdown, so the same source has to be re-encoded,
+	// and Encode refuses it.
+	bad := installAgentFile(a, "claude-code", false, cwd, InstallModeSymlink)
+	if bad.Success {
+		t.Fatal("install to claude-code reported success for a definition that cannot be encoded")
+	}
+
+	canonical := agentCanonicalPath(agentDiskName(a.Name), false, cwd)
+	if _, err := os.Stat(canonical); err != nil {
+		t.Fatalf("the canonical file is gone at %s (%v); codex's install points at it", canonical, err)
+	}
+	if _, err := os.Stat(ok.Path); err != nil {
+		t.Errorf("codex's install no longer resolves at %s: %v", ok.Path, err)
 	}
 }

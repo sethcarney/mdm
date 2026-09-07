@@ -3,6 +3,8 @@ package harness
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/sethcarney/mdm/internal/agentfile"
 )
 
 // SkillsInstallDir is the single resolution the installer, the scope
@@ -104,5 +106,42 @@ func TestDeepAgentsKeepsItsProductName(t *testing.T) {
 	}
 	if h.DisplayName != "Deep Agents" {
 		t.Errorf("DisplayName = %q, want %q", h.DisplayName, "Deep Agents")
+	}
+}
+
+// The registry has to say what a harness reads, not just what extension it
+// wants. Copilot is markdown with a custom extension; Codex is a different
+// format. Conflating them installs a file the harness ignores.
+func TestAgentFormatPerHarness(t *testing.T) {
+	tests := []struct {
+		harness string
+		want    agentfile.Format
+	}{
+		{"claude-code", agentfile.FormatMarkdown},
+		{"github-copilot", agentfile.FormatMarkdown},
+		{"codex", agentfile.FormatTOML},
+		{"no-such-harness", agentfile.FormatMarkdown},
+	}
+	for _, tc := range tests {
+		if got := AgentFormat(tc.harness); got != tc.want {
+			t.Errorf("AgentFormat(%q) = %q, want %q", tc.harness, got, tc.want)
+		}
+	}
+}
+
+// Codex reads .toml files from its own directory, confirmed 2026-09-05.
+func TestCodexHasAgentDirectories(t *testing.T) {
+	h := AllHarnesses["codex"]
+	if h == nil {
+		t.Fatal("codex missing from the registry")
+	}
+	if h.AgentsInstallDir != ".codex/agents" {
+		t.Errorf("AgentsInstallDir = %q, want .codex/agents", h.AgentsInstallDir)
+	}
+	if h.AgentFileSuffix != ".toml" {
+		t.Errorf("AgentFileSuffix = %q, want .toml", h.AgentFileSuffix)
+	}
+	if h.GlobalAgentsInstallDir == "" {
+		t.Error("GlobalAgentsInstallDir is empty; ~/.codex/agents is documented")
 	}
 }
