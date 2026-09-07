@@ -5,11 +5,17 @@
 package agentfile
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strconv"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/sethcarney/mdm/internal/pathsafe"
 	"github.com/sethcarney/mdm/internal/skill"
@@ -68,6 +74,101 @@ func ParseAgentMd(path string) (*AgentFile, error) {
 		Format:       FormatMarkdown,
 		Extra:        extra,
 	}, nil
+}
+
+// Encode renders a in format f. It refuses a definition whose Extra carries a
+// TOML local date, local time, or local date-time: neither target format can
+// express that value's "no UTC offset" meaning, so re-encoding it would
+// silently change what it says rather than merely reformat it. The error
+// names the offending key.
+func Encode(a *AgentFile, f Format) ([]byte, error) {
+	for k, v := range a.Extra {
+		if key, ok := firstUnsafeTemporalKey(v, k); ok {
+			return nil, fmt.Errorf("agentfile: cannot encode %q: TOML local date/time values cannot be re-encoded without changing their meaning", key)
+		}
+	}
+	if f == FormatTOML {
+		return encodeTOML(a)
+	}
+	return encodeMarkdown(a)
+}
+
+// encodeMarkdown renders a as a markdown file: YAML frontmatter holding name,
+// description and every Extra key, followed by the body.
+func encodeMarkdown(a *AgentFile) ([]byte, error) {
+	fm := map[string]any{
+		"name":        a.Name,
+		"description": a.Description,
+	}
+	for k, v := range a.Extra {
+		fm[k] = yamlEncodable(v)
+	}
+	yamlBytes, err := yaml.Marshal(fm)
+	if err != nil {
+		return nil, fmt.Errorf("agentfile: encoding frontmatter: %w", err)
+	}
+	var buf bytes.Buffer
+	buf.WriteString("---\n")
+	buf.Write(yamlBytes)
+	buf.WriteString("---\n")
+	buf.WriteString(a.Instructions)
+	return buf.Bytes(), nil
+}
+
+// yamlEncodable prepares v for YAML frontmatter encoding. Left alone, a TOML
+// float whose value happens to be whole (3.0) marshals through yaml.v3 as a
+// bare, integer-looking scalar and comes back as a TOML integer, silently
+// changing what the source said. This walks v by reflect.Kind, the same
+// approach as firstUnsafeTemporalKey, and wraps every such float, wherever
+// it is nested, in a node that keeps its decimal point; everything else
+// passes through unchanged.
+func yamlEncodable(v any) any {
+	return walkYAMLEncodable(reflect.ValueOf(v))
+}
+
+func walkYAMLEncodable(rv reflect.Value) any {
+	if !rv.IsValid() {
+		return nil
+	}
+	if f, ok := rv.Interface().(float64); ok {
+		return wholeFloatNode(f)
+	}
+	switch rv.Kind() {
+	case reflect.Interface, reflect.Pointer:
+		if rv.IsNil() {
+			return nil
+		}
+		return walkYAMLEncodable(rv.Elem())
+	case reflect.Map:
+		out := make(map[string]any, rv.Len())
+		for _, k := range rv.MapKeys() {
+			out[k.String()] = walkYAMLEncodable(rv.MapIndex(k))
+		}
+		return out
+	case reflect.Slice, reflect.Array:
+		out := make([]any, rv.Len())
+		for i := 0; i < rv.Len(); i++ {
+			out[i] = walkYAMLEncodable(rv.Index(i))
+		}
+		return out
+	default:
+		return rv.Interface()
+	}
+}
+
+// wholeFloatNode returns f unchanged when it has a fractional part, which
+// yaml.v3 already renders with a decimal point; a whole value instead gets
+// an explicit *yaml.Node tagged !!float, so the emitted scalar (e.g. "3.0")
+// reparses as a float rather than an int.
+func wholeFloatNode(f float64) any {
+	if f != math.Trunc(f) {
+		return f
+	}
+	return &yaml.Node{
+		Kind:  yaml.ScalarNode,
+		Tag:   "!!float",
+		Value: strconv.FormatFloat(f, 'f', -1, 64) + ".0",
+	}
 }
 
 // FormatForExt maps a file extension to its format. Anything that is not TOML
