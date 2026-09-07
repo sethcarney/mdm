@@ -70,6 +70,11 @@ func applyScopeInstallMode(requested InstallMode, global bool, cwd string) (Inst
 type conversionPath struct {
 	target        string
 	canonicalName string
+
+	// materialized is true when this path is a real file by rule rather than
+	// by mode: a harness reading another format, or an agents directory people
+	// commit. Linking it would hand the harness bytes it cannot read.
+	materialized bool
 }
 
 // selfNamedConversionPath pairs a target with a canonical name equal to its own
@@ -120,10 +125,9 @@ func rematerializeGroups(to InstallMode, groups []conversionGroup) (int, error) 
 
 // scopeAgentInstallPaths is scopeInstallPaths for agent definitions: the
 // on-disk file of every definition the scope's lock records, per harness with
-// an agent-definition directory recorded, deduplicated. Harnesses are walked
-// in sorted order, since the caller reports "converted N of them". Each path
-// carries the canonical file name, which the lock's format decides, not the
-// target's basename.
+// an agent-definition directory recorded, deduplicated. Harnesses are walked in
+// sorted order, since the caller reports "converted N of them". Each path
+// carries its canonical name and materialized flag; see conversionPath.
 func scopeAgentInstallPaths(global bool, cwd string) []conversionPath {
 	names, entries := agentLockEntries(global, cwd)
 
@@ -136,7 +140,8 @@ func scopeAgentInstallPaths(global bool, cwd string) []conversionPath {
 	seen := map[string]bool{}
 	var paths []conversionPath
 	for _, name := range names {
-		canonicalName := name + agentCanonicalExt(lockedAgentFormat(entries[name]))
+		format := lockedAgentFormat(entries[name])
+		canonicalName := name + agentCanonicalExt(format)
 		for _, harnessName := range harnesses {
 			target := agentHarnessPath(name, harnessName, global, cwd)
 			if target == "" || seen[target] {
@@ -146,7 +151,11 @@ func scopeAgentInstallPaths(global bool, cwd string) []conversionPath {
 			if _, err := os.Lstat(target); err != nil {
 				continue
 			}
-			paths = append(paths, conversionPath{target: target, canonicalName: canonicalName})
+			paths = append(paths, conversionPath{
+				target:        target,
+				canonicalName: canonicalName,
+				materialized:  materializes(format, harnessName),
+			})
 		}
 	}
 	return paths
@@ -235,6 +244,11 @@ func rematerializeScope(to InstallMode, canonicalDir string, installPaths []conv
 	canonical := resolvedDir(canonicalDir)
 	converted := 0
 	for _, p := range installPaths {
+		// A path materialized by rule is a real file in either mode, and the
+		// mode never decides its shape. See conversionPath.materialized.
+		if p.materialized {
+			continue
+		}
 		var did bool
 		var err error
 		if to == InstallModeCopy {

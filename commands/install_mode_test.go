@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/sethcarney/mdm/internal/agentfile"
 	"github.com/sethcarney/mdm/internal/harness"
 	"github.com/sethcarney/mdm/internal/lock"
 )
@@ -996,11 +997,26 @@ func TestApplyScopeInstallModeConvertsAgentDefinitions(t *testing.T) {
 	}
 }
 
+// canonicalFileNames lists what the scope's canonical agents directory holds,
+// which is how a duplicate minted from an install path's basename shows up.
+func canonicalFileNames(t *testing.T, canonicalDir string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(canonicalDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	return names
+}
+
 // GitHub Copilot reads agent definitions only as "<name>.agent.md", so its
-// install path's basename is not the canonical file's name. Deriving the
-// canonical name from that basename on a copy-to-symlink switch mints a second
-// canonical file and links the install at the duplicate. This drives
-// applyScopeInstallMode, where the install paths and their names are decided.
+// install path's basename is not the canonical file's name, and a canonical
+// name derived from that basename mints a duplicate. Copilot always
+// materializes now, so the switch leaves even a symlink install written by an
+// older mdm alone, and the canonical directory keeps its one file.
 func TestApplyScopeInstallModeKeepsOneCanonicalFileForASuffixedHarness(t *testing.T) {
 	cwd := t.TempDir()
 	canonicalDir := harness.CanonicalAgentsDir(false, cwd)
@@ -1015,25 +1031,41 @@ func TestApplyScopeInstallModeKeepsOneCanonicalFileForASuffixedHarness(t *testin
 	if mode, ok := applyScopeInstallMode(InstallModeCopy, false, cwd); !ok || mode != InstallModeCopy {
 		t.Fatalf("mode = %q ok = %v, want copy true", mode, ok)
 	}
-	if isSymlink(t, link) {
-		t.Fatal("the install is still a symlink after the scope switched to copy mode")
-	}
+	assertLinkTo(t, link, canonical)
 	if mode, ok := applyScopeInstallMode(InstallModeSymlink, false, cwd); !ok || mode != InstallModeSymlink {
 		t.Fatalf("mode = %q ok = %v, want symlink true", mode, ok)
 	}
+	assertLinkTo(t, link, canonical)
 
-	entries, err := os.ReadDir(canonicalDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var names []string
-	for _, e := range entries {
-		names = append(names, e.Name())
-	}
-	if len(names) != 1 || names[0] != "critic.md" {
+	if names := canonicalFileNames(t, canonicalDir); len(names) != 1 || names[0] != "critic.md" {
 		t.Errorf("canonical directory holds %v, want exactly [critic.md]", names)
 	}
-	assertLinkTo(t, link, canonical)
+}
+
+// copyToLink is reached only through scopeAgentInstallPaths, which marks every
+// harness reading its own extension as materialized, so no production path can
+// now hand it a canonicalName differing from the target's basename. The guard
+// stays reachable by a plausible harness — a custom extension in a directory
+// nobody commits — so it is exercised here directly, with no wiring in front.
+func TestCopyToLinkUsesTheGivenCanonicalName(t *testing.T) {
+	if !symlinkProbe(t) {
+		t.Skip("symlinks unavailable on this host; a copy here proves nothing")
+	}
+	cwd := t.TempDir()
+	canonicalDir := harness.CanonicalAgentsDir(false, cwd)
+	if err := os.MkdirAll(canonicalDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	target := writeAgentFile(t, filepath.Join(cwd, ".suffixed", "agents"), "critic.agent")
+
+	did, err := copyToLink(resolvedDir(canonicalDir), target, "critic.md")
+	if err != nil || !did {
+		t.Fatalf("copyToLink did = %v err = %v, want true nil", did, err)
+	}
+	if names := canonicalFileNames(t, canonicalDir); len(names) != 1 || names[0] != "critic.md" {
+		t.Errorf("canonical directory holds %v, want exactly [critic.md]", names)
+	}
+	assertLinkTo(t, target, filepath.Join(canonicalDir, "critic.md"))
 }
 
 // The conversion count the scope prints, and the "converted N of them"
@@ -1060,4 +1092,138 @@ func TestScopeAgentInstallPathsIsSortedAndDeduplicated(t *testing.T) {
 		}
 		seen[p.target] = true
 	}
+}
+
+// ── A materialized install is not converted ────────────────────────────────
+
+// lockAgentInFormat is lockAgent for a definition whose canonical file is not
+// markdown. The recorded format decides the canonical file's name, and with it
+// which harnesses have to materialize.
+func lockAgentInFormat(t *testing.T, cwd, name string, format agentfile.Format) {
+	t.Helper()
+	entry := lock.AgentLockEntry{Source: "o/r", SourceType: "github", Format: string(format)}
+	if err := lock.AddAgentToLocalLock(name, entry, cwd); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// installAgentForTest installs one parsed definition into harnessName through
+// the real installer and returns the path it wrote. The fixtures above build
+// installs by hand; these tests need whatever the installer actually lays down.
+func installAgentForTest(t *testing.T, a *agentfile.AgentFile, harnessName, cwd string) string {
+	t.Helper()
+	res := installAgentFile(a, harnessName, false, cwd, InstallModeSymlink)
+	if !res.Success {
+		t.Fatalf("installing %s for %s: %s", a.Name, harnessName, res.Error)
+	}
+	return res.Path
+}
+
+// assertMaterializedDefinition checks path is a real file, not a symlink, whose
+// bytes parse as a definition in the format harnessName reads. Reading the file
+// is the point: a symlink to a canonical file in the other format is still a
+// readable path, and only parsing it in the harness's own format shows that the
+// bytes behind it are not the ones the harness can use.
+func assertMaterializedDefinition(t *testing.T, path, harnessName string) {
+	t.Helper()
+	want := harness.AgentFormat(harnessName)
+	if isSymlink(t, path) {
+		t.Fatalf("%s is a symlink; %s needs real %s bytes there", path, harnessName, want)
+	}
+	got, err := agentfile.ParseAgentFile(path)
+	if err != nil {
+		t.Fatalf("%s does not parse as %s: %v", path, want, err)
+	}
+	if got == nil {
+		t.Fatalf("%s parses as nothing, so it carries no name or description", path)
+	}
+	if got.Format != want {
+		t.Errorf("%s parsed as %q, want %q", path, got.Format, want)
+	}
+}
+
+// A materialized install is a real file by rule, not by mode: Copilot's
+// .github/agents is committed, and a TOML canonical converts for every markdown
+// harness. Both of those become symlinks without the skip; the Codex row is a
+// regression case, noted on it. The round trip runs through
+// applyScopeInstallMode, where the install paths and their names are decided.
+func TestApplyScopeInstallModeLeavesAMaterializedAgentInstallAlone(t *testing.T) {
+	if !symlinkProbe(t) {
+		t.Skip("symlinks unavailable on this host; nothing here can round trip")
+	}
+	cases := []struct {
+		name         string
+		sourceExt    string
+		materialized string
+		// linked is a harness taking the canonical file as it stands, or ""
+		// when no harness in this case does. It must convert both ways.
+		linked string
+	}{
+		// Codex passes with or without the skip today: a .toml install does
+		// not parse as markdown, so isMdmOwnedCopyInstall already refuses it.
+		// The skip is what stops that protection from being an accident.
+		{"codex reads toml", ".md", "codex", "claude-code"},
+		{"copilot commits its agents directory", ".md", "github-copilot", "claude-code"},
+		{"a toml canonical converts for markdown harnesses", ".toml", "claude-code", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cwd := t.TempDir()
+			skillCanonical, skillLink := linkSkill(t, cwd, "s1")
+			lockSkill(t, cwd, "s1")
+
+			a := writeParsedAgent(t, tc.sourceExt)
+			name := agentDiskName(a.Name)
+			materialized := installAgentForTest(t, a, tc.materialized, cwd)
+			var linked string
+			if tc.linked != "" {
+				linked = installAgentForTest(t, a, tc.linked, cwd)
+				if !isSymlink(t, linked) {
+					t.Fatalf("%s did not install as a symlink; this case proves nothing", linked)
+				}
+			}
+			lockAgentInFormat(t, cwd, name, a.Format)
+
+			if mode, ok := applyScopeInstallMode(InstallModeCopy, false, cwd); !ok || mode != InstallModeCopy {
+				t.Fatalf("switch to copy: mode = %q ok = %v", mode, ok)
+			}
+			assertMaterializedDefinition(t, materialized, tc.materialized)
+			assertRealSkill(t, skillLink)
+
+			if mode, ok := applyScopeInstallMode(InstallModeSymlink, false, cwd); !ok || mode != InstallModeSymlink {
+				t.Fatalf("switch back to symlink: mode = %q ok = %v", mode, ok)
+			}
+			assertMaterializedDefinition(t, materialized, tc.materialized)
+			assertLinkTo(t, skillLink, skillCanonical)
+			if linked != "" {
+				assertLinkTo(t, linked, agentCanonicalPath(name, a.Format, false, cwd))
+			}
+		})
+	}
+}
+
+// The bug is fixable by skipping every agent install, and that would strand
+// ordinary ones on whichever shape they were installed with. Claude Code reads
+// markdown out of a generated directory, so a markdown definition installed
+// there converts in both directions like any skill.
+func TestApplyScopeInstallModeStillConvertsAnOrdinaryAgentInstall(t *testing.T) {
+	if !symlinkProbe(t) {
+		t.Skip("symlinks unavailable on this host; a copy here proves nothing")
+	}
+	cwd := t.TempDir()
+	a := writeParsedAgent(t, ".md")
+	name := agentDiskName(a.Name)
+	installed := installAgentForTest(t, a, "claude-code", cwd)
+	lockAgentInFormat(t, cwd, name, a.Format)
+
+	if mode, ok := applyScopeInstallMode(InstallModeCopy, false, cwd); !ok || mode != InstallModeCopy {
+		t.Fatalf("switch to copy: mode = %q ok = %v", mode, ok)
+	}
+	if isSymlink(t, installed) {
+		t.Fatalf("%s is still a symlink after the scope switched to copy mode", installed)
+	}
+	if mode, ok := applyScopeInstallMode(InstallModeSymlink, false, cwd); !ok || mode != InstallModeSymlink {
+		t.Fatalf("switch back to symlink: mode = %q ok = %v", mode, ok)
+	}
+	assertLinkTo(t, installed, agentCanonicalPath(name, a.Format, false, cwd))
 }
