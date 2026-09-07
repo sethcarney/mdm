@@ -891,3 +891,76 @@ func TestSkillsInstallFailureOutputIsUnchanged(t *testing.T) {
 		t.Errorf("the skills path started printing install error text:\n%s", out)
 	}
 }
+
+// Mutation this test catches: removing the claimed-name guard in
+// installAgentsForHarnesses. Two definitions whose frontmatter names sanitize
+// to one disk name write one canonical file, so the second silently replaces
+// the first while the summary counts both as installed.
+func TestInstallAgentsRefusesTwoDefinitionsThatClaimOneDiskName(t *testing.T) {
+	cwd := t.TempDir()
+	src := t.TempDir()
+
+	first := filepath.Join(src, "first.md")
+	if err := os.WriteFile(first, []byte("---\nname: Code Reviewer\ndescription: d\n---\nFIRST\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	second := filepath.Join(src, "second.md")
+	if err := os.WriteFile(second, []byte("---\nname: code-reviewer\ndescription: d\n---\nSECOND\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	agents := []*agentfile.AgentFile{
+		{Name: "Code Reviewer", Description: "d", Instructions: "FIRST", Path: first},
+		{Name: "code-reviewer", Description: "d", Instructions: "SECOND", Path: second},
+	}
+	baseEntry := lock.AgentLockEntry{Source: "o/r", SourceType: "github"}
+	outcome := installAgentsForHarnesses(agents, []string{"claude-code"}, false, InstallModeCopy, baseEntry, "", cwd)
+
+	if outcome.installed != 1 {
+		t.Errorf("installed = %d, want 1: both definitions claim the name code-reviewer, so only one can be installed", outcome.installed)
+	}
+
+	canonical := agentCanonicalPath("code-reviewer", agentfile.FormatMarkdown, false, cwd)
+	body, err := os.ReadFile(canonical)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "FIRST") {
+		t.Errorf("canonical file holds %q, want the first definition to keep the name it claimed", string(body))
+	}
+}
+
+// Mutation this test catches: removing the claimed-name guard from
+// runAgentUpdateGroups. A lock key is matched against discovered definitions
+// by sanitized name, so one installed name matches every source definition
+// that sanitizes to it. Without the guard both are written to one canonical
+// file and both are counted as updated.
+func TestUpdateRefusesASecondDefinitionClaimingAnInstalledName(t *testing.T) {
+	cwd := t.TempDir()
+	sourceDir := t.TempDir()
+	agentsDir := filepath.Join(sourceDir, "agents")
+	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	agentPath := filepath.Join(agentsDir, "critic.md")
+	writeCriticSource(t, agentPath, "v1")
+
+	a := &agentfile.AgentFile{Name: "critic", Description: "v1", Path: agentPath}
+	baseEntry := lock.AgentLockEntry{Source: sourceDir, SourceType: "local"}
+	installAgentsForHarnesses([]*agentfile.AgentFile{a}, []string{"claude-code"}, false, InstallModeCopy, baseEntry, "", cwd)
+
+	// Upstream adds a second definition whose name sanitizes to the installed
+	// one. Both now match the single lock key "critic".
+	dupe := filepath.Join(agentsDir, "zz-dupe.md")
+	if err := os.WriteFile(dupe, []byte("---\nname: Critic\ndescription: d\n---\nDUPE\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	group := updateGroup{source: sourceDir, skills: []string{"critic"}, names: []string{"critic"}}
+	var stats updateStats
+	runAgentUpdateGroups([]updateGroup{group}, false, cwd, false, &stats)
+
+	if stats.updated != 1 {
+		t.Errorf("updated = %d, want 1: two source definitions claim the name critic, and only one canonical file exists", stats.updated)
+	}
+}

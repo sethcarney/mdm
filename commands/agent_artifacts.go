@@ -350,9 +350,18 @@ func installAgentsForHarnesses(agents []*agentfile.AgentFile, harnesses []string
 	var materialized materializedInstalls
 	outcome := agentInstallOutcome{fallbacks: &fallbacks, materialized: &materialized}
 	received := map[string]bool{}
+	claimed := map[string]string{} // disk name -> the source that claimed it
 
 	for _, a := range agents {
 		name := agentDiskName(a.Name)
+		// Two names can sanitize to one file name ("Code Reviewer" and
+		// "code-reviewer"). Installing both would write one canonical file and
+		// count two, so the name belongs to whichever source claimed it first.
+		if prior, ok := claimed[name]; ok {
+			ui.LogWarn(fmt.Sprintf("%s: %s and %s both install as %s — skipping the second, rename one of them", a.Name, prior, a.Path, name))
+			continue
+		}
+		claimed[name] = a.Path
 		fmt.Printf("%sInstalling %s%s%s...\n", ansiDim, ansiText, a.Name, ansiReset)
 		warnAgentNamePattern(a.Name, harnesses)
 
@@ -1012,6 +1021,7 @@ func recordAgentUpdate(name string, entry lock.AgentLockEntry, global bool, cwd 
 // agentInstalledHarnesses. The scope's configured-harness list can differ.
 func runAgentUpdateGroups(groups []updateGroup, global bool, cwd string, allowHiddenChars bool, stats *updateStats) {
 	mode := currentInstallMode(global, cwd)
+	claimed := map[string]string{} // disk name -> the source that claimed it
 	for _, g := range groups {
 		if len(g.skills) > 1 {
 			fmt.Printf("%sFetching %d agent definition(s) from %s in one pass...%s\n", ansiDim, len(g.skills), g.source, ansiReset)
@@ -1043,6 +1053,13 @@ func runAgentUpdateGroups(groups []updateGroup, global bool, cwd string, allowHi
 
 		for _, a := range selected {
 			name := agentDiskName(a.Name)
+			// One lock key matches every definition whose name sanitizes to it,
+			// and they would all be written to the one canonical file.
+			if prior, ok := claimed[name]; ok {
+				ui.LogWarn(fmt.Sprintf("%s: %s and %s both install as %s — skipping the second, rename one of them", a.Name, prior, a.Path, name))
+				continue
+			}
+			claimed[name] = a.Path
 			installedHarnesses := agentInstalledHarnesses(name, global, cwd)
 			if len(installedHarnesses) == 0 {
 				ui.LogWarn(fmt.Sprintf("%s: not installed in any harness, skipping", a.Name))
