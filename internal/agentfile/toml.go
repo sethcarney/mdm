@@ -114,9 +114,38 @@ func walkUnsafeTemporalSlice(rv reflect.Value, path string) (string, bool) {
 	return "", false
 }
 
+// reservedTOMLKeys are the keys encodeTOML writes from the definition's own
+// fields, named in the order an error should try them so the message a user
+// sees does not depend on Go's map iteration. The value describes what the
+// key holds, for that message.
+//
+// parseAgentTOML already keeps all three out of Extra, so a TOML source can
+// never carry one. A markdown source can: ParseAgentMd only filters name and
+// description, because in markdown the body, not a frontmatter key, is the
+// instructions — so frontmatter may legitimately hold a key of that name and
+// markdown encoding keeps it beside the body.
+var reservedTOMLKeys = []struct{ key, holds string }{
+	{"name", "name"},
+	{"description", "description"},
+	{"developer_instructions", "body"},
+}
+
 // encodeTOML renders a as a Codex-style TOML definition: name, description,
 // developer_instructions, then every Extra key.
+//
+// It refuses a definition whose Extra carries one of those three key names.
+// The Extra loop below writes into the same table, so such a key would
+// silently replace what the definition itself says — a frontmatter
+// developer_instructions would reach Codex as the whole of the agent's
+// instructions with the real body dropped. The error names the key and
+// carries no package prefix: the installer prints it verbatim under a line
+// that already names the definition.
 func encodeTOML(a *AgentFile) ([]byte, error) {
+	for _, r := range reservedTOMLKeys {
+		if _, ok := a.Extra[r.key]; ok {
+			return nil, fmt.Errorf("cannot encode %q: TOML writes the definition's %s under that key, so a frontmatter key of the same name would replace it — rename or remove the key", r.key, r.holds)
+		}
+	}
 	doc := map[string]any{
 		"name":                   a.Name,
 		"description":            a.Description,

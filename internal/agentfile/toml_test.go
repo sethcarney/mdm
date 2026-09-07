@@ -310,3 +310,47 @@ func TestEncodeMarkdownPreservesWholeFloat(t *testing.T) {
 		t.Errorf("Extra[rating] = %v, want %v", gotVal, want)
 	}
 }
+
+// A markdown definition can carry a frontmatter key literally named
+// developer_instructions. In TOML that key is where the body goes, so writing
+// both would leave the encoder choosing between them: it used to seed
+// developer_instructions from the body and then let the Extra loop overwrite
+// it, so the file Codex read said something the definition's author never
+// wrote, with the real body gone and nothing reported.
+//
+// Encoding to markdown is unaffected: frontmatter holds the key beside the
+// body and nothing is lost, so a definition like this still installs to every
+// markdown harness.
+//
+// Mutation this detects: delete the reserved-key check from encodeTOML. The
+// TOML subtest then succeeds and the emitted developer_instructions is the
+// frontmatter value rather than the body.
+func TestEncodeTOMLRefusesAReservedKeyInExtra(t *testing.T) {
+	for _, key := range []string{"developer_instructions", "name", "description"} {
+		t.Run(key, func(t *testing.T) {
+			a := &AgentFile{
+				Name:         "collide",
+				Description:  "d",
+				Instructions: "THE REAL BODY",
+				Format:       FormatMarkdown,
+				Extra:        map[string]any{key: "FROM THE FRONTMATTER KEY"},
+			}
+
+			got, err := Encode(a, FormatTOML)
+			if err == nil {
+				t.Fatalf("Encode to TOML succeeded and wrote %q, want a refusal naming %q", string(got), key)
+			}
+			if !strings.Contains(err.Error(), key) {
+				t.Errorf("error %q does not name the offending key %q", err.Error(), key)
+			}
+
+			md, err := Encode(a, FormatMarkdown)
+			if err != nil {
+				t.Fatalf("Encode to markdown: %v; only the TOML direction has the collision", err)
+			}
+			if !strings.Contains(string(md), "THE REAL BODY") {
+				t.Errorf("markdown output lost the body: %q", string(md))
+			}
+		})
+	}
+}
