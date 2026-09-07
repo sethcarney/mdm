@@ -34,7 +34,7 @@ type HarnessConfig struct {
 
 	// NativeInstructions is true when this harness reads AGENTS.md natively or
 	// has no per-project instruction file. When true, no symlink to AGENTS.md
-	// is needed and configuredAgents does not need to track this harness for rules.
+	// is needed and configuredHarnesses does not need to track this harness for rules.
 	NativeInstructions bool
 
 	// AgentsInstallDir is the project-relative directory this harness reads
@@ -325,7 +325,7 @@ func Reload() {
 
 	// ── SharedSkillsDir=false + NativeInstructions=false ───────────────────────
 	// Harnesses that need both a dedicated skills directory AND a rules symlink.
-	// Both must be explicitly configured via configuredAgents.
+	// Both must be explicitly configured via configuredHarnesses.
 
 	uniqueSkillsUniqueRules := map[string]*HarnessConfig{
 		"claude-code": {
@@ -775,7 +775,7 @@ func AgentsInstallDirFor(name string, global bool, cwd string) string {
 	return filepath.Join(cwd, h.AgentsInstallDir)
 }
 
-// NeedsNoTracking reports whether a harness requires no entry in configuredAgents.
+// NeedsNoTracking reports whether a harness requires no entry in configuredHarnesses.
 // True when both skills and instructions are auto-covered
 // (SharedSkillsDir && NativeInstructions).
 func NeedsNoTracking(name string) bool {
