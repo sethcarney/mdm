@@ -220,13 +220,41 @@ func reportAgentFailure(displayName string, f *agentFailures) {
 	f.explain()
 }
 
+// replaceFileWith writes data at path by building it under a reserved sibling
+// name and renaming that over path. The rename replaces the name itself, so
+// whatever path held — a symlink included — is discarded rather than written
+// through, and path never holds a partial file: until the rename it holds its
+// previous content, and after it holds all of data. os.WriteFile can do neither:
+// it opens O_CREATE|O_WRONLY|O_TRUNC, which follows a symlink and lands the
+// bytes on its target. The sibling location keeps the rename on one filesystem.
+func replaceFileWith(path string, data []byte) error {
+	dir := filepath.Dir(path)
+	temp, err := reserveSiblingName(dir, filepath.Base(path))
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(temp, data, 0644); err != nil {
+		_ = removeFileFn(temp)
+		return err
+	}
+	if err := renameFn(temp, path); err != nil {
+		_ = removeFileFn(temp)
+		return err
+	}
+	return nil
+}
+
 // writeMaterializedAgent writes already-encoded bytes into the harness's own
-// directory as a real file.
+// directory as a real file. The path is replaced rather than written to: a
+// symlink can already be there — GitHub documents committing .github/agents, so
+// a teammate on a platform with symlinks can commit one — and writing through it
+// would put this harness's re-encoding in the canonical file every other harness
+// links at, while leaving the install a link where the harness needs a real file.
 func writeMaterializedAgent(data []byte, harnessDir, harnessPath, canonicalPath string, mode InstallMode) InstallResult {
 	if err := os.MkdirAll(harnessDir, 0755); err != nil {
 		return InstallResult{Success: false, Path: harnessPath, Mode: mode, Error: err.Error()}
 	}
-	if err := os.WriteFile(harnessPath, data, 0644); err != nil {
+	if err := replaceFileWith(harnessPath, data); err != nil {
 		return InstallResult{Success: false, Path: harnessPath, Mode: mode, Error: err.Error()}
 	}
 	// The scope keeps its recorded mode. Materialized, not SymlinkFailed: no

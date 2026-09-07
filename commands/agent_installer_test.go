@@ -364,6 +364,61 @@ func TestInstallAgentFileMaterializesForAnAlwaysMaterializeHarness(t *testing.T)
 	}
 }
 
+// A symlink can already be sitting at a materialize-by-rule path: GitHub
+// documents committing .github/agents, so a teammate on a platform with
+// symlinks can commit one, and an intermediate build of mdm wrote one there
+// itself. os.WriteFile opens O_TRUNC and follows a symlink, so the materialized
+// write would land Copilot's re-encoded bytes in the canonical file every other
+// harness links at, and leave the install a link where the harness needs a real
+// file — while the run reports success and explains that Copilot always gets a
+// real file.
+//
+// Mutation this test catches: writeMaterializedAgent writing the encoded bytes
+// with os.WriteFile(harnessPath, data, 0o644) instead of replacing the path.
+func TestInstallAgentFileReplacesASymlinkAtAMaterializedPath(t *testing.T) {
+	cwd := t.TempDir()
+	canonicalDir := harness.CanonicalAgentsDir(false, cwd)
+	if err := os.MkdirAll(canonicalDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	canonical := filepath.Join(canonicalDir, "critic.md")
+	if err := os.WriteFile(canonical, []byte("---\nname: critic\ndescription: d\n---\n\nORIGINAL\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	harnessPath := agentHarnessPath("critic", "github-copilot", false, cwd)
+	if err := os.MkdirAll(filepath.Dir(harnessPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(canonical, harnessPath); err != nil {
+		t.Skipf("symlinks unavailable on this host: %v", err)
+	}
+
+	src := writeMarkdownAgent(t, t.TempDir(), "critic")
+	want, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := agentfile.ParseAgentFile(src)
+	if err != nil || a == nil {
+		t.Fatalf("parsing the source: a=%v err=%v", a, err)
+	}
+
+	res := installAgentFile(a, "github-copilot", false, cwd, InstallModeSymlink)
+	if !res.Success {
+		t.Fatalf("install failed: %s", res.Error)
+	}
+	if isSymlink(t, harnessPath) {
+		t.Errorf("%s is still a symlink; the materialized write followed it instead of replacing it", harnessPath)
+	}
+	got, err := os.ReadFile(canonical)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(want) {
+		t.Errorf("canonical file = %q, want the source bytes %q: the harness write went through the symlink", got, want)
+	}
+}
+
 // The bug is fixable by materializing everything, and that would be worse:
 // Claude Code reads markdown out of a generated directory, where a symlink is
 // what keeps the harness copy in step with the canonical file.
