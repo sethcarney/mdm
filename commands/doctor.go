@@ -150,6 +150,7 @@ func runDoctor(opts DoctorOptions) {
 
 	var readmeIssue *doctorIssue
 	var agentIssues []doctorIssue
+	var agentsChecked int
 	if checkProject {
 		instrIssues = checkInstructionFiles(cwd)
 		unlinkedRulesIssues = checkUnlinkedRulesHarnesses(cwd)
@@ -159,7 +160,7 @@ func runDoctor(opts DoctorOptions) {
 		// Project scope only, like checkKnowledgeBundles and checkInstalledPlugins:
 		// a global read aborts the process on an unreadable global state file, and
 		// `mdm doctor -p` must not fail over a problem outside the project.
-		agentIssues = checkAgentInstalls(cwd)
+		agentIssues, agentsChecked = checkAgentInstalls(cwd)
 		migrationIssues = checkProjectMigration(cwd)
 		mdIssues, mdTruncated = checkProjectMarkdown(cwd, skipDirs, skipFiles)
 		if mdTruncated {
@@ -177,7 +178,7 @@ func runDoctor(opts DoctorOptions) {
 
 	migrationIssues = append(migrationIssues, checkGlobalMigration(checkGlobal)...)
 
-	errs := printDoctorResults(results, instrIssues, unlinkedRulesIssues, missingSkillLinkIssues, knowledgeIssues, pluginIssues, agentIssues, migrationIssues, mdIssues, mdTruncated, readmeIssue, checkProject, cwd)
+	errs := printDoctorResults(results, instrIssues, unlinkedRulesIssues, missingSkillLinkIssues, knowledgeIssues, pluginIssues, agentIssues, migrationIssues, mdIssues, mdTruncated, readmeIssue, checkProject, agentsChecked, cwd)
 	if errs > 0 {
 		os.Exit(1)
 	}
@@ -491,14 +492,13 @@ func checkMissingHarnessSkillLinks(cwd string) []doctorIssue {
 // symlink whose target is gone". agentInstalledSomewhere uses os.Lstat, so a
 // dangling symlink counts as installed there and `mdm agents list` calls a
 // broken install healthy. Doctor is where that surfaces.
-func checkAgentInstalls(cwd string) []doctorIssue {
-	var issues []doctorIssue
+func checkAgentInstalls(cwd string) (issues []doctorIssue, checked int) {
 	names, agents := agentLockEntries(false, cwd)
 	for _, name := range names {
 		issues = append(issues, diagnoseAgentInstall(name, agents[name], cwd)...)
 	}
 	sort.Slice(issues, func(i, j int) bool { return issues[i].Message < issues[j].Message })
-	return issues
+	return issues, len(names)
 }
 
 // diagnoseAgentInstall checks one locked project-scoped agent definition: the
@@ -668,7 +668,7 @@ func checkProjectMarkdown(cwd string, skipDirs map[string]bool, skipFiles map[st
 
 // ── Output ─────────────────────────────────────────────────────────────────────
 
-func printDoctorResults(results []doctorResult, instrIssues, unlinkedRulesIssues, missingSkillLinkIssues, knowledgeIssues, pluginIssues, agentIssues, migrationIssues, mdIssues []doctorIssue, mdTruncated bool, readmeIssue *doctorIssue, scannedProject bool, cwd string) int {
+func printDoctorResults(results []doctorResult, instrIssues, unlinkedRulesIssues, missingSkillLinkIssues, knowledgeIssues, pluginIssues, agentIssues, migrationIssues, mdIssues []doctorIssue, mdTruncated bool, readmeIssue *doctorIssue, scannedProject bool, agentsChecked int, cwd string) int {
 	fmt.Println()
 
 	byScope := map[string][]doctorResult{}
@@ -748,7 +748,7 @@ func printDoctorResults(results []doctorResult, instrIssues, unlinkedRulesIssues
 	totalErrors += e
 	totalWarnings += w
 
-	printDoctorSummary(len(results), scannedProject, totalErrors, totalWarnings)
+	printDoctorSummary(len(results), agentsChecked, scannedProject, totalErrors, totalWarnings)
 	return totalErrors
 }
 
@@ -820,11 +820,20 @@ func printDoctorMarkdownSection(readmeIssue *doctorIssue, mdIssues []doctorIssue
 	return
 }
 
-func printDoctorSummary(total int, scannedProject bool, errs, warns int) {
+func printDoctorSummary(total, agents int, scannedProject bool, errs, warns int) {
+	// Naming only skills told a project holding agent definitions that
+	// nothing was installed, right after doctor had checked them.
+	var checked []string
 	if total > 0 {
-		fmt.Printf("%sDoctor complete:%s %d skill(s) checked", ansiText, ansiReset, total)
+		checked = append(checked, fmt.Sprintf("%d skill(s)", total))
+	}
+	if agents > 0 {
+		checked = append(checked, fmt.Sprintf("%d agent definition(s)", agents))
+	}
+	if len(checked) == 0 {
+		fmt.Printf("%sDoctor complete:%s nothing installed", ansiText, ansiReset)
 	} else {
-		fmt.Printf("%sDoctor complete:%s no skills installed", ansiText, ansiReset)
+		fmt.Printf("%sDoctor complete:%s %s checked", ansiText, ansiReset, strings.Join(checked, " and "))
 	}
 	if scannedProject {
 		fmt.Printf(", project markdown scanned")

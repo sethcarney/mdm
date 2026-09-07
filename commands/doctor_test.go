@@ -650,7 +650,7 @@ func TestDoctorReportsABrokenAgentSymlink(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	issues := checkAgentInstalls(cwd)
+	issues, _ := checkAgentInstalls(cwd)
 	if len(issues) == 0 {
 		t.Fatal("doctor reported nothing for a broken agent symlink")
 	}
@@ -682,7 +682,7 @@ func TestDoctorDistinguishesMissingAgentFromBrokenSymlink(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	issues := checkAgentInstalls(cwd)
+	issues, _ := checkAgentInstalls(cwd)
 
 	var vanishedMissing, vanishedBroken, criticMissing, criticBroken bool
 	for _, iss := range issues {
@@ -711,5 +711,29 @@ func TestDoctorDistinguishesMissingAgentFromBrokenSymlink(t *testing.T) {
 	}
 	if criticMissing {
 		t.Errorf("critic has a (broken) install on disk; it must not also be reported as 'not installed in any harness'; issues=%v", issues)
+	}
+}
+
+// Mutation this test catches: reporting only the skill count in the doctor
+// summary. A project holding agent definitions and no skills was told "no
+// skills installed", which reads as "nothing is installed" while doctor had
+// just checked several definitions.
+func TestDoctorSummaryCountsAgentDefinitions(t *testing.T) {
+	out := captureStdout(t, func() { printDoctorSummary(0, 2, false, 0, 0) })
+	if strings.Contains(out, "no skills installed") {
+		t.Errorf("summary = %q; it says nothing is installed while 2 agent definitions were checked", out)
+	}
+	if !strings.Contains(out, "2 agent definition(s)") {
+		t.Errorf("summary = %q; it must report the agent definitions it checked", out)
+	}
+
+	both := captureStdout(t, func() { printDoctorSummary(3, 2, false, 0, 0) })
+	if !strings.Contains(both, "3 skill(s)") || !strings.Contains(both, "2 agent definition(s)") {
+		t.Errorf("summary = %q; it must report both counts", both)
+	}
+
+	neither := captureStdout(t, func() { printDoctorSummary(0, 0, false, 0, 0) })
+	if !strings.Contains(neither, "nothing installed") {
+		t.Errorf("summary = %q; with neither installed it must say so plainly", neither)
 	}
 }
