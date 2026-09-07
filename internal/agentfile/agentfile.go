@@ -1,6 +1,7 @@
-// Package agentfile discovers and parses agent-definition markdown files:
-// single .md files with name and description frontmatter, such as Claude Code
-// subagents. It is to agent definitions what internal/skill is to SKILL.md.
+// Package agentfile discovers and parses agent-definition files: markdown
+// files with name and description frontmatter, such as Claude Code subagents,
+// and Codex's standalone TOML files. It is to agent definitions what
+// internal/skill is to SKILL.md.
 package agentfile
 
 import (
@@ -14,11 +15,25 @@ import (
 	"github.com/sethcarney/mdm/internal/skill"
 )
 
-// AgentFile is one parsed agent-definition markdown file.
+// Format is the on-disk shape of a definition. Codex reads TOML; every other
+// supported harness reads markdown.
+type Format string
+
+const (
+	FormatMarkdown Format = "markdown"
+	FormatTOML     Format = "toml"
+)
+
+// AgentFile is one parsed agent definition. Instructions is the markdown body
+// or the TOML developer_instructions. Extra carries every other key so a
+// conversion does not drop what it does not understand.
 type AgentFile struct {
-	Name        string
-	Description string
-	Path        string
+	Name         string
+	Description  string
+	Instructions string
+	Path         string
+	Format       Format
+	Extra        map[string]any
 }
 
 // conventionalDirs are scanned after any manifest-declared agentsDirs.
@@ -32,13 +47,53 @@ func ParseAgentMd(path string) (*AgentFile, error) {
 	if err != nil {
 		return nil, err
 	}
-	data, _ := skill.ParseFrontmatter(string(raw))
+	data, body := skill.ParseFrontmatter(string(raw))
 	name, _ := data["name"].(string)
 	desc, _ := data["description"].(string)
 	if name == "" || desc == "" {
 		return nil, nil
 	}
-	return &AgentFile{Name: name, Description: desc, Path: path}, nil
+	extra := map[string]any{}
+	for k, v := range data {
+		if k == "name" || k == "description" {
+			continue
+		}
+		extra[k] = v
+	}
+	return &AgentFile{
+		Name:         name,
+		Description:  desc,
+		Instructions: body,
+		Path:         path,
+		Format:       FormatMarkdown,
+		Extra:        extra,
+	}, nil
+}
+
+// FormatForExt maps a file extension to its format. Anything that is not TOML
+// is markdown, which is what every harness but Codex reads.
+func FormatForExt(ext string) Format {
+	if strings.EqualFold(ext, ".toml") {
+		return FormatTOML
+	}
+	return FormatMarkdown
+}
+
+// ParseAgentFile reads one definition in whichever format its extension names.
+// It returns (nil, nil) when the file is not a definition, which is a normal
+// thing to find in a source tree.
+func ParseAgentFile(path string) (*AgentFile, error) {
+	if FormatForExt(filepath.Ext(path)) == FormatTOML {
+		return parseAgentTOML(path)
+	}
+	return ParseAgentMd(path)
+}
+
+// isDefinitionExt reports whether name has an extension DiscoverAgentFiles
+// should hand to ParseAgentFile. Anything else is not a candidate definition.
+func isDefinitionExt(name string) bool {
+	ext := filepath.Ext(name)
+	return strings.EqualFold(ext, ".md") || strings.EqualFold(ext, ".toml")
 }
 
 // The containment checks this package applies live in internal/pathsafe, which
@@ -110,17 +165,17 @@ func DiscoverAgentFiles(basePath, subpath string) ([]*AgentFile, error) {
 			continue
 		}
 		for _, e := range entries {
-			if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			if e.IsDir() || !isDefinitionExt(e.Name()) {
 				continue
 			}
 			filePath := filepath.Join(dirPath, e.Name())
 			// A contained directory can hold a symlinked FILE pointing
-			// outside the root (agents/ with a linked "leak.md"). The
-			// directory-level check above misses that.
+			// outside the root (agents/ with a linked "leak.md" or
+			// "leak.toml"). The directory-level check above misses that.
 			if !resolvedContains(resolvedRoot, filePath) {
 				continue
 			}
-			a, err := ParseAgentMd(filePath)
+			a, err := ParseAgentFile(filePath)
 			if err != nil {
 				// A nil AgentFile with no error means "no name or description
 				// frontmatter", which is skipped below. An error means the

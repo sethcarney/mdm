@@ -91,6 +91,61 @@ func TestDiscoverFindsManifestAndConventionalDirs(t *testing.T) {
 	}
 }
 
+// Discovery must consider .toml files, not just .md, or a Codex-authored
+// source is invisible to it even though ParseAgentFile can read it fine.
+func TestDiscoverFindsTOMLDefinition(t *testing.T) {
+	got, err := DiscoverAgentFiles("testdata/repo", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range got {
+		if a.Name == "codex-style" {
+			if a.Format != FormatTOML {
+				t.Errorf("Format = %q, want %q", a.Format, FormatTOML)
+			}
+			return
+		}
+	}
+	t.Fatal("codex-style.toml was not discovered")
+}
+
+// A legitimate, safely-contained directory can still hold a symlinked TOML
+// file pointing outside the root, the same way a .md file can (see
+// TestDiscoverRejectsSymlinkedFileEscape). The containment check must apply
+// to .toml exactly as it does to .md, not just to the extension that existed
+// first.
+func TestDiscoverRejectsSymlinkedTOMLFileEscape(t *testing.T) {
+	root := t.TempDir()
+
+	outside := t.TempDir()
+	outsideFile := filepath.Join(outside, "secret.toml")
+	agentToml := "name = \"leaked-toml\"\ndescription = \"Should never be discovered\"\ndeveloper_instructions = \"x\"\n"
+	if err := os.WriteFile(outsideFile, []byte(agentToml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := filepath.Join(root, "repo")
+	agentsDir := filepath.Join(repo, "agents")
+	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	link := filepath.Join(agentsDir, "linked.toml")
+	if err := os.Symlink(outsideFile, link); err != nil {
+		t.Skipf("cannot create a file symlink on this system: %v", err)
+	}
+
+	got, err := DiscoverAgentFiles(repo, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range got {
+		if a.Name == "leaked-toml" {
+			t.Fatalf("discovered %q through a symlinked TOML file that escapes the search root", a.Name)
+		}
+	}
+}
+
 // ParseAgentMd's (nil, nil) return means "not an agent definition". A genuine
 // read failure must not collapse into the same result. A directory makes
 // os.ReadFile fail with something other than "not found" on every OS, without

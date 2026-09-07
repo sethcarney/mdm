@@ -1,0 +1,7 @@
+name = "codex-style"
+description = "A definition authored for Codex"
+developer_instructions = "Review the diff and report defects.\n"
+model = "gpt-5"
+
+[mcp_servers.example]
+command = "example-server"
