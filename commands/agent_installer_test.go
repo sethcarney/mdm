@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -573,4 +574,63 @@ func TestInstallAgentFileInstallsAnEmptyBodyToAMarkdownHarness(t *testing.T) {
 	if !res.Success {
 		t.Fatalf("install failed for a markdown harness that accepts an empty body: %s", res.Error)
 	}
+}
+
+// truncateThenFailCopyFile swaps copyFileFn for one that opens the destination
+// exactly as copyFile does — O_CREATE|O_WRONLY|O_TRUNC — and then fails without
+// writing anything. That is what a crash, a full volume or an I/O error inside
+// copyFile's io.Copy leaves behind, and the only way to observe the truncation
+// window without a fault injector. Shared mutable state, so not parallel-safe.
+func truncateThenFailCopyFile(t *testing.T) {
+	t.Helper()
+	orig := copyFileFn
+	copyFileFn = func(_, dst string) error {
+		f, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+		if err != nil {
+			return err
+		}
+		_ = f.Close()
+		return errors.New("forced copy failure after truncating the destination")
+	}
+	t.Cleanup(func() { copyFileFn = orig })
+}
+
+// In symlink mode the canonical file is not a spare copy: it is what every
+// harness symlink resolves to. copyFile opens its destination O_TRUNC and then
+// streams, so writing the canonical in place empties it before the first byte
+// of the new version arrives, and a crash in that window leaves every harness
+// reading a zero-length definition with nothing to restore it from.
+//
+// Mutation this test catches: copyAgentFileUnlessSame calling
+// copyFileFn(src, dst) directly instead of building the new content beside dst
+// and renaming it over.
+func TestInstallAgentFileKeepsTheCanonicalWhenTheCopyFails(t *testing.T) {
+	cwd := t.TempDir()
+	canonicalPath := agentCanonicalPath("critic", agentfile.FormatMarkdown, false, cwd)
+	if err := os.MkdirAll(filepath.Dir(canonicalPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	previous := "---\nname: critic\ndescription: d\n---\n\nthe version every harness is reading\n"
+	if err := os.WriteFile(canonicalPath, []byte(previous), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	src := writeMarkdownAgent(t, t.TempDir(), "critic")
+	a, err := agentfile.ParseAgentFile(src)
+	if err != nil || a == nil {
+		t.Fatalf("parsing the source: a=%v err=%v", a, err)
+	}
+	truncateThenFailCopyFile(t)
+
+	res := installAgentFile(a, "claude-code", false, cwd, InstallModeSymlink)
+	if res.Success {
+		t.Fatal("install reported success while the copy of the canonical file failed")
+	}
+	got, err := os.ReadFile(canonicalPath)
+	if err != nil {
+		t.Fatalf("the canonical file is gone: %v", err)
+	}
+	if string(got) != previous {
+		t.Errorf("canonical file = %q, want the previous version (%q): the failed copy truncated it in place", got, previous)
+	}
+	assertNoTempDirs(t, filepath.Dir(canonicalPath))
 }

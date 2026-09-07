@@ -76,11 +76,17 @@ func sameFileOnDisk(a, b string) bool {
 // same file on disk. `mdm agents add .` discovers both .agents/agents and
 // .claude/agents, whose entries link into it, so src can be dst. copyFile opens
 // the destination O_TRUNC first, which would empty the file it then reads.
+//
+// The copy replaces dst rather than being written into it. In symlink mode the
+// canonical file is not a spare copy — it is what every harness symlink
+// resolves to — so truncating it in place is a window in which every harness
+// reads a zero-length definition, and a crash inside that window leaves it that
+// way with nothing to restore it from.
 func copyAgentFileUnlessSame(src, dst string) error {
 	if sameFileOnDisk(src, dst) {
 		return nil
 	}
-	return copyFile(src, dst)
+	return replaceFileFrom(src, dst)
 }
 
 // copyAgentIntoHarness copies the canonical definition into the harness's own
@@ -220,20 +226,21 @@ func reportAgentFailure(displayName string, f *agentFailures) {
 	f.explain()
 }
 
-// replaceFileWith writes data at path by building it under a reserved sibling
-// name and renaming that over path. The rename replaces the name itself, so
-// whatever path held — a symlink included — is discarded rather than written
-// through, and path never holds a partial file: until the rename it holds its
-// previous content, and after it holds all of data. os.WriteFile can do neither:
-// it opens O_CREATE|O_WRONLY|O_TRUNC, which follows a symlink and lands the
-// bytes on its target. The sibling location keeps the rename on one filesystem.
-func replaceFileWith(path string, data []byte) error {
-	dir := filepath.Dir(path)
-	temp, err := reserveSiblingName(dir, filepath.Base(path))
+// replaceFilePath has build write the new content of path under a reserved
+// sibling name, then renames that over path. The rename replaces the name
+// itself, so whatever path held — a symlink included — is discarded rather than
+// written through, and path never holds a partial file: until the rename it
+// holds its previous content, and after it holds all of the new one. Writing
+// into path can do neither, because both os.WriteFile and copyFile open the
+// destination O_CREATE|O_WRONLY|O_TRUNC, which follows a symlink onto its target
+// and empties a real file before the first new byte arrives. The sibling
+// location keeps the rename on one filesystem.
+func replaceFilePath(path string, build func(temp string) error) error {
+	temp, err := reserveSiblingName(filepath.Dir(path), filepath.Base(path))
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(temp, data, 0644); err != nil {
+	if err := build(temp); err != nil {
 		_ = removeFileFn(temp)
 		return err
 	}
@@ -242,6 +249,17 @@ func replaceFileWith(path string, data []byte) error {
 		return err
 	}
 	return nil
+}
+
+// replaceFileWith replaces path with data.
+func replaceFileWith(path string, data []byte) error {
+	return replaceFilePath(path, func(temp string) error { return os.WriteFile(temp, data, 0644) })
+}
+
+// replaceFileFrom replaces dst with a copy of src. copyFileFn gives the result
+// the source's mode, exactly as a copy straight into dst would.
+func replaceFileFrom(src, dst string) error {
+	return replaceFilePath(dst, func(temp string) error { return copyFileFn(src, temp) })
 }
 
 // writeMaterializedAgent writes already-encoded bytes into the harness's own

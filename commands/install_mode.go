@@ -214,9 +214,10 @@ func scopeInstallPaths(global bool, cwd string) []conversionPath {
 	return paths
 }
 
-// copyDirFn, copyFileFn, and renameFn are the conversion steps tests swap for
-// failing versions. Shared mutable state, so those tests must not run in
-// parallel. removeFileFn in agent_artifacts.go covers the file-shaped steps.
+// copyDirFn, copyFileFn, and renameFn are the conversion and agent-install
+// steps tests swap for failing versions. Shared mutable state, so those tests
+// must not run in parallel. removeFileFn in agent_artifacts.go covers the
+// file-shaped steps.
 var (
 	copyDirFn  = copyDirectory
 	copyFileFn = copyFile
