@@ -334,3 +334,62 @@ func TestManifestAgentDirsRejectsSymlinkedPluginDir(t *testing.T) {
 		t.Fatalf("manifestAgentDirs(%q) = %v, want nil for a .claude-plugin symlink escaping the search root", repo, got)
 	}
 }
+
+// A file that does not parse is skipped, not fatal: one malformed .toml in a
+// source must not stop every valid definition beside it from installing.
+// Markdown gets this for free, because skill.ParseFrontmatter falls back to
+// "no frontmatter" when the YAML will not unmarshal; TOML's decoder reports
+// the syntax error instead, and DiscoverAgentFiles used to return it.
+//
+// Mutation this detects: put back the fatal branch in DiscoverAgentFiles
+// (`return nil, fmt.Errorf("agentfile: reading %s: %w", filePath, err)` in
+// place of the note-and-skip). Discovery then returns an error and "good" is
+// never found.
+func TestDiscoverSkipsAnUnparseableFile(t *testing.T) {
+	cases := []struct {
+		name    string
+		file    string
+		content []byte
+	}{
+		{"malformed toml", "junk.toml", []byte("this is not toml at all [[[\n")},
+		{"binary toml", "binary.toml", []byte{0x00, 0x01, 0xFF, 0xFE, 0x00, 0x00}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := t.TempDir()
+			agentsDir := filepath.Join(repo, "agents")
+			if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			good := "---\nname: good\ndescription: A valid definition\n---\n\nBody.\n"
+			if err := os.WriteFile(filepath.Join(agentsDir, "good.md"), []byte(good), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(agentsDir, tc.file), tc.content, 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			var noted []string
+			restore := noteSkippedFile
+			noteSkippedFile = func(path string, err error) {
+				noted = append(noted, path)
+			}
+			t.Cleanup(func() { noteSkippedFile = restore })
+
+			got, err := DiscoverAgentFiles(repo, "")
+			if err != nil {
+				t.Fatalf("DiscoverAgentFiles returned %v; an unparseable file must be skipped, not fatal", err)
+			}
+			var names []string
+			for _, a := range got {
+				names = append(names, a.Name)
+			}
+			if len(names) != 1 || names[0] != "good" {
+				t.Fatalf("discovered %v, want exactly [good]", names)
+			}
+			if len(noted) != 1 || filepath.Base(noted[0]) != tc.file {
+				t.Errorf("noted %v, want a single note naming %q: a silent skip leaves the user with no reason", noted, tc.file)
+			}
+		})
+	}
+}

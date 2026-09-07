@@ -233,6 +233,15 @@ func manifestAgentDirs(searchPath, resolvedRoot string) []string {
 	return out
 }
 
+// noteSkippedFile reports a candidate definition discovery could not read. A
+// skip that says nothing leaves someone staring at a source whose definition
+// never appeared, with no way to tell a typo in their TOML from mdm ignoring
+// the file on purpose. It is a variable so a test can capture the note without
+// reading os.Stderr.
+var noteSkippedFile = func(path string, err error) {
+	fmt.Fprintf(os.Stderr, "  mdm: skipping %s: %v\n", path, err)
+}
+
 // DiscoverAgentFiles scans basePath, optionally joined with subpath, for
 // agent-definition files. Manifest-declared directories are scanned first and
 // the first occurrence of a name wins, so a source can say where its agents live.
@@ -279,10 +288,16 @@ func DiscoverAgentFiles(basePath, subpath string) ([]*AgentFile, error) {
 			}
 			a, err := ParseAgentFile(filePath)
 			if err != nil {
-				// A nil AgentFile with no error means "no name or description
-				// frontmatter", which is skipped below. An error means the
-				// entry exists but could not be read, which is a real fault.
-				return nil, fmt.Errorf("agentfile: reading %s: %w", filePath, err)
+				// A definition that does not parse is skipped, not fatal:
+				// one malformed file must not block every valid definition
+				// beside it in the same source. Markdown already behaves this
+				// way, because skill.ParseFrontmatter falls back to "no
+				// frontmatter" when the YAML will not unmarshal; TOML's
+				// decoder reports the syntax error instead, which used to
+				// abort the whole scan. The skip is announced rather than
+				// silent, so the file's owner learns why it never appeared.
+				noteSkippedFile(filePath, err)
+				continue
 			}
 			if a == nil || seen[a.Name] {
 				continue
