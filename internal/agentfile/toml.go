@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"reflect"
+	"sort"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -114,6 +115,73 @@ func walkUnsafeTemporalSlice(rv reflect.Value, path string) (string, bool) {
 	return "", false
 }
 
+// firstNilExtraKey returns the dotted/indexed path to the first nil value in
+// extra, checking keys in sorted order so the key an error names does not
+// depend on Go's map iteration.
+func firstNilExtraKey(extra map[string]any) (string, bool) {
+	keys := make([]string, 0, len(extra))
+	for k := range extra {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		if key, ok := walkNil(reflect.ValueOf(extra[k]), k); ok {
+			return key, true
+		}
+	}
+	return "", false
+}
+
+// walkNil finds a nil anywhere inside a value. TOML has no null, and
+// BurntSushi's encoder answers a nil interface by writing nothing at all and
+// returning no error (encode.go: `case reflect.Interface: if rv.IsNil() {
+// return }`), so the key vanishes from the file with nobody told. It walks by
+// reflect.Kind for the same reason walkUnsafeTemporal does: a TOML array of
+// tables decodes to []map[string]any, not []any.
+//
+// An invalid reflect.Value is the untyped nil an `any` holding nothing gives,
+// so it counts as a hit rather than as "nothing to look at".
+func walkNil(rv reflect.Value, path string) (string, bool) {
+	if !rv.IsValid() {
+		return path, true
+	}
+	switch rv.Kind() {
+	case reflect.Interface, reflect.Pointer:
+		if rv.IsNil() {
+			return path, true
+		}
+		return walkNil(rv.Elem(), path)
+	case reflect.Map:
+		return walkNilMap(rv, path)
+	case reflect.Slice, reflect.Array:
+		return walkNilSlice(rv, path)
+	default:
+		return "", false
+	}
+}
+
+// walkNilMap checks every value in a map keyed by its map key, so a nil
+// inside a nested table names that key rather than the table's own name.
+func walkNilMap(rv reflect.Value, path string) (string, bool) {
+	for _, k := range rv.MapKeys() {
+		if got, ok := walkNil(rv.MapIndex(k), fmt.Sprintf("%s.%v", path, k.Interface())); ok {
+			return got, true
+		}
+	}
+	return "", false
+}
+
+// walkNilSlice checks every element by index, so a nil inside an array of
+// tables names its position (e.g. servers[0].when).
+func walkNilSlice(rv reflect.Value, path string) (string, bool) {
+	for i := 0; i < rv.Len(); i++ {
+		if got, ok := walkNil(rv.Index(i), fmt.Sprintf("%s[%d]", path, i)); ok {
+			return got, true
+		}
+	}
+	return "", false
+}
+
 // reservedTOMLKeys are the keys encodeTOML writes from the definition's own
 // fields, named in the order an error should try them so the message a user
 // sees does not depend on Go's map iteration. The value describes what the
@@ -137,10 +205,15 @@ var reservedTOMLKeys = []struct{ key, holds string }{
 // The Extra loop below writes into the same table, so such a key would
 // silently replace what the definition itself says — a frontmatter
 // developer_instructions would reach Codex as the whole of the agent's
-// instructions with the real body dropped. The error names the key and
-// carries no package prefix: the installer prints it verbatim under a line
+// instructions with the real body dropped. It refuses a nil value for the
+// same reason: TOML has no null, and the encoder writes nothing for one, so
+// the key would leave the file unannounced. Both errors name the key and
+// carry no package prefix: the installer prints them verbatim under a line
 // that already names the definition.
 func encodeTOML(a *AgentFile) ([]byte, error) {
+	if key, ok := firstNilExtraKey(a.Extra); ok {
+		return nil, fmt.Errorf("cannot encode %q: TOML has no null, so the key would be dropped from the file with nothing reported", key)
+	}
 	for _, r := range reservedTOMLKeys {
 		if _, ok := a.Extra[r.key]; ok {
 			return nil, fmt.Errorf("cannot encode %q: TOML writes the definition's %s under that key, so a frontmatter key of the same name would replace it — rename or remove the key", r.key, r.holds)

@@ -354,3 +354,56 @@ func TestEncodeTOMLRefusesAReservedKeyInExtra(t *testing.T) {
 		})
 	}
 }
+
+// YAML frontmatter can hold a null (`retries:` with no value, or `retries:
+// null`), and ParseAgentMd carries it into Extra as a Go nil. TOML has no
+// null at all, and BurntSushi's encoder answers a nil interface by writing
+// nothing and returning no error, so the key simply left the file: the
+// installed definition was missing a key its source declared, and neither the
+// installer nor the user was told. Encode refuses instead, naming the key,
+// the way it already refuses a TOML local date or time.
+//
+// Encoding to markdown is unaffected: YAML writes the null back out and it
+// re-reads as a nil, so that direction round-trips as the design promises.
+//
+// Mutation this detects: delete the firstNilExtraKey check from encodeTOML.
+// Every subtest then encodes cleanly with the offending key silently absent
+// from the output.
+func TestEncodeTOMLRefusesANilValue(t *testing.T) {
+	cases := []struct {
+		name     string
+		extra    map[string]any
+		wantPath string
+	}{
+		{"top level", map[string]any{"retries": nil}, "retries"},
+		{"nested table", map[string]any{"skills": map[string]any{"config": map[string]any{"level": nil}}}, "skills.config.level"},
+		{"array of tables", map[string]any{"servers": []map[string]any{{"when": nil}}}, "servers[0].when"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			a := &AgentFile{
+				Name:         "nully",
+				Description:  "d",
+				Instructions: "Body.",
+				Format:       FormatMarkdown,
+				Extra:        tc.extra,
+			}
+
+			got, err := Encode(a, FormatTOML)
+			if err == nil {
+				t.Fatalf("Encode to TOML succeeded and wrote %q, want a refusal naming %q", string(got), tc.wantPath)
+			}
+			if !strings.Contains(err.Error(), tc.wantPath) {
+				t.Errorf("error %q does not name the dropped key %q", err.Error(), tc.wantPath)
+			}
+
+			md, err := Encode(a, FormatMarkdown)
+			if err != nil {
+				t.Fatalf("Encode to markdown: %v; YAML can express a null", err)
+			}
+			if !strings.Contains(string(md), "null") {
+				t.Errorf("markdown output %q does not carry the null through", string(md))
+			}
+		})
+	}
+}
