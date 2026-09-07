@@ -88,7 +88,7 @@ func (m *materializedInstalls) any() bool {
 	return m != nil && len(m.harnesses) > 0
 }
 
-// materializeReason says why one harness never takes a symlink, in the same
+// materializeReason says why one harness received a real file, in the same
 // order installAgentFile decides it.
 func materializeReason(harnessName string) string {
 	h := harness.AllHarnesses[harnessName]
@@ -108,7 +108,7 @@ func (m *materializedInstalls) explain() {
 	if !m.any() {
 		return
 	}
-	fmt.Printf("%sSome harnesses always receive a real file rather than a symlink:%s\n", ansiDim, ansiReset)
+	fmt.Printf("%sSome harnesses received a real file rather than a symlink:%s\n", ansiDim, ansiReset)
 	for _, a := range m.harnesses {
 		name := a
 		if cfg := harness.AllHarnesses[a]; cfg != nil {

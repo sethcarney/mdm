@@ -247,7 +247,7 @@ func TestAgentsAddExplainsMaterializationWithoutClaimingASymlinkFailure(t *testi
 		}
 	}
 	for _, want := range []string{
-		"always receive a real file rather than a symlink",
+		"received a real file rather than a symlink",
 		"GitHub Copilot: its agents directory is committed to the repository.",
 		"Codex: it reads TOML.",
 	} {

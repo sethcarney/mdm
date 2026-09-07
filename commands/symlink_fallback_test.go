@@ -146,7 +146,7 @@ func TestAgentSummarySeparatesMaterializedFromSymlinkFailure(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		"always receive a real file rather than a symlink",
+		"received a real file rather than a symlink",
 		"GitHub Copilot: its agents directory is committed to the repository.",
 		"Codex: it reads TOML.",
 	} {
@@ -211,7 +211,7 @@ func TestAgentSummaryKeepsTheSymlinkFailureMessage(t *testing.T) {
 			t.Errorf("summary output missing %q:\n%s", want, out)
 		}
 	}
-	if strings.Contains(out, "always receive a real file") {
+	if strings.Contains(out, "received a real file") {
 		t.Errorf("a genuine symlink failure was described as a by-design materialization:\n%s", out)
 	}
 }
