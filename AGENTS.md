@@ -19,13 +19,15 @@ and the distinction runs through every name in the codebase:
 | Term | Means | Command | Lives in |
 | --- | --- | --- | --- |
 | **harness** | an AI coding tool mdm installs into (Claude Code, Cursor, Codex, …) | `mdm harnesses` | `internal/harness/`, `commands/harnesses.go` |
-| **agent definition** | one markdown file with `name` + `description` frontmatter that gives a harness a named subagent persona | `mdm agents` | `internal/agentfile/`, `commands/agent_artifacts.go` |
+| **agent definition** | one file that gives a harness a named subagent persona — markdown with `name` + `description` frontmatter for every harness but Codex, which reads a TOML file with `name`, `description`, and `developer_instructions` | `mdm agents` | `internal/agentfile/`, `commands/agent_artifacts.go` |
 
 So `mdm agents add` installs *into* a harness; `mdm harnesses add` configures
 *which* harnesses are the default install targets. A skill is a directory with a
 `SKILL.md`; an agent definition is a single file. Both are installed from the
 same sources, recorded in the same lock, and obey the same per-scope install
-mode.
+mode. mdm converts an agent definition between markdown and TOML as needed
+per target harness — see `internal/agentfile`'s `Encode`/`ParseAgentFile`
+and [docs/agent-artifacts.md](docs/agent-artifacts.md#formats-markdown-and-toml).
 
 Three names deliberately keep the old word and must not be renamed: `AGENTS.md`
 itself, the shared `.agents/` directory (`.agents/skills`, `.agents/agents`), and
@@ -488,7 +490,7 @@ mdm
 ├── internal/
     ├── harness/         # AllHarnesses registry (45+ harnesses); skills / agents dir paths; detection
     ├── skill/           # Skill discovery (SKILL.md parsing); frontmatter; filtering
-    ├── agentfile/       # Agent-definition discovery and parsing (single .md files with name + description frontmatter)
+    ├── agentfile/       # Agent-definition discovery, parsing, and format conversion (markdown frontmatter or Codex's TOML)
     ├── fork/            # Cherry-pick provenance: .mdm-origin.json, ATTRIBUTION.md, content hashing, license detection
     ├── okf/             # OKF bundle parsing, discovery, validation, content hashing
     ├── plugin/          # Agent Plugins spec conformance: plugin.json + mcp.json parsing, discovery, path containment, hashing
@@ -580,12 +582,24 @@ anything that re-fetches it would defeat the purpose of having forked it.
 Add an entry to `AllHarnesses` in `internal/harness/` with the harness's skills
 dir path(s) and an optional `DetectInstalled()` function. If the harness also
 loads subagent persona files, set `AgentsInstallDir` (and
-`GlobalAgentsInstallDir`), plus `AgentFileSuffix` when it wants something other
-than `.md` — GitHub Copilot CLI wants `.agent.md`, and writing a plain `.md`
-there installs a file the harness silently never loads. Leaving those fields
-empty means mdm has no directory recorded for that harness yet, not that the
-harness lacks the concept, and every agent-definition path treats it as a
-skip.
+`GlobalAgentsInstallDir`), plus:
+
+- `AgentFileSuffix` when the harness wants an extension other than `.md` —
+  GitHub Copilot CLI wants `.agent.md`, Codex wants `.toml`. Writing a file
+  under the wrong extension installs one the harness silently never loads.
+- `AgentFileFormat` when the harness reads TOML rather than markdown (Codex
+  is the only one today). Empty means markdown. This is a second axis from
+  `AgentFileSuffix`: Copilot is markdown under a different extension, Codex
+  is a different format entirely, and the two fields say which is which.
+- `AgentAlwaysMaterialize` when a symlinked definition is unsafe for this
+  harness's directory even when the format matches — true for Copilot,
+  whose `.github/agents` sits inside a tree people commit.
+- `AgentNamePattern` to document a naming constraint mdm warns about but
+  does not enforce (see `commands/agent_artifacts.go`'s `warnAgentNamePattern`).
+
+Leaving `AgentsInstallDir`/`GlobalAgentsInstallDir` empty means mdm has no
+directory recorded for that harness yet, not that the harness lacks the
+concept, and every agent-definition path treats it as a skip.
 
 Resolve paths through the helpers (`SkillsInstallDir`, `AgentsInstallDirFor`,
 `CanonicalSkillsDir`, `CanonicalAgentsDir`, `UsesSharedSkillsDir`), not by

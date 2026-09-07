@@ -190,6 +190,35 @@ they can be committed and edited as your own. See
 [docs/skills/add.md](docs/skills/add.md) for the full install-mode rules and
 [docs/skills/cherry-pick.md](docs/skills/cherry-pick.md) for forks.
 
+### Agent definitions
+
+`mdm agents` writes agent definitions the same way — a canonical copy plus a
+link or a real copy per harness, governed by the same scope-wide install
+mode — and the same "commit `mdm.lock`, not the files it produces" rule
+applies. **But `--copy` and `--symlink` no longer describe every file in
+the scope.** GitHub Copilot's own copy, and any install that crosses
+formats (a markdown definition installed to Codex, or a Codex TOML
+definition installed to a markdown harness), are real files regardless of
+which mode the scope records. See
+[docs/agent-artifacts.md](docs/agent-artifacts.md#formats-markdown-and-toml)
+for exactly which harnesses that covers and why.
+
+GitHub Copilot's `.github/agents` is the one harness directory mdm writes
+into that is not meant to be ignored by default: GitHub documents it as the
+way to share agents through the repository, so mdm always writes a real
+file there, never a symlink. If your team does not want that,
+`.github/agents` can be gitignored on its own line while the rest of
+`.github` — workflows, CODEOWNERS, `copilot-instructions.md` — stays
+tracked:
+
+```gitignore
+.github/agents
+```
+
+Do that and the drift warning above still applies to it: the content
+duplicates what `mdm.lock` already pins, so it should come from `mdm agents
+install` or `mdm agents update`, not a hand edit.
+
 ## Development
 
 ```bash
