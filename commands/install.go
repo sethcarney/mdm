@@ -83,10 +83,17 @@ func restoreSkillsFromCurrentLock(opts restoreOptions, cwd string) {
 
 	hasLocal := len(localL.Skills) > 0
 	hasGlobal := len(globalL.Skills) > 0
+	hasAgents := len(lock.ReadProjectLock(cwd).Agents) > 0 || len(globalL.Agents) > 0
 	vlog(verboseFlag, "install from lock: local=%d skill(s) global=%d skill(s)", len(localL.Skills), len(globalL.Skills))
 
 	switch {
 	case !hasLocal && !hasGlobal:
+		// A lock holding only agent definitions is still a lock. The agent
+		// restore step reports those, so announcing there is none here — and
+		// pointing at `mdm skills add` — would be wrong.
+		if hasAgents {
+			return
+		}
 		fmt.Printf("\n%sNo %s found.%s\n\n", ansiDim, lockName, ansiReset)
 		fmt.Printf("Add skills with %smdm skills add <package>%s\n\n", ansiText, ansiReset)
 

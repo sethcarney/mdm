@@ -60,12 +60,23 @@ type AgentOptions struct {
 	Agents           []string // empty = prompt; "*" = all
 	Yes              bool
 	AllowHiddenChars bool
+	Copy             bool
+	Symlink          bool
 }
 
 // asAddOptions adapts AgentOptions to the AddOptions fields
-// promptScopeAndHarnesses and commitScopeInstallMode read.
+// promptScopeAndHarnesses and commitScopeInstallMode read. The mode flags
+// belong here: the install mode is scope-wide, so an agent definition sets it
+// for the scope exactly as a skill does.
 func (o AgentOptions) asAddOptions() AddOptions {
-	return AddOptions{Global: o.Global, Project: o.Project, Harnesses: o.Harnesses, Yes: o.Yes}
+	return AddOptions{
+		Global:    o.Global,
+		Project:   o.Project,
+		Harnesses: o.Harnesses,
+		Yes:       o.Yes,
+		Copy:      o.Copy,
+		Symlink:   o.Symlink,
+	}
 }
 
 // ─── add ────────────────────────────────────────────────────────────────────────
@@ -109,6 +120,11 @@ pass them space-separated after the flag or repeat the flag for each value:
 	f.StringArrayVarP(&opts.Agents, "agent", "a", nil, "Agent definition names to install (repeatable, use '*' for all)")
 	f.BoolVarP(&opts.Yes, "yes", "y", false, "Skip confirmation prompts")
 	f.BoolVar(&opts.AllowHiddenChars, "allow-hidden-chars", false, "Allow markdown files with hidden Unicode characters")
+	f.BoolVar(&opts.Copy, "copy", false, "Copy files instead of symlinking (switches the scope to copy mode)")
+	f.BoolVar(&opts.Symlink, "symlink", false, "Symlink files from .agents/agents (the default; switches a scope back from copy mode)")
+	// The install mode is one switch with two settings, so asking for
+	// both is a contradiction rather than a precedence puzzle.
+	cmd.MarkFlagsMutuallyExclusive("copy", "symlink")
 
 	_ = cmd.RegisterFlagCompletionFunc("harness", harnessFlagCompletion)
 
@@ -737,6 +753,11 @@ func buildAgentsInstallCmd() *cobra.Command {
 
 	cmd.Flags().BoolVarP(&opts.yes, "yes", "y", false, "Skip confirmation prompts")
 	cmd.Flags().BoolVar(&opts.allowHiddenChars, "allow-hidden-chars", false, "Allow markdown files with hidden Unicode characters")
+	cmd.Flags().BoolVar(&opts.copy, "copy", false, "Copy files instead of symlinking (switches the scope to copy mode)")
+	cmd.Flags().BoolVar(&opts.symlink, "symlink", false, "Symlink files from .agents/agents (the default; switches a scope back from copy mode)")
+	// The install mode is one switch with two settings, so asking for
+	// both is a contradiction rather than a precedence puzzle.
+	cmd.MarkFlagsMutuallyExclusive("copy", "symlink")
 	return cmd
 }
 
@@ -801,7 +822,7 @@ func restoreAgentsMap(entries map[string]lock.AgentLockEntry, global bool, opts 
 	}
 	groups := groupBySourceRef(refs)
 
-	baseOpts := AgentOptions{Yes: opts.yes, AllowHiddenChars: opts.allowHiddenChars}
+	baseOpts := AgentOptions{Yes: opts.yes, AllowHiddenChars: opts.allowHiddenChars, Copy: opts.copy, Symlink: opts.symlink}
 	if global {
 		baseOpts.Global = true
 	} else {

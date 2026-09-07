@@ -629,6 +629,8 @@ func TestCopyAndSymlinkFlagsAreMutuallyExclusive(t *testing.T) {
 		{"add", buildAddCmd("test"), []string{"o/r", "--copy", "--symlink"}},
 		{"cherry-pick", buildCherryPickCmd("test"), []string{"o/r", "--copy", "--symlink"}},
 		{"install", buildInstallFromLockCmd("test"), []string{"--copy", "--symlink"}},
+		{"agents add", buildAgentAddCmd(), []string{"o/r", "--copy", "--symlink"}},
+		{"agents install", buildAgentsInstallCmd(), []string{"--copy", "--symlink"}},
 	}
 	for _, tc := range cases {
 		tc.cmd.SetArgs(tc.args)
@@ -659,6 +661,47 @@ func writeAgentFile(t *testing.T, dir, name string) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+// agentSourceDir writes one discoverable "critic" definition into a fresh
+// temp directory and returns that directory, for use as a local source by an
+// add or a restore. DiscoverAgentFiles scans conventional subdirectories, so
+// the file goes in "agents/" rather than at the root.
+func agentSourceDir(t *testing.T) string {
+	t.Helper()
+	src := t.TempDir()
+	writeAgentFile(t, filepath.Join(src, "agents"), "critic")
+	return src
+}
+
+// runAgentsAdd drives the real `mdm agents add` command rather than
+// runAgentAdd, so the flags the command registers are part of what is tested.
+func runAgentsAdd(t *testing.T, src string, extra ...string) {
+	t.Helper()
+	cmd := buildAgentAddCmd()
+	cmd.SetArgs(append([]string{src, "--project", "--yes"}, extra...))
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	var err error
+	captureStdout(t, func() { err = cmd.Execute() })
+	if err != nil {
+		t.Fatalf("agents add %v: %v", extra, err)
+	}
+}
+
+// runAgentsInstall drives the real `mdm agents install` command, the restore
+// counterpart of runAgentsAdd. It takes no source: the lock supplies that.
+func runAgentsInstall(t *testing.T, extra ...string) {
+	t.Helper()
+	cmd := buildAgentsInstallCmd()
+	cmd.SetArgs(append([]string{"--yes"}, extra...))
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	var err error
+	captureStdout(t, func() { err = cmd.Execute() })
+	if err != nil {
+		t.Fatalf("agents install %v: %v", extra, err)
+	}
 }
 
 // linkAgentFile lays out a symlink-mode agent install: the canonical
@@ -1226,4 +1269,112 @@ func TestApplyScopeInstallModeStillConvertsAnOrdinaryAgentInstall(t *testing.T) 
 		t.Fatalf("switch back to symlink: mode = %q ok = %v", mode, ok)
 	}
 	assertLinkTo(t, installed, agentCanonicalPath(name, a.Format, false, cwd))
+}
+
+// ── The mode flags on `mdm agents add` ─────────────────────────────────────
+
+// Mutation this test catches: dropping --copy and --symlink from the
+// `agents add` command. A project holding only agent definitions has no other
+// route to its scope's install mode, so without them the mode stays unset.
+func TestAgentsAddCopyRecordsTheScopeMode(t *testing.T) {
+	isolateHome(t)
+	t.Chdir(t.TempDir())
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	setConfigured(t, cwd, "claude-code")
+	assertRecordedMode(t, cwd, "")
+
+	runAgentsAdd(t, agentSourceDir(t), "--copy")
+
+	assertRecordedMode(t, cwd, lock.InstallModeCopy)
+	target := agentHarnessTarget("claude-code", cwd)
+	if isSymlink(t, target) {
+		t.Errorf("%s is a symlink after an install in copy mode", target)
+	}
+}
+
+// The install mode is a property of the scope, not of an asset type, so
+// setting it through `agents add` converts the scope's skills as well, in both
+// directions. Mutation this test catches: giving agent definitions a mode of
+// their own, which would leave the skill on its original shape.
+func TestAgentsAddModeFlagsConvertTheWholeScope(t *testing.T) {
+	isolateHome(t)
+	t.Chdir(t.TempDir())
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	skillCanonical, skillLink := linkSkill(t, cwd, "s1")
+	lockSkill(t, cwd, "s1")
+	agentLink := agentHarnessTarget("claude-code", cwd)
+	symlinkOrSkip(t, writeAgentFile(t, harness.CanonicalAgentsDir(false, cwd), "critic"), agentLink)
+	lockAgent(t, cwd, "critic")
+	setConfigured(t, cwd, "claude-code")
+	src := agentSourceDir(t)
+
+	runAgentsAdd(t, src, "--copy")
+	assertRecordedMode(t, cwd, lock.InstallModeCopy)
+	assertRealSkill(t, skillLink)
+	if isSymlink(t, agentLink) {
+		t.Errorf("%s is still a symlink after the scope switched to copy mode", agentLink)
+	}
+
+	runAgentsAdd(t, src, "--symlink")
+	assertRecordedMode(t, cwd, lock.InstallModeSymlink)
+	assertLinkTo(t, skillLink, skillCanonical)
+	assertLinkTo(t, agentLink, filepath.Join(harness.CanonicalAgentsDir(false, cwd), "critic.md"))
+}
+
+// ── The mode flags on `mdm agents install` ─────────────────────────────────
+
+// A project holding only agent definitions restores them with `agents
+// install`, so that command has to be able to change the scope's mode too.
+// Mutation this test catches: dropping the flags from `agents install`, which
+// fails with `unknown flag: --copy`. The recorded mode is the load-bearing
+// assertion; the file kind alone cannot tell a conversion from a fresh copy.
+func TestAgentsInstallCopyRecordsTheScopeMode(t *testing.T) {
+	isolateHome(t)
+	t.Chdir(t.TempDir())
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	setConfigured(t, cwd, "claude-code")
+	seedAgentsOnlyLock(t, cwd, agentSourceDir(t))
+	assertRecordedMode(t, cwd, "")
+
+	runAgentsInstall(t, "--copy")
+
+	assertRecordedMode(t, cwd, lock.InstallModeCopy)
+	target := agentHarnessTarget("claude-code", cwd)
+	if isSymlink(t, target) {
+		t.Errorf("%s is still a symlink after --copy", target)
+	}
+}
+
+// The restore path must not become a way to convert agent definitions alone.
+// Mutation this test catches: scoping the conversion to agent paths, which
+// leaves the scope's skill on whichever shape it was installed with while the
+// lock claims the whole scope is in copy mode.
+func TestAgentsInstallCopyConvertsTheScopesSkills(t *testing.T) {
+	isolateHome(t)
+	t.Chdir(t.TempDir())
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, skillLink := linkSkill(t, cwd, "s1")
+	lockSkill(t, cwd, "s1")
+	setConfigured(t, cwd, "claude-code")
+	seedLockedAgent(t, cwd, agentSourceDir(t))
+
+	runAgentsInstall(t, "--copy")
+
+	assertRecordedMode(t, cwd, lock.InstallModeCopy)
+	assertRealSkill(t, skillLink)
+	if isSymlink(t, agentHarnessTarget("claude-code", cwd)) {
+		t.Error("the agent definition is still a symlink after --copy")
+	}
 }
