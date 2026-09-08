@@ -19,7 +19,7 @@ and the distinction runs through every name in the codebase:
 | Term | Means | Command | Lives in |
 | --- | --- | --- | --- |
 | **harness** | an AI coding tool mdm installs into (Claude Code, Cursor, Codex, …) | `mdm harnesses` | `internal/harness/`, `commands/harnesses.go` |
-| **agent definition** | one file that gives a harness a named subagent persona - markdown with `name` + `description` frontmatter for every harness but Codex, which reads a TOML file with `name`, `description`, and `developer_instructions` | `mdm agents` | `internal/agentfile/`, `commands/agent_artifacts.go` |
+| **agent definition** | one file that gives a harness a named subagent persona - markdown with `name` + `description` frontmatter for every harness but Codex, which reads a TOML file with `name`, `description`, and `developer_instructions` | `mdm agents` | `internal/agentfile/`, `commands/agents*.go` |
 
 So `mdm agents add` installs *into* a harness; `mdm harnesses add` configures
 *which* harnesses are the default install targets. A skill is a directory with a
@@ -473,15 +473,23 @@ mdm
 │   ├── update.go        # `mdm skills update`: re-installs from recorded source+ref in lock file
 │   ├── audit.go         # `mdm skills audit`: checks skills.sh API for updates and OSV security advisories
 │   ├── init.go          # `mdm skills init`: scaffolds a new SKILL.md
-│   ├── install.go       # `mdm skills install`: restores skills from mdm.lock
+│   ├── install.go       # `mdm skills install`: restores skills, then agent definitions, from mdm.lock
 │   ├── sync.go          # `mdm skills sync`: syncs from node_modules
 │   ├── harnesses.go     # `mdm harnesses` group: list/add/remove configured harnesses (project + global scope)
-│   ├── agent_artifacts.go # `mdm agents` group: add/list/remove/update/install AGENT DEFINITIONS (not harnesses)
+│   ├── agents.go        # `mdm agents` group: registers the AGENT DEFINITION subcommands (not harnesses); AgentOptions
+│   ├── agents_add.go    # `mdm agents add`: fetch, discover, install to each harness, record the lock entry
+│   ├── agents_list.go   # `mdm agents list`: lock entries checked against the disk
+│   ├── agents_remove.go # `mdm agents remove`: harness copies, then canonical file + lock entry once nothing holds it
+│   ├── agents_install.go # `mdm agents install`: restore definitions from the lock
+│   ├── agents_update.go # `mdm agents update`: re-fetch by source+ref, refresh every harness install
 │   ├── agent_installer.go # Installs one definition into one harness; agentDiskName, the canonical/harness path pair
 │   ├── rules.go         # `mdm rules` group: link/status/unlink harness instruction files
 │   ├── selfupdate.go    # `mdm upgrade`: downloads and replaces the mdm binary from GitHub releases
 │   ├── uninstall.go     # `mdm uninstall`: removes the mdm binary from the system
 │   ├── hidden_scan.go   # Hidden-character pre-install scan shared by every install path (skills, agent definitions, knowledge, plugins)
+│   ├── symlink_fallback.go # Per-run notices: installs copied because a symlink failed, and materialized-by-rule files
+│   ├── migrate.go       # `mdm migrate`: folds v1 skills-lock.json / agents state into mdm.lock and mdm-state.json
+│   ├── lockname.go      # lockName: the project lock's file name for help text and messages
 │   ├── experimental.go  # `mdm experimental` group: list/enable/disable feature gates
 │   ├── knowledge*.go    # `mdm knowledge` group: OKF bundle add/list/remove/update/validate/init/install + doctor section
 │   ├── plugins*.go      # `mdm plugins` group: Agent Plugins add/list/remove/update/validate/init/install + MCP wiring + doctor section
@@ -550,7 +558,7 @@ is swept, not only the detected ones. Failed deletions are collected and reporte
 against the skill, and the lock entry survives them: the lock is the record of
 what is on disk.
 
-`mdm agents add` → `agent_artifacts.go` runs the same seven steps with
+`mdm agents add` → `agents_add.go` runs the same seven steps with
 `agentfile/` in place of `skill/`, `agent_installer.go` in place of
 `installer.go`, and the agents section of the lock. Two rules hold there
 specifically:
@@ -595,7 +603,7 @@ loads subagent persona files, set `AgentsInstallDir` (and
   harness's directory even when the format matches - true for Copilot,
   whose `.github/agents` sits inside a tree people commit.
 - `AgentNamePattern` to document a naming constraint mdm warns about but
-  does not enforce (see `commands/agent_artifacts.go`'s `warnAgentNamePattern`).
+  does not enforce (see `commands/agents_add.go`'s `warnAgentNamePattern`).
 
 Leaving `AgentsInstallDir`/`GlobalAgentsInstallDir` empty means mdm has no
 directory recorded for that harness yet, not that the harness lacks the
