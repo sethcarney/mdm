@@ -222,7 +222,7 @@ func TestRemoveAgentScopedToHarnessLeavesOtherHarnessAndLockIntact(t *testing.T)
 	cwd := t.TempDir()
 	installCriticTo(t, cwd, []string{"claude-code", "cursor"})
 
-	fullyRemoved, err := removeAgentFromDisk("critic", []string{"claude-code"}, agentfile.FormatMarkdown, false, cwd)
+	fullyRemoved, _, err := removeAgentFromDisk("critic", []string{"claude-code"}, agentfile.FormatMarkdown, false, cwd)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -251,7 +251,7 @@ func TestRemoveAgentWithNoFilterRemovesEverything(t *testing.T) {
 	cwd := t.TempDir()
 	installCriticTo(t, cwd, []string{"claude-code", "cursor"})
 
-	fullyRemoved, err := removeAgentFromDisk("critic", nil, agentfile.FormatMarkdown, false, cwd)
+	fullyRemoved, _, err := removeAgentFromDisk("critic", nil, agentfile.FormatMarkdown, false, cwd)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -290,7 +290,7 @@ func TestRemoveAgentDeletionFailureKeepsLockEntry(t *testing.T) {
 	}
 	defer func() { removeFileFn = orig }()
 
-	fullyRemoved, err := removeAgentFromDisk("critic", []string{"claude-code"}, agentfile.FormatMarkdown, false, cwd)
+	fullyRemoved, _, err := removeAgentFromDisk("critic", []string{"claude-code"}, agentfile.FormatMarkdown, false, cwd)
 	if err == nil {
 		t.Fatal("expected an error when the per-harness deletion fails")
 	}
@@ -853,7 +853,7 @@ func TestLockEntryWithoutFormatResolvesTheMarkdownCanonical(t *testing.T) {
 		t.Error("a lock entry with no format reports its canonical file missing")
 	}
 
-	fullyRemoved, err := removeAgentFromDisk("critic", nil, format, false, cwd)
+	fullyRemoved, _, err := removeAgentFromDisk("critic", nil, format, false, cwd)
 	if err != nil {
 		t.Fatal(err)
 	}

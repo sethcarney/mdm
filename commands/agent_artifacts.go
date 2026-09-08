@@ -532,11 +532,48 @@ func agentInstalledHarnesses(name string, global bool, cwd string) []string {
 	return found
 }
 
-// agentInstalledSomewhere reports whether any harness still has a copy, so a
-// `--harness X` removal knows whether the canonical file and lock entry are
-// still needed by harnesses outside the filter.
-func agentInstalledSomewhere(name string, global bool, cwd string) bool {
-	return len(agentInstalledHarnesses(name, global, cwd)) > 0
+// agentInstalledOutside reports whether a harness other than the ones in kept
+// still has a copy, so a `--harness X` removal knows whether the canonical
+// file and lock entry are still needed. A kept copy is the user's own file,
+// not an install, and does not count.
+func agentInstalledOutside(name string, kept map[string]bool, global bool, cwd string) bool {
+	for _, h := range agentInstalledHarnesses(name, global, cwd) {
+		if !kept[h] {
+			return true
+		}
+	}
+	return false
+}
+
+// removeAgentHarnessCopies deletes the definition's file under each harness,
+// except inside localSourceAbs, where the file is the user's own: an adopted
+// link there is turned back into a real file and the path reported in kept.
+// keptHarness names the harnesses whose copy was kept; failed describes every
+// deletion or un-adoption that did not succeed.
+func removeAgentHarnessCopies(name string, harnesses []string, localSourceAbs, canonicalPath string, global bool, cwd string) (kept []string, keptHarness map[string]bool, failed []string) {
+	keptHarness = map[string]bool{}
+	for _, harnessName := range harnesses {
+		target := agentHarnessPath(name, harnessName, global, cwd)
+		if target == "" || !isPathSafe(harness.AgentsInstallDirFor(harnessName, global, cwd), target) {
+			continue
+		}
+		if localSourceAbs != "" && isInsideOrEqual(target, localSourceAbs) {
+			if _, statErr := os.Lstat(target); statErr != nil {
+				continue
+			}
+			if unErr := unadoptAgentLink(target, canonicalPath); unErr != nil {
+				failed = append(failed, fmt.Sprintf("%s (%v)", harnessName, unErr))
+				continue
+			}
+			kept = append(kept, target)
+			keptHarness[harnessName] = true
+			continue
+		}
+		if rmErr := removeFileFn(target); rmErr != nil && !os.IsNotExist(rmErr) {
+			failed = append(failed, fmt.Sprintf("%s (%v)", harnessName, rmErr))
+		}
+	}
+	return kept, keptHarness, failed
 }
 
 // agentEntryStatus is the on-disk health of one lock entry, checked against
@@ -720,40 +757,38 @@ var removeFileFn = os.Remove
 // file and the lock entry only once no harness, including harnesses outside
 // harnessFilter, still has a copy. It returns fullyRemoved=false with a nil
 // error when the copies in scope went but the definition lives elsewhere.
-func removeAgentFromDisk(name string, harnessFilter []string, format agentfile.Format, global bool, cwd string) (fullyRemoved bool, err error) {
+//
+// Files inside the local source the definition was added from are the user's
+// own and are never deleted; they are returned in kept. `mdm agents add .`
+// adopts a hand-written .claude/agents/critic.md by copying it to the canonical
+// file and leaving a symlink behind, so a kept link is first turned back into
+// the real file it replaced, before the canonical file it points at can go.
+func removeAgentFromDisk(name string, harnessFilter []string, format agentfile.Format, global bool, cwd string) (fullyRemoved bool, kept []string, err error) {
 	harnesses := harnessFilter
 	if len(harnesses) == 0 {
 		for n := range harness.AllHarnesses {
 			harnesses = append(harnesses, n)
 		}
 	}
-
-	var failed []string
-	for _, harnessName := range harnesses {
-		target := agentHarnessPath(name, harnessName, global, cwd)
-		if target == "" {
-			continue
-		}
-		if !isPathSafe(harness.AgentsInstallDirFor(harnessName, global, cwd), target) {
-			continue
-		}
-		if rmErr := removeFileFn(target); rmErr != nil && !os.IsNotExist(rmErr) {
-			failed = append(failed, fmt.Sprintf("%s (%v)", harnessName, rmErr))
-		}
-	}
-	if len(failed) > 0 {
-		return false, fmt.Errorf("could not remove from %s", strings.Join(failed, ", "))
-	}
-
-	if agentInstalledSomewhere(name, global, cwd) {
-		return false, nil
-	}
-
+	localSourceAbs := resolveLocalAgentSourceAbs(name, global, cwd)
 	canonicalDir := harness.CanonicalAgentsDir(global, cwd)
 	canonicalPath := agentCanonicalPath(name, format, global, cwd)
-	if isPathSafe(canonicalDir, canonicalPath) {
+
+	kept, keptHarness, failed := removeAgentHarnessCopies(name, harnesses, localSourceAbs, canonicalPath, global, cwd)
+	if len(failed) > 0 {
+		return false, kept, fmt.Errorf("could not remove from %s", strings.Join(failed, ", "))
+	}
+	if agentInstalledOutside(name, keptHarness, global, cwd) {
+		return false, kept, nil
+	}
+
+	if localSourceAbs != "" && isInsideOrEqual(canonicalPath, localSourceAbs) {
+		if _, statErr := os.Lstat(canonicalPath); statErr == nil {
+			kept = append(kept, canonicalPath)
+		}
+	} else if isPathSafe(canonicalDir, canonicalPath) {
 		if rmErr := removeFileFn(canonicalPath); rmErr != nil && !os.IsNotExist(rmErr) {
-			return false, fmt.Errorf("could not remove the canonical file: %w", rmErr)
+			return false, kept, fmt.Errorf("could not remove the canonical file: %w", rmErr)
 		}
 	}
 
@@ -764,9 +799,66 @@ func removeAgentFromDisk(name string, harnessFilter []string, format agentfile.F
 		lockErr = lock.RemoveAgentFromLocalLock(name, cwd)
 	}
 	if lockErr != nil {
-		return false, fmt.Errorf("could not update lock file: %w", lockErr)
+		return false, kept, fmt.Errorf("could not update lock file: %w", lockErr)
 	}
-	return true, nil
+	return true, kept, nil
+}
+
+// resolveLocalAgentSourceAbs returns the absolute path of the directory the
+// definition was added from when that was a local path, or "" otherwise. It is
+// the agents-side twin of resolveLocalSourceAbs.
+func resolveLocalAgentSourceAbs(name string, global bool, cwd string) string {
+	var entry lock.AgentLockEntry
+	var ok bool
+	if global {
+		entry, ok = lock.ReadGlobalState().Agents[name]
+	} else {
+		entry, ok = lock.ReadProjectLock(cwd).Agents[name]
+	}
+	if !ok || entry.SourceType != string(source.SourceTypeLocal) || entry.Source == "" {
+		return ""
+	}
+	src := entry.Source
+	if !filepath.IsAbs(src) {
+		src = filepath.Join(cwd, src)
+	}
+	abs, err := filepath.Abs(src)
+	if err != nil {
+		return ""
+	}
+	return abs
+}
+
+// displayPaths shows paths relative to cwd when they sit under it.
+func displayPaths(paths []string, cwd string) []string {
+	out := make([]string, 0, len(paths))
+	for _, p := range paths {
+		if rel, err := filepath.Rel(cwd, p); err == nil && !strings.HasPrefix(rel, "..") {
+			out = append(out, rel)
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+// unadoptAgentLink turns a symlink at target back into a real file holding the
+// canonical content. A real file, or a link to something other than the
+// canonical file, is left as it is.
+func unadoptAgentLink(target, canonicalPath string) error {
+	fi, err := os.Lstat(target)
+	if err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		return nil
+	}
+	resolved, err := filepath.EvalSymlinks(target)
+	if err != nil {
+		return nil
+	}
+	canonicalResolved, err := filepath.EvalSymlinks(canonicalPath)
+	if err != nil || filepath.Clean(resolved) != filepath.Clean(canonicalResolved) {
+		return nil
+	}
+	return replaceFileFrom(canonicalPath, target)
 }
 
 func runAgentRemove(positional []string, opts AgentOptions) {
@@ -807,7 +899,7 @@ func runAgentRemove(positional []string, opts AgentOptions) {
 
 	fmt.Println()
 	for _, name := range toRemove {
-		fullyRemoved, err := removeAgentFromDisk(name, opts.Harnesses, lockedAgentFormat(lockEntries[name]), global, cwd)
+		fullyRemoved, kept, err := removeAgentFromDisk(name, opts.Harnesses, lockedAgentFormat(lockEntries[name]), global, cwd)
 		switch {
 		case err != nil:
 			ui.LogError(fmt.Sprintf("%s: %v", name, err))
@@ -815,6 +907,9 @@ func runAgentRemove(positional []string, opts AgentOptions) {
 			ui.LogSuccess("Removed " + name)
 		default:
 			ui.LogWarn(fmt.Sprintf("%s: removed from the given harness(es), but it is still installed elsewhere - keeping the definition and its lock entry", name))
+		}
+		if len(kept) > 0 {
+			ui.LogInfo(fmt.Sprintf("%s: kept %s: inside the local source it was added from", name, strings.Join(displayPaths(kept, cwd), ", ")))
 		}
 	}
 	fmt.Println()

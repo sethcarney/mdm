@@ -141,6 +141,11 @@ to remove. `--harness` scopes the removal to specific harnesses only - the
 canonical file and the lock entry are kept as long as any harness (including
 one outside the filter) still has a copy.
 
+A file inside the local directory a definition was added from is yours, not an
+install, and is never deleted. After `mdm agents add .` adopted a hand-written
+`.claude/agents/critic.md`, `mdm agents remove critic` turns that link back into
+the real file, drops the lock entry, and says what it kept.
+
 | Flag | Description |
 | --- | --- |
 | `--global, -g` | Remove from global scope |

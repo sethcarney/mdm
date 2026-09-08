@@ -356,3 +356,57 @@ func TestAgentsRemoveRejectsAnUnknownHarness(t *testing.T) {
 		t.Errorf("the definition was disturbed by a failed removal (stat err=%v)", err)
 	}
 }
+
+// `mdm agents add .` adopts a hand-written .claude/agents/critic.md: it copies
+// it to the canonical file and turns the original into a symlink. `mdm agents
+// remove critic` then deleted both, taking the user's only copy with it. The
+// skills side refuses to delete inside a local source; this is the same guard,
+// plus turning the adopted link back into the real file it replaced.
+func TestAgentsRemoveKeepsAHandWrittenDefinitionAdoptedFromTheProject(t *testing.T) {
+	projectDir := t.TempDir()
+	stateDir := t.TempDir()
+	own := filepath.Join(projectDir, ".claude", "agents", "critic.md")
+	if err := os.MkdirAll(filepath.Dir(own), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	original := "---\nname: critic\ndescription: mine\n---\n\nBe critical.\n"
+	if err := os.WriteFile(own, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := isolatedEnv(projectDir, stateDir)
+
+	if stdout, stderr, code := runMdmInDir(t, projectDir, env,
+		"agents", "add", ".", "--harness", "claude-code", "--project", "-y"); code != 0 {
+		t.Fatalf("mdm agents add . exited %d:\n%s%s", code, stdout, stderr)
+	}
+	if fi, err := os.Lstat(own); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		t.Skipf("setup: expected add . to adopt the file as a symlink (err=%v); nothing to un-adopt on this platform", err)
+	}
+
+	stdout, stderr, code := runMdmInDir(t, projectDir, env, "agents", "remove", "critic", "-y")
+	if code != 0 {
+		t.Fatalf("mdm agents remove exited %d:\n%s%s", code, stdout, stderr)
+	}
+
+	fi, err := os.Lstat(own)
+	if err != nil {
+		t.Fatalf("the user's own definition is gone after remove: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
+	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		t.Errorf("the user's definition is still a symlink after remove; it should be a real file again")
+	}
+	got, err := os.ReadFile(own)
+	if err != nil {
+		t.Fatalf("reading the user's definition back: %v", err)
+	}
+	if string(got) != original {
+		t.Errorf("the user's definition changed:\nwant: %q\ngot:  %q", original, got)
+	}
+	if !strings.Contains(stdout+stderr, "kept") {
+		t.Errorf("expected the output to say what was kept, got:\n%s%s", stdout, stderr)
+	}
+	lockData, _ := os.ReadFile(filepath.Join(projectDir, lockName))
+	if strings.Contains(string(lockData), `"critic"`) {
+		t.Errorf("lock file still records critic:\n%s", lockData)
+	}
+}
