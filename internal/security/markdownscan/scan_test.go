@@ -57,6 +57,77 @@ func TestScanMarkdownTextDetectsHiddenCategories(t *testing.T) {
 	}
 }
 
+// TestScanMarkdownTextEmojiVariationSequences covers the tiering: a VS16 that
+// completes a listed emoji sequence is reported as a warning and never blocks,
+// while a selector with no valid base keeps blocking.
+func TestScanMarkdownTextEmojiVariationSequences(t *testing.T) {
+	cases := []struct {
+		name         string
+		content      string
+		wantSeverity Severity
+	}{
+		{"warning sign", "Note: \u26a0\ufe0f careful", SeverityWarning},
+		{"heavy heart", "made with \u2764\ufe0f", SeverityWarning},
+		{"check mark", "\u2705\ufe0f done", SeverityWarning},
+		{"play button", "\u25b6\ufe0f run", SeverityWarning},
+		{"text presentation", "\u26a0\ufe0e plain", SeverityWarning},
+		{"keycap base", "press 1\ufe0f\u20e3", SeverityWarning},
+		{"selector after letter", "A\ufe0f", SeverityError},
+		{"selector at line start", "line one\n\ufe0f", SeverityError},
+		{"selector after newline", "\u26a0\n\ufe0f", SeverityError},
+		{"selector after CRLF", "\u26a0\r\n\ufe0f", SeverityError},
+		{"doubled selector", "\u26a0\ufe0f\ufe0f", SeverityError},
+		{"mongolian selector after emoji", "\u26a0\ufe00", SeverityError},
+		{"ivs after emoji", "\u26a0\U000e0100", SeverityError},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			findings := ScanMarkdownText("SKILL.md", tc.content)
+			if len(findings) == 0 {
+				t.Fatal("expected the variation selector to be reported")
+			}
+			last := findings[len(findings)-1]
+			if last.Category != CategoryVariation {
+				t.Fatalf("category = %q, want %q", last.Category, CategoryVariation)
+			}
+			if last.Severity != tc.wantSeverity {
+				t.Fatalf("severity = %q, want %q (detail %q)", last.Severity, tc.wantSeverity, last.Detail)
+			}
+			if tc.wantSeverity == SeverityWarning && HasBlocking(findings) {
+				t.Fatalf("expected no blocking findings, got %#v", findings)
+			}
+			if tc.wantSeverity == SeverityError && !HasBlocking(findings) {
+				t.Fatalf("expected a blocking finding, got %#v", findings)
+			}
+		})
+	}
+}
+
+func TestScanMarkdownTextEmojiWarningDetailNamesTheBase(t *testing.T) {
+	findings := ScanMarkdownText("SKILL.md", "\u26a0\ufe0f")
+	if len(findings) != 1 {
+		t.Fatalf("expected one finding, got %#v", findings)
+	}
+	if !strings.Contains(findings[0].Detail, "U+26A0 WARNING SIGN") {
+		t.Fatalf("detail = %q, want the base codepoint and name", findings[0].Detail)
+	}
+	if findings[0].Line != 1 || findings[0].Column != 2 {
+		t.Fatalf("position = %d:%d, want 1:2", findings[0].Line, findings[0].Column)
+	}
+}
+
+func TestScanMarkdownTextEmojiDoesNotMaskOtherFindings(t *testing.T) {
+	content := "ok \u26a0\ufe0f " + tagText("hidden") + " and\u200bmore"
+	findings := ScanMarkdownText("SKILL.md", content)
+	blocking := Blocking(findings)
+	if len(findings) != 3 || len(blocking) != 2 {
+		t.Fatalf("expected 3 findings with 2 blocking, got %#v", findings)
+	}
+	if blocking[0].Category != CategoryUnicodeTag || blocking[1].Category != CategoryZeroWidth {
+		t.Fatalf("unexpected blocking categories %#v", blocking)
+	}
+}
+
 func TestScanMarkdownTextBOMPolicy(t *testing.T) {
 	findings := ScanMarkdownText("SKILL.md", "\ufeff# Title\nbody\ufefftail")
 	if len(findings) != 1 {
@@ -121,16 +192,22 @@ func TestScanMarkdownFilesTestdata(t *testing.T) {
 	}
 	var badFindings []Finding
 	var cleanOnlyFindings []Finding
+	var emojiFindings []Finding
 	for _, f := range cleanFindings {
 		switch f.File {
 		case "bad-hidden.md":
 			badFindings = append(badFindings, f)
 		case "clean.md":
 			cleanOnlyFindings = append(cleanOnlyFindings, f)
+		case "emoji.md":
+			emojiFindings = append(emojiFindings, f)
 		}
 	}
 	if len(cleanOnlyFindings) != 0 {
 		t.Fatalf("expected clean.md to have no findings, got %#v", cleanOnlyFindings)
+	}
+	if len(emojiFindings) == 0 || HasBlocking(emojiFindings) {
+		t.Fatalf("expected emoji.md to have only warnings, got %#v", emojiFindings)
 	}
 	if len(badFindings) < 3 {
 		t.Fatalf("expected bad-hidden.md to have several findings, got %#v", badFindings)

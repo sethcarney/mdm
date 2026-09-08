@@ -128,4 +128,6 @@ When installing public skills from GitHub, mdm checks the skills.sh registry for
 
 ## Hidden character scan
 
-Before installing, mdm scans all markdown files in the selected skill for hidden Unicode characters used in prompt-smuggling attacks, including Unicode tags, bidirectional controls, zero-width characters, variation selectors, and soft hyphens. Findings block installation even with `--yes`. Pass `--allow-hidden-chars` to continue intentionally.
+Before installing, mdm scans all markdown files in the selected skill for hidden Unicode characters used in prompt-smuggling attacks, including Unicode tags, bidirectional controls, zero-width characters, variation selectors, and soft hyphens. Blocking findings stop the installation even with `--yes`. Pass `--allow-hidden-chars` to continue intentionally.
+
+Variation selectors that complete a valid emoji sequence, such as the `U+FE0F` in `⚠️`, are reported as warnings and do not block. See [Hidden-character scan](../security/hidden-character-scan.md) for the full tiering.

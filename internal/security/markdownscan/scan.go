@@ -13,7 +13,12 @@ import (
 type Severity string
 
 const (
+	// SeverityError findings can hide or reorder content and block installs.
 	SeverityError Severity = "error"
+	// SeverityWarning findings are reported for the audit trail but do not
+	// block: today that is a variation selector completing a sequence listed
+	// in the Unicode emoji-variation-sequences.txt data file.
+	SeverityWarning Severity = "warning"
 )
 
 type Category string
@@ -47,6 +52,32 @@ type scanPosition struct {
 	column int
 	offset int
 	prevCR bool
+	// prev is the last rune consumed on the current line, so a variation
+	// selector can be checked against the base character it applies to.
+	// Newlines reset it: a selector at the start of a line has no base.
+	prev rune
+}
+
+// Blocking returns the findings that gate an install: every finding whose
+// severity is SeverityError. Warnings are left out.
+func Blocking(findings []Finding) []Finding {
+	var out []Finding
+	for _, f := range findings {
+		if f.Severity == SeverityError {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// HasBlocking reports whether any finding has SeverityError.
+func HasBlocking(findings []Finding) bool {
+	for _, f := range findings {
+		if f.Severity == SeverityError {
+			return true
+		}
+	}
+	return false
 }
 
 var skipDirNames = map[string]bool{
@@ -109,6 +140,7 @@ func ScanMarkdownText(path, content string) []Finding {
 		r, size := utf8.DecodeRuneInString(content[pos.offset:])
 		if isInvalidUTF8Rune(content, pos.offset, r, size) {
 			findings = append(findings, newFinding(path, pos.line, pos.column, r, CategoryReplacementRune, "invalid UTF-8 byte sequence"))
+			pos.prev = r
 			advanceColumn(&pos, size)
 			continue
 		}
@@ -125,12 +157,33 @@ func ScanMarkdownText(path, content string) []Finding {
 			advanceColumn(&pos, size)
 			continue
 		}
-		if cat, detail, ok := classifyRune(r); ok {
-			findings = append(findings, newFinding(path, pos.line, pos.column, r, cat, detail))
+		if f, ok := classifyAt(path, &pos, r); ok {
+			findings = append(findings, f)
 		}
+		pos.prev = r
 		advanceColumn(&pos, size)
 	}
 	return findings
+}
+
+// classifyAt turns the rune at pos into a finding when it is one the scanner
+// reports. A VS15/VS16 that completes a listed emoji variation sequence with
+// the preceding rune is downgraded to a warning: the selector can only toggle
+// that one base between text and emoji presentation, so it cannot carry
+// hidden content. Every other variation selector stays an error.
+func classifyAt(path string, pos *scanPosition, r rune) (Finding, bool) {
+	cat, detail, ok := classifyRune(r)
+	if !ok {
+		return Finding{}, false
+	}
+	f := newFinding(path, pos.line, pos.column, r, cat, detail)
+	if cat == CategoryVariation && isEmojiVariationSelector(r) {
+		if name, listed := emojiVariationSequenceName(pos.prev, r); listed {
+			f.Severity = SeverityWarning
+			f.Detail = fmt.Sprintf("completes the emoji variation sequence for U+%04X %s", pos.prev, name)
+		}
+	}
+	return f, true
 }
 
 func isInvalidUTF8Rune(content string, offset int, r rune, size int) bool {
@@ -152,12 +205,14 @@ func advanceNewline(pos *scanPosition, r rune, size int) bool {
 		}
 		pos.offset += size
 		pos.prevCR = false
+		pos.prev = 0
 		return true
 	case '\r':
 		pos.line++
 		pos.column = 1
 		pos.offset += size
 		pos.prevCR = true
+		pos.prev = 0
 		return true
 	default:
 		pos.prevCR = false
@@ -176,6 +231,7 @@ func scanTagSequence(path, content string, pos *scanPosition, firstRune rune) Fi
 		if printable, ok := decodeTagRune(next); ok {
 			decoded.WriteRune(printable)
 		}
+		pos.prev = next
 		advanceColumn(pos, nextSize)
 	}
 	detail := "Unicode tag characters can hide ASCII instructions"

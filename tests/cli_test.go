@@ -376,6 +376,33 @@ func TestSkillsAddAllowsHiddenMarkdownCharactersWithFlag(t *testing.T) {
 	}
 }
 
+func TestSkillsAddWarnsButInstallsEmojiVariationSequences(t *testing.T) {
+	projectDir := t.TempDir()
+	stateDir := t.TempDir()
+	root, err := findModRoot()
+	if err != nil {
+		t.Fatalf("finding module root: %v", err)
+	}
+	skillDir := filepath.Join(root, "tests", "testdata", "emoji-skill")
+
+	env := isolatedEnv(projectDir, stateDir)
+	stdout, stderr, code := runMdmInDir(t, projectDir, env,
+		"skills", "add", skillDir, "--agent", "claude-code", "--project", "-y")
+	combined := stdout + stderr
+	if code != 0 {
+		t.Fatalf("expected picker emoji to install without --allow-hidden-chars, got code %d:\n%s", code, combined)
+	}
+	if !strings.Contains(combined, "Hidden character warnings in emoji-test-skill") || !strings.Contains(combined, "variation-selector") {
+		t.Fatalf("expected the downgraded findings to stay in the report, got:\n%s", combined)
+	}
+	if strings.Contains(combined, "Installation blocked") {
+		t.Fatalf("warnings must not block, got:\n%s", combined)
+	}
+	if _, err := os.Stat(filepath.Join(projectDir, ".agents", "skills", "emoji-test-skill", "SKILL.md")); err != nil {
+		t.Fatalf("expected skill to be installed, stat err=%v", err)
+	}
+}
+
 func TestSkillsInstallBlocksHiddenMarkdownCharactersFromLock(t *testing.T) {
 	projectDir := t.TempDir()
 	stateDir := t.TempDir()
