@@ -90,10 +90,16 @@ func copyAgentFileUnlessSame(src, dst string) error {
 }
 
 // copyAgentIntoHarness copies the canonical definition into the harness's own
-// agents directory, creating that directory first.
+// agents directory, creating that directory first. A symlink already at the
+// path is replaced, not kept: it resolves to the canonical file and so counts
+// as the same file, but copy mode promised a real one, and a run that left
+// the link while reporting a copy would have the scope half converted.
 func copyAgentIntoHarness(canonicalPath, harnessDir, harnessPath string) error {
 	if err := os.MkdirAll(harnessDir, 0755); err != nil {
 		return err
+	}
+	if fi, err := os.Lstat(harnessPath); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+		return replaceFileFrom(canonicalPath, harnessPath)
 	}
 	return copyAgentFileUnlessSame(canonicalPath, harnessPath)
 }

@@ -1173,3 +1173,45 @@ func TestPromptAgentHarnessesYesFallsBackToEveryCapableHarness(t *testing.T) {
 		t.Errorf("fallback = %v, want every capable harness %v", got, agentCapableHarnesses(false, cwd))
 	}
 }
+
+// A copy-mode install onto a path that already holds mdm's symlink used to
+// keep the link: it resolves to the canonical file, so the same-file check
+// saw nothing to do, and the run reported a copy it had not made.
+func TestCopyModeInstallReplacesAnExistingSymlink(t *testing.T) {
+	cwd := t.TempDir()
+	src := filepath.Join(t.TempDir(), "critic.md")
+	if err := os.WriteFile(src, []byte("---\nname: critic\ndescription: d\n---\nbody\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a, err := agentfile.ParseAgentFile(src)
+	if err != nil || a == nil {
+		t.Fatalf("parsing the source: a=%v err=%v", a, err)
+	}
+	first := installAgentFile(a, "claude-code", false, cwd, InstallModeSymlink)
+	if !first.Success {
+		t.Fatalf("symlink install failed: %s", first.Error)
+	}
+	target := agentHarnessTarget("claude-code", cwd)
+	if fi, err := os.Lstat(target); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		t.Skipf("setup did not produce a symlink (err=%v); nothing to replace on this host", err)
+	}
+
+	second := installAgentFile(a, "claude-code", false, cwd, InstallModeCopy)
+	if !second.Success {
+		t.Fatalf("copy install failed: %s", second.Error)
+	}
+	fi, err := os.Lstat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		t.Error("copy mode left the symlink in place while reporting a copy")
+	}
+	got, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), "name: critic") {
+		t.Errorf("the copy does not hold the definition:\n%s", got)
+	}
+}
