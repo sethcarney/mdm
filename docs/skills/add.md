@@ -61,7 +61,7 @@ symlink discovered as the source while the destination is the
 | `--yes, -y`     | Skip all confirmation prompts                        |
 | `--copy`        | Copy files instead of symlinking; switches the scope to copy mode |
 | `--symlink`     | Symlink files from `.agents/skills` (the default); switches a scope back from copy mode |
-| `--all`         | Shorthand for `--skill '*' --harness '*' -y`         |
+| `--all`         | Remove every skill without prompting (shorthand for `--skill '*' -y`)         |
 | `--full-depth`  | Search all subdirectories for SKILL.md files         |
 | `--skip-audit`  | Skip the security audit check                        |
 | `--fail-on-audit` | Exit non-zero when security findings are detected instead of prompting (CI-friendly) |

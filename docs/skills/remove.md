@@ -18,7 +18,7 @@ Without arguments, an interactive multiselect lets you choose which skills to re
 | `--harness`    | Remove from specific harnesses only (repeatable) |
 | `--skill, -s`  | Skill names to remove (repeatable)              |
 | `--yes, -y`    | Skip confirmation prompts                       |
-| `--all`        | Shorthand for `--skill '*' --harness '*' -y`    |
+| `--all`        | Remove every skill without prompting (shorthand for `--skill '*' -y`)    |
 
 ## Examples
 

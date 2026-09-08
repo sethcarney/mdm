@@ -50,8 +50,11 @@ separated after the flag or repeated:
 		Args: cobra.ArbitraryArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			if opts.All {
+				// Only the skill filter takes "*". A "*" harness filter matched
+				// nothing, so every harness looked like it still held the skill
+				// and the command removed nothing. Leaving Harnesses alone runs
+				// the unfiltered path, and still honors an explicit --harness.
 				opts.Skills = []string{"*"}
-				opts.Harnesses = []string{"*"}
 				opts.Yes = true
 			}
 			runRemove(args, opts)
@@ -63,7 +66,7 @@ separated after the flag or repeated:
 	f.StringArrayVar(&opts.Harnesses, "harness", nil, "Remove from specific harnesses (repeatable)")
 	f.StringArrayVarP(&opts.Skills, "skill", "s", nil, "Skill names to remove (repeatable)")
 	f.BoolVarP(&opts.Yes, "yes", "y", false, "Skip confirmation prompts")
-	f.BoolVar(&opts.All, "all", false, "Shorthand for --skill '*' --harness '*' -y")
+	f.BoolVar(&opts.All, "all", false, "Remove every skill without prompting (shorthand for --skill '*' -y)")
 
 	_ = cmd.RegisterFlagCompletionFunc("harness", harnessFlagCompletion)
 

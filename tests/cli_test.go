@@ -699,3 +699,48 @@ func TestHarnessFlagHasNoShorthand(t *testing.T) {
 		t.Errorf("`skills add` must not gain --agent; that belongs to `mdm agents add`:\n%s", out)
 	}
 }
+
+// `--all` used to set the harness filter to "*". Nothing expanded that for
+// harnesses, so the retention check saw every harness as still holding the
+// skill and the removal was a silent no-op with exit 0. A unit test on
+// removeSkillFromDisk passes either way; only the command shows the flag.
+func TestSkillsRemoveAllRemovesEverySkill(t *testing.T) {
+	projectDir := t.TempDir()
+	stateDir := t.TempDir()
+	skillDir := filepath.Join(projectDir, "sk", "my-skill")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	skillMd := "---\nname: my-skill\ndescription: removed by --all\n---\nbody\n"
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillMd), 0644); err != nil {
+		t.Fatal(err)
+	}
+	env := isolatedEnv(projectDir, stateDir)
+
+	stdout, stderr, code := runMdmInDir(t, projectDir, env,
+		"skills", "add", "./sk", "--harness", "claude-code", "--project", "-y")
+	if code != 0 {
+		t.Fatalf("mdm skills add failed (code %d):\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	canonical := filepath.Join(projectDir, ".agents", "skills", "my-skill")
+	if _, err := os.Stat(canonical); err != nil {
+		t.Fatalf("setup: canonical skill missing after add: %v", err)
+	}
+
+	stdout, stderr, code = runMdmInDir(t, projectDir, env, "skills", "remove", "--all")
+	if code != 0 {
+		t.Fatalf("mdm skills remove --all exited %d:\nstdout: %s\nstderr: %s", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "Removed my-skill") {
+		t.Errorf("expected 'Removed my-skill' in output, got:\nstdout: %s\nstderr: %s", stdout, stderr)
+	}
+	if _, err := os.Lstat(filepath.Join(projectDir, ".claude", "skills", "my-skill")); !os.IsNotExist(err) {
+		t.Errorf("Claude Code's install should be gone, Lstat err = %v", err)
+	}
+	if _, err := os.Stat(canonical); !os.IsNotExist(err) {
+		t.Errorf("canonical directory should be gone, Stat err = %v", err)
+	}
+	if data, err := os.ReadFile(filepath.Join(projectDir, lockName)); err == nil && strings.Contains(string(data), "my-skill") {
+		t.Errorf("lock file still records my-skill:\n%s", data)
+	}
+}

@@ -98,7 +98,7 @@ git URL with a `#ref`, a local path, or a well-known alias (`vercel`,
 | `--yes`, `-y` | Skip confirmation prompts |
 | `--copy` | Copy files instead of symlinking; switches the scope to copy mode |
 | `--symlink` | Symlink files from `.agents/skills` (the default); switches a scope back from copy mode |
-| `--all` | Shorthand for `--skill '*' --harness '*' -y` |
+| `--all` | Remove every skill without prompting (shorthand for `--skill '*' -y`) |
 | `--full-depth` | Search all subdirectories for skills |
 | `--skip-audit` | Skip the security audit check for public skills |
 | `--fail-on-audit` | Exit non-zero on security findings instead of prompting |
@@ -145,7 +145,7 @@ mdm skills remove [skills...]
 | `--harness` | Remove from specific harnesses (repeatable) |
 | `--skill`, `-s` | Skill names to remove (repeatable) |
 | `--yes`, `-y` | Skip confirmation prompts |
-| `--all` | Shorthand for `--skill '*' --harness '*' -y` |
+| `--all` | Remove every skill without prompting (shorthand for `--skill '*' -y`) |
 
 `--harness` is scoped: it removes that harness's copy and keeps the canonical
 directory and the lock entry while any harness outside the filter still has the
