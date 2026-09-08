@@ -116,15 +116,17 @@ func runAgentAdd(sourceInput string, opts AgentOptions) bool {
 	searchRoot, cloneDir, cleanup := fetchAgentSource(parsed, verboseFlag)
 	defer cleanup()
 
+	// Reported, not exited: the restore path calls this once per source
+	// group and has to survive one that no longer holds anything.
 	agents, err := agentfile.DiscoverAgentFiles(searchRoot, parsed.Subpath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%sError:%s %s\n", ansiText, ansiReset, err)
-		os.Exit(1)
+		return false
 	}
 	if len(agents) == 0 {
 		fmt.Fprintf(os.Stderr, "%sNo agent definitions found in %s%s\n", ansiText, sourceInput, ansiReset)
 		fmt.Fprintf(os.Stderr, "%sLooked in the directory itself, any agentsDirs it declares, and %s.%s\n", ansiDim, strings.Join(agentfile.ConventionalDirs, ", "), ansiReset)
-		os.Exit(1)
+		return false
 	}
 
 	selected, ok := selectAgents(agents, opts)
@@ -154,7 +156,8 @@ func runAgentAdd(sourceInput string, opts AgentOptions) bool {
 	outcome := installAgentsForHarnesses(selected, harnesses, global, mode, baseEntry, cloneDir, cwd)
 	fmt.Println()
 	printAgentInstallSummary(outcome, global, mode)
-	return outcome.installed > 0
+	// A definition mdm already owns is not a failure to install it.
+	return outcome.installed > 0 || outcome.alreadyInstalled > 0
 }
 
 // filterAgentsByName keeps agents whose name matches one of names (by the
@@ -237,9 +240,10 @@ func agentFileRepoPath(agentPath, cloneDir string) string {
 // agentInstallOutcome is what an add run did. A definition can be skipped by
 // every harness it was aimed at and install nowhere.
 type agentInstallOutcome struct {
-	installed int      // definitions that reached at least one harness
-	harnesses []string // harnesses that actually received something, in the order given
-	fallbacks *symlinkFallbacks
+	alreadyInstalled int      // definitions skipped because their file is the canonical copy the lock already records
+	installed        int      // definitions that reached at least one harness
+	harnesses        []string // harnesses that actually received something, in the order given
+	fallbacks        *symlinkFallbacks
 	// materialized is kept apart from fallbacks: a real file by design and a
 	// real file because a symlink was refused have different causes and
 	// different remedies, and merging them tells the user the wrong one.
@@ -313,14 +317,24 @@ func canonicalRollback(a *agentfile.AgentFile, name string, global bool, cwd str
 // received it. A harness with no agent-definition directory recorded is a
 // skip with a reason. A definition no harness accepted leaves nothing behind.
 func installAgentsForHarnesses(agents []*agentfile.AgentFile, harnesses []string, global bool, mode InstallMode, baseEntry lock.AgentLockEntry, cloneDir, cwd string) agentInstallOutcome {
-	var fallbacks symlinkFallbacks
+	fallbacks := symlinkFallbacks{noun: "agent definitions", group: "agents"}
 	var materialized materializedInstalls
 	outcome := agentInstallOutcome{fallbacks: &fallbacks, materialized: &materialized}
 	received := map[string]bool{}
 	claimed := map[string]string{} // disk name -> the source that claimed it
+	_, recorded := agentLockEntries(global, cwd)
 
 	for _, a := range agents {
 		name := agentDiskName(a.Name)
+		// `mdm agents add .` discovers mdm's own canonical files and the
+		// harness links into them. Installing one of those again would only
+		// rewrite its lock entry's source to the project itself, after which
+		// `agents update` can never find it upstream again.
+		if entry, ok := recorded[name]; ok && sameFileOnDisk(a.Path, agentCanonicalPath(name, agentCanonicalFormat(a), global, cwd)) {
+			ui.LogInfo(fmt.Sprintf("%s: already installed from %s - to add a harness, run mdm agents add %s --harness <name>", a.Name, entry.Source, entry.Source))
+			outcome.alreadyInstalled++
+			continue
+		}
 		// Two names can sanitize to one file name ("Code Reviewer" and
 		// "code-reviewer"). Installing both would write one canonical file and
 		// count two, so the name belongs to whichever source claimed it first.
@@ -372,16 +386,7 @@ func installAgentsForHarnesses(agents []*agentfile.AgentFile, harnesses []string
 		entry := baseEntry
 		entry.AgentPath = agentFileRepoPath(a.Path, cloneDir)
 		entry.Format = string(agentCanonicalFormat(a))
-
-		if global {
-			if err := lock.AddAgentToGlobalState(name, entry); err != nil {
-				ui.LogWarn(fmt.Sprintf("could not update lock file: %v", err))
-			}
-		} else {
-			if err := lock.AddAgentToLocalLock(name, entry, cwd); err != nil {
-				ui.LogWarn(fmt.Sprintf("could not update lock file: %v", err))
-			}
-		}
+		recordAgentEntry(name, entry, global, cwd)
 	}
 	return outcome
 }
@@ -392,6 +397,10 @@ func printAgentInstallSummary(outcome agentInstallOutcome, global bool, mode Ins
 	scope := "project"
 	if global {
 		scope = "global"
+	}
+	if outcome.installed == 0 && outcome.alreadyInstalled > 0 {
+		fmt.Printf("%s%d agent definition(s) already installed (%s scope); nothing to do.%s\n\n", ansiDim, outcome.alreadyInstalled, scope, ansiReset)
+		return
 	}
 	if outcome.installed == 0 {
 		fmt.Printf("%sNo agent definitions were installed (%s scope).%s\n\n", ansiYellow, scope, ansiReset)

@@ -482,30 +482,37 @@ func TestAgentsUpdateKeepsSymlinkModeHarnessInstallsAsSymlinks(t *testing.T) {
 // lock entry. The failure is forced by replacing claude-code's installed file
 // with a directory of the same name: os.MkdirAll then succeeds and copyFile's
 // O_CREATE|O_TRUNC open fails, while os.Lstat still counts it as installed.
-func TestAgentsUpdateLeavesLockUnchangedWhenEveryHarnessInstallFails(t *testing.T) {
-	cwd := t.TempDir()
+// setupUpdateWithEveryHarnessBroken installs critic in copy mode, then swaps
+// the harness copy for a directory so every reinstall fails while the
+// definition still reads as installed. It returns what the assertions compare
+// against.
+func setupUpdateWithEveryHarnessBroken(t *testing.T) (cwd, sourceDir, agentPath, lockPath string, infoBefore os.FileInfo, entryBefore lock.AgentLockEntry) {
+	t.Helper()
+	cwd = t.TempDir()
 	if err := lock.SetInstallMode(lock.InstallModeCopy, false, cwd); err != nil {
 		t.Fatal(err)
 	}
 
-	sourceDir := t.TempDir()
+	sourceDir = t.TempDir()
 	agentsDir := filepath.Join(sourceDir, "agents")
 	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	agentPath := filepath.Join(agentsDir, "critic.md")
+	agentPath = filepath.Join(agentsDir, "critic.md")
 	writeCriticSource(t, agentPath, "v1")
 
 	a := &agentfile.AgentFile{Name: "critic", Description: "v1", Path: agentPath}
 	baseEntry := lock.AgentLockEntry{Source: sourceDir, SourceType: "local"}
 	installAgentsForHarnesses([]*agentfile.AgentFile{a}, []string{"claude-code"}, false, InstallModeCopy, baseEntry, "", cwd)
 
-	lockPath := lock.GetProjectLockPath(cwd)
-	infoBefore, err := os.Stat(lockPath)
+	lockPath = lock.GetProjectLockPath(cwd)
+	var err error
+	infoBefore, err = os.Stat(lockPath)
 	if err != nil {
 		t.Fatalf("setup: could not stat %s: %v", lockPath, err)
 	}
-	entryBefore, ok := lock.ReadProjectLock(cwd).Agents["critic"]
+	var ok bool
+	entryBefore, ok = lock.ReadProjectLock(cwd).Agents["critic"]
 	if !ok {
 		t.Fatal("setup: expected a lock entry after the initial install")
 	}
@@ -527,6 +534,12 @@ func TestAgentsUpdateLeavesLockUnchangedWhenEveryHarnessInstallFails(t *testing.
 		t.Fatalf("setup: expected agentInstalledHarnesses to still report claude-code, got %v", got)
 	}
 
+	return cwd, sourceDir, agentPath, lockPath, infoBefore, entryBefore
+}
+
+func TestAgentsUpdateLeavesLockUnchangedWhenEveryHarnessInstallFails(t *testing.T) {
+	cwd, sourceDir, agentPath, lockPath, infoBefore, entryBefore := setupUpdateWithEveryHarnessBroken(t)
+
 	// An upstream change, so a naive implementation has something it might
 	// wrongly record as a completed update.
 	writeCriticSource(t, agentPath, "v2")
@@ -545,6 +558,19 @@ func TestAgentsUpdateLeavesLockUnchangedWhenEveryHarnessInstallFails(t *testing.
 	}
 	if entryAfter != entryBefore {
 		t.Errorf("lock entry changed despite every harness install failing: before=%+v after=%+v", entryBefore, entryAfter)
+	}
+
+	// installAgentFile writes the canonical file before the first harness
+	// write, so after a total failure it held v2 while the lock and every
+	// harness copy held v1: in copy mode a real inconsistency nothing could
+	// see. The update puts the previous canonical bytes back.
+	canonical := filepath.Join(harness.CanonicalAgentsDir(false, cwd), "critic.md")
+	canonicalAfter, err := os.ReadFile(canonical)
+	if err != nil {
+		t.Fatalf("reading the canonical file: %v", err)
+	}
+	if strings.Contains(string(canonicalAfter), "v2") || !strings.Contains(string(canonicalAfter), "v1") {
+		t.Errorf("canonical file moved ahead of the lock after a total failure:\n%s", canonicalAfter)
 	}
 
 	// Content equality alone cannot prove the lock file was never
@@ -1044,5 +1070,45 @@ func TestUpdateRefusesASecondDefinitionClaimingAnInstalledName(t *testing.T) {
 
 	if stats.updated != 1 {
 		t.Errorf("updated = %d, want 1: two source definitions claim the name critic, and only one canonical file exists", stats.updated)
+	}
+}
+
+// GitHub Copilot always receives a real file, because .github/agents is
+// committed. When the source is already markdown there is nothing to convert,
+// but the install still went through Encode: keys re-sorted, comments dropped,
+// a folded scalar rewritten. People saw mdm rewriting their file in a
+// committed directory. A materialized file whose format already matches is a
+// byte copy of the canonical file.
+func TestCopilotMaterializationCopiesBytesWhenTheFormatAlreadyMatches(t *testing.T) {
+	cwd := t.TempDir()
+	src := filepath.Join(t.TempDir(), "critic.md")
+	// description before name, a comment, and a folded scalar: three things
+	// yaml.v3 re-emits differently.
+	body := "---\n# reviewed 2026-09\ndescription: >\n  Reviews code\n  carefully.\nname: critic\n---\nBe critical.\n"
+	if err := os.WriteFile(src, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a, err := agentfile.ParseAgentFile(src)
+	if err != nil || a == nil {
+		t.Fatalf("parsing the source: a=%v err=%v", a, err)
+	}
+
+	res := installAgentFile(a, "github-copilot", false, cwd, InstallModeSymlink)
+	if !res.Success {
+		t.Fatalf("install failed: %s", res.Error)
+	}
+	if !res.Materialized {
+		t.Error("Copilot's install must still report itself as materialized")
+	}
+	harnessPath := agentHarnessTarget("github-copilot", cwd)
+	if fi, err := os.Lstat(harnessPath); err != nil || fi.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("Copilot's file should be a real file: err=%v", err)
+	}
+	got, err := os.ReadFile(harnessPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != body {
+		t.Errorf("Copilot's file was re-encoded rather than copied:\n got: %q\nwant: %q", got, body)
 	}
 }

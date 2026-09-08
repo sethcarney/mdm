@@ -1,6 +1,7 @@
 package tests_test
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -408,5 +409,194 @@ func TestAgentsRemoveKeepsAHandWrittenDefinitionAdoptedFromTheProject(t *testing
 	lockData, _ := os.ReadFile(filepath.Join(projectDir, lockName))
 	if strings.Contains(string(lockData), `"critic"`) {
 		t.Errorf("lock file still records critic:\n%s", lockData)
+	}
+}
+
+// writeAgentSourceWith lays out a source tree holding one definition per name
+// and returns its path.
+func writeAgentSourceWith(t *testing.T, names ...string) string {
+	t.Helper()
+	root := t.TempDir()
+	dir := filepath.Join(root, "agents")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range names {
+		body := "---\nname: " + n + "\ndescription: a test agent definition\n---\n\nYou are " + n + ".\n"
+		if err := os.WriteFile(filepath.Join(dir, n+".md"), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return root
+}
+
+// The help and the docs both say --agent takes space-separated values. The
+// normalizer that makes that work listed --harness, --skill and -s only, so
+// `--agent alpha beta` handed beta to cobra as a second positional argument
+// and the command failed with "accepts 1 arg(s), received 2".
+func TestAgentsAddAcceptsSpaceSeparatedAgentNames(t *testing.T) {
+	projectDir := t.TempDir()
+	stateDir := t.TempDir()
+	src := writeAgentSourceWith(t, "alpha", "beta", "gamma")
+	env := isolatedEnv(projectDir, stateDir)
+
+	stdout, stderr, code := runMdmInDir(t, projectDir, env,
+		"agents", "add", src, "--agent", "alpha", "beta", "--harness", "claude-code", "--project", "-y")
+	if code != 0 {
+		t.Fatalf("mdm agents add --agent alpha beta exited %d:\n%s%s", code, stdout, stderr)
+	}
+	for _, name := range []string{"alpha", "beta"} {
+		if _, err := os.Lstat(filepath.Join(projectDir, ".claude", "agents", name+".md")); err != nil {
+			t.Errorf("%s was not installed: %v", name, err)
+		}
+	}
+	if _, err := os.Lstat(filepath.Join(projectDir, ".claude", "agents", "gamma.md")); !os.IsNotExist(err) {
+		t.Errorf("gamma was installed although only alpha and beta were named")
+	}
+}
+
+// validateNamedHarnesses fails only when no name is valid. With a mixed list
+// it warns about the bad name and returns the good ones. Remove used to
+// discard that result and carry on with the original slice, which happened to
+// work because an unknown name resolves to no install path; the removal is
+// now scoped to the validated list explicitly, and this pins the behavior
+// either way: the warning, the scoped deletion, and the untouched harness.
+func TestAgentsRemoveWithAMixedHarnessListRemovesFromTheValidOnes(t *testing.T) {
+	projectDir := t.TempDir()
+	stateDir := t.TempDir()
+	src := writeAgentSourceWith(t, "critic")
+	env := isolatedEnv(projectDir, stateDir)
+
+	if stdout, stderr, code := runMdmInDir(t, projectDir, env,
+		"agents", "add", src, "--harness", "claude-code", "cursor", "--project", "-y"); code != 0 {
+		t.Fatalf("setup install exited %d:\n%s%s", code, stdout, stderr)
+	}
+
+	stdout, stderr, code := runMdmInDir(t, projectDir, env,
+		"agents", "remove", "critic", "--harness", "claude-code", "--harness", "nope", "--project", "-y")
+	if code != 0 {
+		t.Fatalf("mdm agents remove exited %d:\n%s%s", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout+stderr, "Unknown harness: nope") {
+		t.Errorf("expected a warning about the unknown harness, got:\n%s%s", stdout, stderr)
+	}
+	if _, err := os.Lstat(filepath.Join(projectDir, ".claude", "agents", "critic.md")); !os.IsNotExist(err) {
+		t.Errorf("Claude Code's copy should be gone, Lstat err = %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(projectDir, ".cursor", "agents", "critic.md")); err != nil {
+		t.Errorf("Cursor's copy must survive a removal scoped to claude-code: %v", err)
+	}
+}
+
+// A restore calls runAgentAdd once per source group. A group whose source
+// holds no definitions any more used to os.Exit(1) from inside runAgentAdd,
+// ending the restore before the groups after it ran. Groups restore in sorted
+// source order, so the empty source is named to sort first.
+func TestAgentsInstallSurvivesASourceWithNoDefinitions(t *testing.T) {
+	projectDir := t.TempDir()
+	stateDir := t.TempDir()
+	env := isolatedEnv(projectDir, stateDir)
+	realSrc := filepath.Join(projectDir, "b-src", "agents")
+	if err := os.MkdirAll(realSrc, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(realSrc, "critic.md"), []byte("---\nname: critic\ndescription: d\n---\nbody\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(projectDir, "a-empty"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if stdout, stderr, code := runMdmInDir(t, projectDir, env,
+		"agents", "add", "./b-src", "--harness", "claude-code", "--project", "-y"); code != 0 {
+		t.Fatalf("setup install exited %d:\n%s%s", code, stdout, stderr)
+	}
+	lockPath := filepath.Join(projectDir, lockName)
+	data, err := os.ReadFile(lockPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatalf("lock is not JSON: %v\n%s", err, data)
+	}
+	agents, _ := doc["agents"].(map[string]any)
+	if agents == nil {
+		t.Fatalf("lock has no agents section:\n%s", data)
+	}
+	agents["ghost"] = map[string]any{"source": "./a-empty", "sourceType": "local", "agentPath": "", "format": "markdown"}
+	doc["configuredHarnesses"] = []string{"claude-code"}
+	out, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(lockPath, out, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{
+		filepath.Join(projectDir, ".claude", "agents", "critic.md"),
+		filepath.Join(projectDir, ".agents", "agents", "critic.md"),
+	} {
+		if err := os.Remove(p); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	stdout, stderr, code := runMdmInDir(t, projectDir, env, "agents", "install", "-y")
+	if code != 0 {
+		t.Fatalf("mdm agents install exited %d:\n%s%s", code, stdout, stderr)
+	}
+	if _, err := os.Lstat(filepath.Join(projectDir, ".claude", "agents", "critic.md")); err != nil {
+		t.Errorf("critic was not restored after the empty source; the restore stopped early:\n%s%s", stdout, stderr)
+	}
+}
+
+// Skills record a local source as the cwd-relative form the user typed, so
+// the project lock is portable. Agent entries stored the absolute path. And
+// `mdm agents add .` rediscovers every installed definition through the
+// harness directories and rewrote each entry's source to the project path,
+// after which `agents update` could never find them again.
+func TestAgentsAddRecordsARelativeLocalSourceAndDoesNotReclaimItsOwnInstalls(t *testing.T) {
+	projectDir := t.TempDir()
+	stateDir := t.TempDir()
+	env := isolatedEnv(projectDir, stateDir)
+	srcDir := filepath.Join(projectDir, "sk", "agents")
+	if err := os.MkdirAll(srcDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(srcDir, "critic.md"), []byte("---\nname: critic\ndescription: d\n---\nbody\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if stdout, stderr, code := runMdmInDir(t, projectDir, env,
+		"agents", "add", "./sk", "--harness", "claude-code", "--project", "-y"); code != 0 {
+		t.Fatalf("mdm agents add exited %d:\n%s%s", code, stdout, stderr)
+	}
+	lockPath := filepath.Join(projectDir, lockName)
+	data, err := os.ReadFile(lockPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"source": "./sk"`) {
+		t.Errorf("lock should record the local source as ./sk, got:\n%s", data)
+	}
+	if strings.Contains(string(data), filepath.ToSlash(projectDir)) || strings.Contains(string(data), projectDir) {
+		t.Errorf("lock records an absolute path:\n%s", data)
+	}
+
+	stdout, stderr, code := runMdmInDir(t, projectDir, env,
+		"agents", "add", ".", "--harness", "claude-code", "--project", "-y")
+	if code != 0 {
+		t.Fatalf("mdm agents add . exited %d:\n%s%s", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout+stderr, "already installed") {
+		t.Errorf("re-adding the project should say critic is already installed, got:\n%s%s", stdout, stderr)
+	}
+	after, err := os.ReadFile(lockPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(after), `"source": "./sk"`) {
+		t.Errorf("`agents add .` rewrote the recorded source:\n%s", after)
 	}
 }

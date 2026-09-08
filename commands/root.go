@@ -39,10 +39,12 @@ func showLogo(ver string) {
 // multiValueFlags are flags that accept several space-separated values after a
 // single flag instance (--harness claude cursor) as well as the repeated-flag
 // form. --harness has no shorthand, since -a is left free for --agent in the
-// agent-definition command, so only its long form is listed here.
+// agent-definition command, so only its long form is listed here; --agent and
+// -a are listed because that command's help promises the same for them.
 var multiValueFlags = map[string]bool{
 	"harness": true,
 	"skill":   true, "s": true,
+	"agent": true, "a": true,
 }
 
 // RenamedFlagHint returns a one-line hint when err is cobra's complaint about

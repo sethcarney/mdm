@@ -74,9 +74,33 @@ func collectAgentCandidates(global bool, filter []string, cwd string) []updateCa
 			source:     entry.Source,
 			sourceType: entry.SourceType,
 			ref:        entry.Ref,
+			command:    "agents",
 		})
 	}
 	return candidates
+}
+
+// readCanonicalAgent returns the canonical file's current bytes, or nil when
+// there is none to restore.
+func readCanonicalAgent(name string, a *agentfile.AgentFile, global bool, cwd string) []byte {
+	data, err := os.ReadFile(agentCanonicalPath(name, agentCanonicalFormat(a), global, cwd))
+	if err != nil {
+		return nil
+	}
+	return data
+}
+
+// restoreCanonicalAgent puts previous back at the canonical path. A restore
+// that fails is reported: the file then holds the new bytes, and the warning
+// is the one place that says so.
+func restoreCanonicalAgent(name string, a *agentfile.AgentFile, previous []byte, global bool, cwd string) {
+	if previous == nil {
+		return
+	}
+	path := agentCanonicalPath(name, agentCanonicalFormat(a), global, cwd)
+	if err := replaceFileWith(path, previous); err != nil {
+		ui.LogWarn(fmt.Sprintf("%s: could not restore the previous canonical file at %s: %v", name, path, err))
+	}
 }
 
 // warnAgentNamesNotInSource reports every requested name the source no longer
@@ -109,13 +133,19 @@ func reinstallAgentIntoHarnesses(a *agentfile.AgentFile, harnesses []string, glo
 	return installedAny, failedHarnesses
 }
 
-// recordAgentUpdate writes the definition's refreshed lock entry to whichever
-// lock the scope keeps. A failed lock write is a warning, not a stop.
-func recordAgentUpdate(name string, entry lock.AgentLockEntry, global bool, cwd string) {
+// recordAgentEntry writes the definition's lock entry to whichever lock the
+// scope keeps. A local source is recorded in the project lock as the
+// cwd-relative form, as skills record it, so the lock stays portable; the
+// global state file keeps the absolute path, since no cwd is implied there.
+// A failed lock write is a warning, not a stop.
+func recordAgentEntry(name string, entry lock.AgentLockEntry, global bool, cwd string) {
 	var err error
 	if global {
 		err = lock.AddAgentToGlobalState(name, entry)
 	} else {
+		if entry.SourceType == string(source.SourceTypeLocal) {
+			entry.Source = toRelSourcePath(entry.Source, cwd)
+		}
 		err = lock.AddAgentToLocalLock(name, entry, cwd)
 	}
 	if err != nil {
@@ -173,18 +203,20 @@ func runAgentUpdateGroups(groups []updateGroup, global bool, cwd string, allowHi
 				continue
 			}
 
+			// installAgentFile writes the canonical file before the first
+			// harness write. If no harness then takes the new version, the
+			// previous bytes go back, so the canonical file never runs ahead
+			// of the lock and of every harness copy.
+			previous := readCanonicalAgent(name, a, global, cwd)
 			installedAny, failedHarnesses := reinstallAgentIntoHarnesses(a, installedHarnesses, global, cwd, mode)
 
 			// The lock must describe the disk. When no harness took the new
 			// version, every harness copy still holds the version the entry
-			// already names, so the entry stays. The canonical file is the one
-			// thing that may have moved on: installAgentFile writes it before
-			// the first harness write, so it can hold the new bytes while the
-			// lock and every harness hold the old ones. The entry is not this
-			// run's to rewrite for that alone - the recorded source is what
-			// every harness is still running.
+			// already names, so the entry stays and the canonical file is
+			// restored to match it.
 			if !installedAny {
 				ui.LogWarn(fmt.Sprintf("%s: update failed for every installed harness (%s) - lock entry left unchanged", a.Name, strings.Join(failedHarnesses, ", ")))
+				restoreCanonicalAgent(name, a, previous, global, cwd)
 				continue
 			}
 			if len(failedHarnesses) == 0 {
@@ -196,7 +228,7 @@ func runAgentUpdateGroups(groups []updateGroup, global bool, cwd string, allowHi
 			entry := baseEntry
 			entry.AgentPath = agentFileRepoPath(a.Path, cloneDir)
 			entry.Format = string(agentCanonicalFormat(a))
-			recordAgentUpdate(name, entry, global, cwd)
+			recordAgentEntry(name, entry, global, cwd)
 			stats.updated++
 		}
 		cleanup()

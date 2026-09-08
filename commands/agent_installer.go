@@ -120,7 +120,8 @@ func materializes(canonicalFormat agentfile.Format, harnessName string) bool {
 }
 
 // encodeForHarness renders the definition in harnessName's format, or returns
-// nil when a link or a plain copy of the canonical file will do. Encode refuses
+// nil when the canonical bytes are what the harness reads, whether it takes
+// them as a link, a copy, or a materialized byte copy. Encode refuses
 // a definition carrying a TOML local date or time, and this runs before
 // anything is written so that refusal costs nothing on disk. Encode's error is
 // passed through unwrapped: the summary prints it under a line that already
@@ -132,7 +133,10 @@ func encodeForHarness(a *agentfile.AgentFile, harnessName string) ([]byte, error
 	if harness.AgentFormat(harnessName) == agentfile.FormatTOML && strings.TrimSpace(a.Instructions) == "" {
 		return nil, fmt.Errorf("it has an empty body, and a TOML agent definition requires developer_instructions")
 	}
-	if !materializes(agentCanonicalFormat(a), harnessName) {
+	// Same format: nothing to convert, whatever the materialization rule
+	// says. Copilot's committed directory gets the canonical bytes verbatim,
+	// not a re-encoding that re-sorts keys and drops comments.
+	if harness.AgentFormat(harnessName) == agentCanonicalFormat(a) {
 		return nil, nil
 	}
 	return agentfile.Encode(a, harness.AgentFormat(harnessName))
@@ -287,6 +291,27 @@ func writeMaterializedAgent(data []byte, harnessDir, harnessPath, canonicalPath 
 	}
 }
 
+// copyMaterializedAgent gives a harness that must hold a real file a byte copy
+// of the canonical file, replacing whatever the path held, exactly as
+// writeMaterializedAgent does with converted bytes. replaceFileFrom, not
+// copyAgentFileUnlessSame: a symlink to the canonical file counts as the same
+// file, and here it is precisely the thing that has to go.
+func copyMaterializedAgent(harnessDir, harnessPath, canonicalPath string, mode InstallMode) InstallResult {
+	if err := os.MkdirAll(harnessDir, 0755); err != nil {
+		return InstallResult{Success: false, Path: harnessPath, Mode: mode, Error: err.Error()}
+	}
+	if err := replaceFileFrom(canonicalPath, harnessPath); err != nil {
+		return InstallResult{Success: false, Path: harnessPath, Mode: mode, Error: err.Error()}
+	}
+	return InstallResult{
+		Success:       true,
+		Path:          harnessPath,
+		CanonicalPath: canonicalPath,
+		Mode:          mode,
+		Materialized:  true,
+	}
+}
+
 // installAgentFile installs one definition into one harness: a canonical copy
 // at .agents/agents/<name><sourceExt>, and under it a link, a copy, or a
 // converted real file at <name><harnessExt>. Every refusal is decided in memory
@@ -338,6 +363,9 @@ func installAgentFile(a *agentfile.AgentFile, harnessName string, global bool, c
 
 	if encoded != nil {
 		return writeMaterializedAgent(encoded, harnessDir, harnessPath, canonicalPath, mode)
+	}
+	if materializes(agentCanonicalFormat(a), harnessName) {
+		return copyMaterializedAgent(harnessDir, harnessPath, canonicalPath, mode)
 	}
 
 	if mode == InstallModeCopy {

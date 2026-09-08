@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/sethcarney/mdm/internal/agentfile"
+	"github.com/sethcarney/mdm/internal/lock"
 	"github.com/sethcarney/mdm/internal/skill"
 )
 
@@ -276,4 +277,47 @@ func stripANSI(s string) string {
 		b.WriteByte(s[i])
 	}
 	return b.String()
+}
+
+// The warning is shared with the skills installer, whose wording it used to
+// print verbatim on the agents path: "those skills were copied" and a pointer
+// at `mdm skills install` after an agent install. The agents path names its
+// own noun and command group, through the real install loop and the same
+// symlinkFn seam the skills test uses.
+func TestAgentInstallFallbackWarningNamesAgentDefinitions(t *testing.T) {
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+	isolateHome(t)
+	src := filepath.Join(t.TempDir(), "critic.md")
+	if err := os.WriteFile(src, []byte("---\nname: critic\ndescription: d\n---\nbody\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a, err := agentfile.ParseAgentFile(src)
+	if err != nil || a == nil {
+		t.Fatalf("parsing the source: a=%v err=%v", a, err)
+	}
+	failSymlink(t)
+
+	var outcome agentInstallOutcome
+	out := captureStdout(t, func() {
+		outcome = installAgentsForHarnesses([]*agentfile.AgentFile{a}, []string{"claude-code"}, false, InstallModeSymlink, lock.AgentLockEntry{Source: "o/r", SourceType: "github"}, "", cwd)
+		printAgentInstallSummary(outcome, false, InstallModeSymlink)
+	})
+	if outcome.installed != 1 {
+		t.Fatalf("installed = %d, want 1:\n%s", outcome.installed, out)
+	}
+	got := stripANSI(out)
+	for _, want := range []string{
+		"those agent definitions were copied instead",
+		"mdm agents install and mdm agents update will try to symlink again",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("agent fallback warning missing %q:\n%s", want, got)
+		}
+	}
+	for _, unwanted := range []string{"those skills were copied", "mdm skills install"} {
+		if strings.Contains(got, unwanted) {
+			t.Errorf("agent fallback warning still uses the skills wording %q:\n%s", unwanted, got)
+		}
+	}
 }

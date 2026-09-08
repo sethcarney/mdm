@@ -276,9 +276,13 @@ func runAgentRemove(positional []string, opts AgentOptions) {
 	// An unrecognized name would otherwise match no harness and report a
 	// removal that never happened. `agents add` rejects the same typo.
 	if len(opts.Harnesses) > 0 {
-		if _, valid := validateNamedHarnesses(opts.Harnesses); !valid {
+		validated, valid := validateNamedHarnesses(opts.Harnesses)
+		if !valid {
 			os.Exit(1)
 		}
+		// A mixed list warns about the bad names and carries on with the
+		// good ones, which is what the removal must then be scoped to.
+		opts.Harnesses = validated
 	}
 
 	lockNames, lockEntries := agentLockEntries(global, cwd)

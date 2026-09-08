@@ -14,6 +14,22 @@ import (
 type symlinkFallbacks struct {
 	harnesses []string
 	seen      map[string]bool
+	// noun names what was copied ("skills" when empty) and group the command
+	// group whose install and update retry the link ("skills" when empty),
+	// so the agents path can reuse the warning without borrowing its wording.
+	noun  string
+	group string
+}
+
+func (f *symlinkFallbacks) wording() (noun, group string) {
+	noun, group = f.noun, f.group
+	if noun == "" {
+		noun = "skills"
+	}
+	if group == "" {
+		group = "skills"
+	}
+	return noun, group
 }
 
 // note records the result of one install for one harness. Results that did
@@ -51,8 +67,9 @@ func (f *symlinkFallbacks) warn() {
 			names = append(names, a)
 		}
 	}
-	fmt.Printf("%s▲ Could not create symlinks for %s; those skills were copied instead.%s\n", ansiYellow, strings.Join(names, ", "), ansiReset)
-	fmt.Printf("%s  The scope is still in symlink mode, so mdm skills install and mdm skills update will try to symlink again.%s\n", ansiDim, ansiReset)
+	noun, group := f.wording()
+	fmt.Printf("%s▲ Could not create symlinks for %s; those %s were copied instead.%s\n", ansiYellow, strings.Join(names, ", "), noun, ansiReset)
+	fmt.Printf("%s  The scope is still in symlink mode, so mdm %s install and mdm %s update will try to symlink again.%s\n", ansiDim, group, group, ansiReset)
 	fmt.Printf("%s  If copies are what you want on this machine, run with --copy once to record it.%s\n", ansiDim, ansiReset)
 	fmt.Println()
 }
