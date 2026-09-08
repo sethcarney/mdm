@@ -36,7 +36,7 @@ Project skills:
 Global skills:
 
   local-skill
-    —  local source, skipped
+    -  local source, skipped
 
 Audit complete: 3 checked, 1 outdated, 1 advisory
 ```
@@ -55,7 +55,7 @@ Audit complete: 3 checked, 1 outdated, 1 advisory
 
 | Level | Meaning |
 |---|---|
-| `high` | Significant risk — review before use |
+| `high` | Significant risk - review before use |
 | `medium` | Moderate concern |
 | `low` | Minor issue |
 

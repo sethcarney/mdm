@@ -28,7 +28,7 @@ type Info struct {
 }
 
 // All lists every known experimental feature, in display order. It is empty
-// when a release ships no experimental features — knowledge and plugins
+// when a release ships no experimental features - knowledge and plugins
 // graduated to full support in v2.
 var All = []Info{}
 

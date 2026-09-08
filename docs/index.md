@@ -12,7 +12,7 @@ hide:
 
 <p class="mdm-hero__tagline">
 The markdown management CLI. Install skills, keep every agent's instruction file
-in sync, and audit them all for prompt-injection risks — from one fast, Go-native tool.
+in sync, and audit them all for prompt-injection risks - from one fast, Go-native tool.
 <strong>No telemetry. Fully open source.</strong>
 </p>
 
@@ -64,7 +64,7 @@ solves exactly that.
 
     ---
 
-    Claude Code, Cursor, Cline, GitHub Copilot, Gemini CLI, Codex, and 39 more —
+    Claude Code, Cursor, Cline, GitHub Copilot, Gemini CLI, Codex, and 39 more -
     out of the box.
 
 -   :material-source-branch:{ .lg .middle } __One source of truth__
@@ -126,7 +126,7 @@ solves exactly that.
 
     ---
 
-    `mdm plugins` installs and validates Agent Plugins — portable packages of
+    `mdm plugins` installs and validates Agent Plugins - portable packages of
     skills and MCP servers.
 
     [:octicons-arrow-right-24: Plugins](specs/plugins.md)

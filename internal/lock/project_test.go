@@ -98,7 +98,7 @@ func TestProjectLockPreservesUnknownEntryKeys(t *testing.T) {
 		t.Errorf("unknown knowledge-entry key not preserved: %s", raw.Knowledge["kb"]["futureHash"])
 	}
 
-	// A field this binary knows and deliberately cleared must stay gone —
+	// A field this binary knows and deliberately cleared must stay gone -
 	// the merge only resurrects keys outside the struct.
 	lk := ReadProjectLock(cwd)
 	e := lk.Skills["my-skill"]
@@ -305,7 +305,7 @@ func TestProjectLockUnreadableErrors(t *testing.T) {
 func TestLegacyFallbackFailsLoudly(t *testing.T) {
 	// With no mdm.lock, everyday reads fall back to the v1 files.
 	// Corrupt or newer-versioned legacy files must abort the same way the
-	// final v1 patch releases did — not read as empty (the CI silent-no-op
+	// final v1 patch releases did - not read as empty (the CI silent-no-op
 	// trap).
 	cwd := t.TempDir()
 	if err := os.WriteFile(filepath.Join(cwd, "skills-lock.json"), []byte("{broken"), 0600); err != nil {

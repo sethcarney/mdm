@@ -452,7 +452,7 @@ func DiscoverNodeModuleSkills(cwd string) []NodeModuleSkill {
 var _ fs.DirEntry // suppress unused import warning
 
 // SetFrontmatterName rewrites the top-level `name:` value in a SKILL.md's YAML
-// frontmatter and returns the new document. Only that one line is touched — the
+// frontmatter and returns the new document. Only that one line is touched - the
 // rest of the file, including comments, key order, and line endings, is
 // preserved byte for byte, because re-marshalling the YAML would silently
 // rewrite skills that are about to become someone's own source of truth.

@@ -8,7 +8,7 @@ import (
 )
 
 // ──────────────────────────────────────────────────────────
-// Knowledge bundle lock — the knowledge section of mdm.lock
+// Knowledge bundle lock - the knowledge section of mdm.lock
 //
 // v1 kept knowledge entries in their own knowledge-lock.json so a stable
 // binary rewriting the skills lock could not drop them. In v2 the unified

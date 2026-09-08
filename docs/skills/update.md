@@ -14,7 +14,7 @@ Alias: `check`
 
 ## One fetch per repository
 
-Skills that share a source repository and upgrade to the same tag are re-fetched together, in a single `mdm skills add` pass. A repository holding 28 skills is cloned **once** per update run, not once per skill — which matters most for private repos, where every clone is also a credential handshake.
+Skills that share a source repository and upgrade to the same tag are re-fetched together, in a single `mdm skills add` pass. A repository holding 28 skills is cloned **once** per update run, not once per skill - which matters most for private repos, where every clone is also a credential handshake.
 
 The same batching applies to the up-to-date check: `git ls-remote --tags` runs once per repository for the whole run and the result is reused across every skill installed from it, in both scopes.
 
@@ -30,8 +30,8 @@ Fetching 2 skills from acme/skills#v1.3.0 in one pass...
 
 | Source | Method |
 |---|---|
-| GitHub / GitLab / other git | Semver tag comparison via `git ls-remote --tags` — no clone needed |
-| Local path | Always skipped — local skills stay in sync with the source code they live alongside |
+| GitHub / GitLab / other git | Semver tag comparison via `git ls-remote --tags` - no clone needed |
+| Local path | Always skipped - local skills stay in sync with the source code they live alongside |
 
 Skills [cherry-picked](cherry-pick.md) into `./skills` are recorded as local
 sources for exactly this reason: they are your files, and `mdm skills update`

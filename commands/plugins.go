@@ -17,7 +17,7 @@ func buildPluginsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "plugins",
 		Short: "Manage Agent Plugins",
-		Long: fmt.Sprintf(`Manage Agent Plugins — portable packages of skills and MCP servers
+		Long: fmt.Sprintf(`Manage Agent Plugins - portable packages of skills and MCP servers
 following the vendor-neutral agent-plugins.org standard.
 
 Tracks Agent Plugins spec v%s.

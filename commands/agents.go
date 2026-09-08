@@ -224,7 +224,7 @@ Use %s--global%s / %s-g%s to configure agents at the user level.`, ansiBold, ans
 // pickAndSaveAgents shows an interactive picker pre-seeded with the current
 // configured list and replaces the entire list with the user's selection.
 // Truly universal agents (share .agents/skills AND have no unique instruction
-// file) are excluded from the picker — they are always supported and need no
+// file) are excluded from the picker - they are always supported and need no
 // configuration. Returns the saved agent names so the caller can act on them.
 func pickAndSaveAgents(global bool, scope, cwd string) ([]string, error) {
 	current := lock.GetConfiguredAgents(global, cwd)
@@ -432,7 +432,7 @@ func pickAgentsToRemove(configured []string) ([]string, bool) {
 // removeAgentSkillsDir deletes an agent's own skills directory, preserving any
 // cherry-picked forks inside it. An agent's directory can be the project's forks
 // directory (OpenClaw reads ./skills, mdm's default fork destination), and a
-// fork is the project's source code — edits that exist nowhere else — not
+// fork is the project's source code - edits that exist nowhere else - not
 // something mdm installed and may delete. Returns the number of forks kept, and
 // whether anything was removed at all.
 func removeAgentSkillsDir(skillsPath string) (kept int, removed bool) {
@@ -475,7 +475,7 @@ func reportAgentSkillsDirCleanup(skillsPath, displayName string) {
 		return
 	}
 	if kept > 0 {
-		ui.LogInfo(fmt.Sprintf("Cleaned %s skills directory — kept %d cherry-picked skill(s)", displayName, kept))
+		ui.LogInfo(fmt.Sprintf("Cleaned %s skills directory - kept %d cherry-picked skill(s)", displayName, kept))
 		return
 	}
 	ui.LogInfo("Removed " + displayName + " skills directory")
@@ -549,7 +549,7 @@ func linkNewAgentRules(agentNames []string, cwd string) {
 		targetPath := filepath.Join(cwd, cfg.InstructionsFile)
 		targetInfo, statErr := os.Lstat(targetPath)
 		if statErr == nil && targetInfo.Mode()&os.ModeSymlink == 0 {
-			// Existing real file — skip to avoid silent data loss.
+			// Existing real file - skip to avoid silent data loss.
 			skippedFiles = append(skippedFiles, cfg.InstructionsFile)
 			continue
 		}
@@ -559,7 +559,7 @@ func linkNewAgentRules(agentNames []string, cwd string) {
 	if len(skippedFiles) > 0 {
 		fmt.Println()
 		for _, f := range skippedFiles {
-			fmt.Printf("  %s~%s %-35s %sskipped (existing file — run `mdm rules link` to replace)%s\n",
+			fmt.Printf("  %s~%s %-35s %sskipped (existing file - run `mdm rules link` to replace)%s\n",
 				ansiYellow, ansiReset, f, ansiDim, ansiReset)
 		}
 	}

@@ -11,7 +11,7 @@ func isolate(t *testing.T) {
 }
 
 // testFeature stands in for a real gate now that no experimental features
-// ship — the framework stays exercised for the next one.
+// ship - the framework stays exercised for the next one.
 const testFeature Feature = "knowledge"
 
 func TestEnabledByEnv(t *testing.T) {

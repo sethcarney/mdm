@@ -54,7 +54,7 @@ if command -v cosign >/dev/null 2>&1; then
   rm -f /tmp/mdm-install.bundle
   echo "Signature verified!"
 else
-  echo "cosign not found — skipping signature verification."
+  echo "cosign not found - skipping signature verification."
   echo "Install cosign to verify: https://docs.sigstore.dev/cosign/system_config/installation/"
 fi
 

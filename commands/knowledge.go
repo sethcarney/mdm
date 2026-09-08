@@ -15,7 +15,7 @@ func buildKnowledgeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "knowledge",
 		Short: "Manage OKF knowledge bundles",
-		Long: fmt.Sprintf(`Manage Open Knowledge Format (OKF) bundles — directories of markdown
+		Long: fmt.Sprintf(`Manage Open Knowledge Format (OKF) bundles - directories of markdown
 documents that give AI agents durable reference context.
 
 Tracks OKF spec v%s.

@@ -127,7 +127,7 @@ func runPluginsAdd(sourceInput string, opts PluginsAddOptions) {
 	}
 	fmt.Println()
 	if opts.DryRun {
-		fmt.Printf("%sDry run — nothing was written.%s\n\n", ansiDim, ansiReset)
+		fmt.Printf("%sDry run - nothing was written.%s\n\n", ansiDim, ansiReset)
 		return
 	}
 	fmt.Printf("%sInstalled %d plugin(s) to ./%s/%s%s\n\n", ansiText, installed, agent.AgentsDir, pluginsSubdir, ansiReset)
@@ -184,7 +184,7 @@ func discoverPluginCandidates(searchRoot string) []pluginCandidate {
 			continue
 		}
 		if seen[report.Manifest.Name] {
-			ui.LogWarn(fmt.Sprintf("duplicate plugin name %q at %s — skipped", report.Manifest.Name, root))
+			ui.LogWarn(fmt.Sprintf("duplicate plugin name %q at %s - skipped", report.Manifest.Name, root))
 			continue
 		}
 		seen[report.Manifest.Name] = true
@@ -281,7 +281,7 @@ func resolvePluginAgents(opts PluginsAddOptions, cwd string) ([]string, bool) {
 	if detected := agent.DetectInstalledAgents(); len(detected) > 0 {
 		return detected, true
 	}
-	fmt.Fprintf(os.Stderr, "%sError:%s no agents detected — pass --agent (e.g. -a claude-code)\n", ansiText, ansiReset)
+	fmt.Fprintf(os.Stderr, "%sError:%s no agents detected - pass --agent (e.g. -a claude-code)\n", ansiText, ansiReset)
 	return nil, false
 }
 
@@ -346,7 +346,7 @@ func installPluginCandidate(c pluginCandidate, baseEntry lock.PluginLockEntry, o
 	}
 	msg += ")"
 	if skipped > 0 {
-		msg += fmt.Sprintf(" — %d skill(s) skipped", skipped)
+		msg += fmt.Sprintf(" - %d skill(s) skipped", skipped)
 	}
 	ui.LogSuccess(msg)
 	return true
@@ -449,11 +449,11 @@ func installPluginSkillLink(pluginName string, ps plugin.PluginSkill, agents []s
 
 	owner, standalone := skillDirOwner(canonicalDir, cwd)
 	if standalone {
-		ui.LogWarn(fmt.Sprintf("skill %s already installed standalone — skipped (remove it with 'mdm skills remove %s' first)", skillName, skillName))
+		ui.LogWarn(fmt.Sprintf("skill %s already installed standalone - skipped (remove it with 'mdm skills remove %s' first)", skillName, skillName))
 		return false
 	}
 	if owner != "" && owner != pluginName {
-		ui.LogWarn(fmt.Sprintf("skill %s already installed by plugin %s — skipped", skillName, owner))
+		ui.LogWarn(fmt.Sprintf("skill %s already installed by plugin %s - skipped", skillName, owner))
 		return false
 	}
 

@@ -15,25 +15,25 @@ import (
 // Forward compatibility
 //
 // mdm.lock and mdm-state.json abort the command when this binary
-// cannot understand them — a version from a newer mdm, or invalid JSON —
+// cannot understand them - a version from a newer mdm, or invalid JSON -
 // rather than reading as empty. The v1 line learned this the hard way:
 // its empty-on-unreadable fallback made `mdm skills install` in a
 // newer-format project a silent no-op that exits 0 in CI (fixed in the
 // final v1 patch releases). Aborting in the read path also stops
 // read-modify-write commands from clobbering a file written by a newer
 // version. The *legacy* project files fail the same way the final v1 patch
-// releases did — corrupt or newer-versioned files abort rather than read
-// as empty — with one exception: v2's own tombstone carries a deliberately
+// releases did - corrupt or newer-versioned files abort rather than read
+// as empty - with one exception: v2's own tombstone carries a deliberately
 // newer version for v1 binaries to trip on, and reads as empty here.
 // ──────────────────────────────────────────────────────────
 
 func errNewerLock(path string, fileVersion, knownVersion int) error {
-	return fmt.Errorf("%s was written by a newer version of mdm (lock version %d; this binary understands up to %d) — upgrade with 'mdm upgrade'",
+	return fmt.Errorf("%s was written by a newer version of mdm (lock version %d; this binary understands up to %d) - upgrade with 'mdm upgrade'",
 		filepath.Base(path), fileVersion, knownVersion)
 }
 
 func errUnreadableLock(path string, err error) error {
-	return fmt.Errorf("%s could not be parsed: %w — fix the file or restore it from version control",
+	return fmt.Errorf("%s could not be parsed: %w - fix the file or restore it from version control",
 		filepath.Base(path), err)
 }
 
@@ -44,7 +44,7 @@ func fatalLock(err error) {
 
 // writeFileAtomic writes via a temp file in the same directory plus rename,
 // so a write that dies partway (disk full, crash) can never leave a
-// half-written lock behind — a truncated mdm.lock would abort every
+// half-written lock behind - a truncated mdm.lock would abort every
 // subsequent command, including the migration that could have repaired it.
 func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp*")
@@ -69,8 +69,8 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 // ──────────────────────────────────────────────────────────
 // Unified project lock (mdm.lock)
 //
-// v2 stores every project-scoped section — skills, knowledge bundles,
-// plugins, configured agents — in a single mdm.lock at the project
+// v2 stores every project-scoped section - skills, knowledge bundles,
+// plugins, configured agents - in a single mdm.lock at the project
 // root. The v1 binaries' hazard (locks read into fixed structs and
 // rewritten wholesale, silently dropping keys they don't know) is closed
 // here rather than by splitting files: unknown top-level keys survive a
@@ -79,7 +79,7 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 //
 // Reads fall back to the v1 files (skills-lock.json, knowledge-lock.json,
 // plugins-lock.json) when mdm.lock does not exist; writes always go
-// to mdm.lock. The v1 files are left in place — `mdm migrate` owns
+// to mdm.lock. The v1 files are left in place - `mdm migrate` owns
 // retiring them.
 // ──────────────────────────────────────────────────────────
 
@@ -98,7 +98,7 @@ const projectLockVersion = 2
 
 // ProjectLockFile is the in-memory form of mdm.lock. Unknown
 // top-level keys are captured on read and re-emitted on write, and so are
-// unknown keys inside each entry — a per-entry field added by a newer v2
+// unknown keys inside each entry - a per-entry field added by a newer v2
 // survives this binary rewriting the entry's known fields.
 type ProjectLockFile struct {
 	Version          int
@@ -388,7 +388,7 @@ func readProjectLockE(cwd string) (ProjectLockFile, error) {
 		if os.IsNotExist(err) {
 			return readLegacyLocksE(cwd)
 		}
-		// Only absence falls back to the legacy files — an unreadable
+		// Only absence falls back to the legacy files - an unreadable
 		// mdm.lock (permissions, a directory) must abort, or `mdm
 		// skills install` becomes a silent exit-0 no-op in CI.
 		return EmptyProjectLock(), errUnreadableLock(path, err)

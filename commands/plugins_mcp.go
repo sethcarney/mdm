@@ -12,7 +12,7 @@ import (
 
 // wirePluginMCP translates the plugin's mcp.json servers into each target
 // agent's native MCP config and returns agent → namespaced server ids.
-// Agents without an MCP config descriptor are skipped silently — skills
+// Agents without an MCP config descriptor are skipped silently - skills
 // still install for them, matching the spec's incremental-adoption rule.
 func wirePluginMCP(c pluginCandidate, destDir, dataDir string, agents []string, opts PluginsAddOptions, cwd string) map[string][]string {
 	if opts.SkipMCP {
@@ -20,7 +20,7 @@ func wirePluginMCP(c pluginCandidate, destDir, dataDir string, agents []string, 
 	}
 	cfg, _, err := plugin.LoadMCPConfig(destDir)
 	if errors.Is(err, plugin.ErrMCPDisabled) {
-		ui.LogWarn(fmt.Sprintf("%s: mcp.json is invalid — MCP disabled, skills still installed (run 'mdm plugins validate')", c.Name))
+		ui.LogWarn(fmt.Sprintf("%s: mcp.json is invalid - MCP disabled, skills still installed (run 'mdm plugins validate')", c.Name))
 		return nil
 	}
 	if cfg == nil || len(cfg.Servers) == 0 {

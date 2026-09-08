@@ -9,7 +9,7 @@ import (
 )
 
 // A lock file written by a newer mdm must abort the command with a clear
-// error, never read as empty — the v1 line's empty fallback made
+// error, never read as empty - the v1 line's empty fallback made
 // `mdm skills install` in a newer-format project a silent no-op that
 // exits 0 in CI.
 func TestNewerLockVersionAborts(t *testing.T) {
@@ -63,7 +63,7 @@ func TestCorruptLockAborts(t *testing.T) {
 }
 
 // The migration tombstone carries a deliberately newer version so patched
-// v1 binaries refuse it — but v2 itself must keep treating it as an empty
+// v1 binaries refuse it - but v2 itself must keep treating it as an empty
 // legacy file, not abort on it.
 func TestTombstoneDoesNotAbortV2(t *testing.T) {
 	dir := t.TempDir()

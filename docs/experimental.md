@@ -3,11 +3,11 @@
 Some mdm features ship behind an experimental gate while the standards or
 conventions they build on are still settling. Experimental features:
 
-- may change or be removed in **any** release — they are exempt from semantic
+- may change or be removed in **any** release - they are exempt from semantic
   versioning until they graduate
 - are hidden from `--help` and shell completion until enabled
 - print a warning banner on every invocation while enabled
-- never destroy state used by stable features — mdm's lock and state files
+- never destroy state used by stable features - mdm's lock and state files
   preserve keys they don't recognize, so an experimental section cannot be
   dropped by a binary that doesn't know it
 
@@ -41,7 +41,7 @@ mdm experimental
 ## Current experimental features
 
 This release ships none. `knowledge` and `plugins` graduated to full
-support in v2 — the command groups are always visible and need no opt-in.
+support in v2 - the command groups are always visible and need no opt-in.
 `mdm migrate` clears any stale persisted opt-ins for them.
 
 ## Graduated features

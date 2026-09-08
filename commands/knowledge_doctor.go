@@ -38,7 +38,7 @@ func diagnoseKnowledgeBundle(name string, entry lock.KnowledgeLockEntry, cwd str
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		return []doctorIssue{{
 			Level:   "error",
-			Message: fmt.Sprintf("%s: bundle directory ./%s not found — run `mdm knowledge install` to restore", name, entry.InstallDir),
+			Message: fmt.Sprintf("%s: bundle directory ./%s not found - run `mdm knowledge install` to restore", name, entry.InstallDir),
 		}}
 	}
 
@@ -47,7 +47,7 @@ func diagnoseKnowledgeBundle(name string, entry lock.KnowledgeLockEntry, cwd str
 		if hash, err := okf.HashBundleDir(dir); err == nil && hash != entry.ContentHash {
 			issues = append(issues, doctorIssue{
 				Level:   "warn",
-				Message: fmt.Sprintf("%s: modified since install (content hash mismatch) — run `mdm knowledge update %s` to re-fetch", name, name),
+				Message: fmt.Sprintf("%s: modified since install (content hash mismatch) - run `mdm knowledge update %s` to re-fetch", name, name),
 			})
 		}
 	}
@@ -61,7 +61,7 @@ func diagnoseKnowledgeBundle(name string, entry lock.KnowledgeLockEntry, cwd str
 			}
 			issues = append(issues, doctorIssue{
 				Level:   "warn",
-				Message: fmt.Sprintf("%s: %d conformance error(s) — run `mdm knowledge validate ./%s`", name, errs, entry.InstallDir),
+				Message: fmt.Sprintf("%s: %d conformance error(s) - run `mdm knowledge validate ./%s`", name, errs, entry.InstallDir),
 			})
 		}
 	}

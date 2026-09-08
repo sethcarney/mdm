@@ -21,7 +21,7 @@
   },
 
   "features": {
-    // Bootstrap Go — the exact build toolchain is pinned from go.mod in
+    // Bootstrap Go - the exact build toolchain is pinned from go.mod in
     // post-create.sh, so this only needs to be new enough to run `go env -w`.
     // Also installs gopls and dlv, which .vscode/launch.json expects.
     "ghcr.io/devcontainers/features/go:1": {
@@ -35,14 +35,14 @@
     },
     // Claude Code CLI, plus the VS Code extension when opened in VS Code or
     // Codespaces. The :1.0 tag pins the feature's install script, not the CLI
-    // release — the feature installs the latest Claude Code, which then
+    // release - the feature installs the latest Claude Code, which then
     // auto-updates itself inside the container.
     "ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {}
   },
 
   // claude-code is the one feature that still needs apt during install (it
   // sets up the nodesource repo when node is absent), so it must run in the
-  // first feature step — the only one that sees an intact /tmp under the
+  // first feature step - the only one that sees an intact /tmp under the
   // podman bug described above. The other features find their packages
   // pre-installed by the Dockerfile and never touch apt.
   "overrideFeatureInstallOrder": [
@@ -50,7 +50,7 @@
   ],
 
   // The build-time accommodations above still leave the *final* image with the
-  // broken /tmp under podman — the last feature step commits it. That bites
+  // broken /tmp under podman - the last feature step commits it. That bites
   // before any lifecycle hook can repair it: VS Code's attach sequence runs
   // `mkdir -p /tmp/.X11-unix` as the remote user and aborts when it fails.
   // Mounting a fresh tmpfs over /tmp sidesteps the image's mode entirely, on
@@ -70,7 +70,7 @@
   // A named volume rather than a bind mount: no host credential file is exposed
   // to the container. ${devcontainerId} scopes the volume to this project, so
   // mdm does not share a Claude Code session with every other repo on the
-  // machine. The target must be the home directory of "remoteUser" below —
+  // machine. The target must be the home directory of "remoteUser" below -
   // tests/devcontainer_test.go checks that they agree.
   "mounts": [
     "source=claude-code-config-${devcontainerId},target=/home/vscode/.claude,type=volume"
@@ -81,7 +81,7 @@
     // ~/.claude.json holds the OAuth session and lives outside that directory,
     // so it lands on the container's throwaway filesystem and disappears on
     // rebuild. The symptom is a "Claude configuration file not found" message
-    // pointing at a backup under ~/.claude/backups — the backup survives
+    // pointing at a backup under ~/.claude/backups - the backup survives
     // because it is inside the volume, while the file it was copied from is not.
     //
     // CLAUDE_CONFIG_DIR moves the whole config directory, .claude.json

@@ -8,7 +8,7 @@ import (
 )
 
 // ──────────────────────────────────────────────────────────
-// Agent Plugins lock — the plugins section of mdm.lock
+// Agent Plugins lock - the plugins section of mdm.lock
 //
 // v1 kept plugin entries in their own plugins-lock.json so a stable binary
 // rewriting the skills lock could not drop them. In v2 the unified

@@ -8,7 +8,7 @@ import (
 )
 
 // ──────────────────────────────────────────────────────────
-// Local (project) skill lock — the skills section of mdm.lock
+// Local (project) skill lock - the skills section of mdm.lock
 // ──────────────────────────────────────────────────────────
 
 const localLockVersion = 1
@@ -40,8 +40,8 @@ func legacyTombstone(data []byte) bool {
 
 // readLegacySkillsLockE reads the v1 skills-lock.json directly. It is only
 // consulted when mdm.lock does not exist. It fails the same way the
-// final v1 patch releases did — corrupt or newer-versioned files are an
-// error, not an empty lock — except for v2's own tombstone, which reads as
+// final v1 patch releases did - corrupt or newer-versioned files are an
+// error, not an empty lock - except for v2's own tombstone, which reads as
 // empty by design.
 func readLegacySkillsLockE(cwd string) (LocalSkillLockFile, error) {
 	if cwd == "" {

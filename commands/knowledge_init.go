@@ -56,7 +56,7 @@ tags: [example]
 Describe one thing an agent should know about this domain: what it is,
 where it lives, and how it relates to other concepts.
 
-Link related documents with markdown links — root-relative from the
+Link related documents with markdown links - root-relative from the
 bundle, like [the index](/index.md), or relative to this file.
 `
 

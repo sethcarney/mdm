@@ -30,7 +30,7 @@ still running a v1 mdm against the project finds a pointer to
 outright instead; --no-tombstone does the same without asking. Commit
 %[1]s and the removals together.
 
-v2 reads the v1 files transparently, so migrating is not urgent — but
+v2 reads the v1 files transparently, so migrating is not urgent - but
 writes only ever go to the new files, and mdm doctor will keep pointing
 here until the old ones are gone.
 
@@ -56,16 +56,16 @@ func runMigrate(dryRun, yes, noTombstone, force bool) error {
 
 	plan, err := lock.PlanProjectMigration(cwd)
 	if err != nil {
-		return fmt.Errorf("cannot migrate: %w — fix or remove the file and re-run", err)
+		return fmt.Errorf("cannot migrate: %w - fix or remove the file and re-run", err)
 	}
 	gplan, err := lock.PlanGlobalMigration()
 	if err != nil {
-		return fmt.Errorf("cannot migrate: %w — fix or remove the file and re-run", err)
+		return fmt.Errorf("cannot migrate: %w - fix or remove the file and re-run", err)
 	}
 
 	if !plan.Needed() && !gplan.Needed() {
 		clearGraduatedOptIns()
-		fmt.Printf("\n%sNothing to migrate — no v1 lock files found.%s\n\n", ansiDim, ansiReset)
+		fmt.Printf("\n%sNothing to migrate - no v1 lock files found.%s\n\n", ansiDim, ansiReset)
 		return nil
 	}
 
@@ -83,12 +83,12 @@ func runMigrate(dryRun, yes, noTombstone, force bool) error {
 	fmt.Println()
 
 	if dryRun {
-		fmt.Printf("%sDry run — nothing was changed.%s\n\n", ansiDim, ansiReset)
+		fmt.Printf("%sDry run - nothing was changed.%s\n\n", ansiDim, ansiReset)
 		return nil
 	}
 	if !yes {
 		if !update.IsTerminal() {
-			return fmt.Errorf("confirmation needed but this is not an interactive terminal — re-run with --yes")
+			return fmt.Errorf("confirmation needed but this is not an interactive terminal - re-run with --yes")
 		}
 		confirmed, ok := ui.UiConfirm("Migrate now?")
 		if !ok || !confirmed {
@@ -107,7 +107,7 @@ func runMigrate(dryRun, yes, noTombstone, force bool) error {
 // promptTombstoneCleanup offers to delete skills-lock.json outright instead
 // of leaving the default tombstone. Only reached interactively; --yes keeps
 // the tombstone and --no-tombstone skips the question. ok=false means the
-// user cancelled — the migration must not run.
+// user cancelled - the migration must not run.
 func promptTombstoneCleanup(plan lock.ProjectMigration, noTombstone bool) (deleteOutright, ok bool) {
 	if noTombstone {
 		return true, true
@@ -139,12 +139,12 @@ func printProjectMigrationPlan(plan lock.ProjectMigration, noTombstone, force bo
 			fate = "leave a tombstone"
 		}
 		if plan.TargetExists {
-			// Nothing flows into an existing mdm.lock — the legacy
+			// Nothing flows into an existing mdm.lock - the legacy
 			// files are only retired.
-			fmt.Printf("  %s — %d entr%s, %s\n",
+			fmt.Printf("  %s - %d entr%s, %s\n",
 				fname, count, map[bool]string{true: "ies", false: "y"}[count != 1], fate)
 		} else {
-			fmt.Printf("  %s — %d entr%s → %s, then %s\n",
+			fmt.Printf("  %s - %d entr%s → %s, then %s\n",
 				fname, count, map[bool]string{true: "ies", false: "y"}[count != 1], lockName, fate)
 		}
 	}
@@ -168,7 +168,7 @@ func printGlobalMigrationPlan(gplan lock.GlobalMigration, force bool) error {
 	case gplan.LegacyPath == "":
 		// Nothing legacy left; the only pending change is the mode backfill.
 	case gplan.TargetExists:
-		fmt.Printf("  %s — superseded by %s, delete\n", gplan.LegacyPath, lock.GetGlobalStatePath())
+		fmt.Printf("  %s - superseded by %s, delete\n", gplan.LegacyPath, lock.GetGlobalStatePath())
 	default:
 		fmt.Printf("  %s → %s\n", gplan.LegacyPath, lock.GetGlobalStatePath())
 	}
@@ -189,7 +189,7 @@ func printOrphanWarning(orphaned []string, target string, force bool) error {
 	}
 	if !force {
 		fmt.Println()
-		return fmt.Errorf("refusing to discard entries — if you removed them on purpose, re-run with --force to drop them; otherwise re-add them with 'mdm skills add' (or knowledge/plugins add)")
+		return fmt.Errorf("refusing to discard entries - if you removed them on purpose, re-run with --force to drop them; otherwise re-add them with 'mdm skills add' (or knowledge/plugins add)")
 	}
 	return nil
 }
@@ -204,9 +204,9 @@ func executeMigration(cwd string, plan lock.ProjectMigration, gplan lock.GlobalM
 		case len(plan.Legacy) == 0:
 			fmt.Printf("%s✓%s Recorded install mode %q on %s, no legacy files to retire.\n", ansiGreen, ansiReset, plan.InstallModeBackfill, lockName)
 		case statErr == nil:
-			fmt.Printf("%s✓%s Project migrated to %s — commit it together with the removed files.\n", ansiGreen, ansiReset, lockName)
+			fmt.Printf("%s✓%s Project migrated to %s - commit it together with the removed files.\n", ansiGreen, ansiReset, lockName)
 		default:
-			fmt.Printf("%s✓%s Legacy lock files retired — they held no entries, so there is no %s to commit.\n", ansiGreen, ansiReset, lockName)
+			fmt.Printf("%s✓%s Legacy lock files retired - they held no entries, so there is no %s to commit.\n", ansiGreen, ansiReset, lockName)
 		}
 	}
 	if gplan.Needed() {

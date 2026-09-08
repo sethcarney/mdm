@@ -79,10 +79,10 @@ This scan does not attempt semantic prompt-injection detection, homoglyph scorin
 
 The repo includes intentionally unsafe fixtures for regression and manual smoke testing:
 
-- `internal/security/markdownscan/testdata/bad-hidden.md` — raw scanner unit-test input
-- `internal/security/markdownscan/testdata/emoji.md` — picker emoji that must only warn
-- `tests/testdata/hidden-skill/` — a full skill directory with hidden chars in `README.md`
-- `tests/testdata/emoji-skill/` — a full skill directory whose `README.md` uses `⚠️`, `❤️`, `✅️`, and `▶️`
+- `internal/security/markdownscan/testdata/bad-hidden.md` - raw scanner unit-test input
+- `internal/security/markdownscan/testdata/emoji.md` - picker emoji that must only warn
+- `tests/testdata/hidden-skill/` - a full skill directory with hidden chars in `README.md`
+- `tests/testdata/emoji-skill/` - a full skill directory whose `README.md` uses `⚠️`, `❤️`, `✅️`, and `▶️`
 
 Verify install blocking from the repo root:
 
