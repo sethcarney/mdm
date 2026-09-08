@@ -2,7 +2,7 @@
 
 Check the health of installed skills and project markdown files.
 
-`mdm doctor` runs a series of local checks and prints a report grouped by category. It covers skill and agent-definition installation integrity, harness symlinks, and any markdown files large enough to strain harness context windows — including instruction files, skill content, and general project docs.
+`mdm doctor` runs a series of local checks and prints a report grouped by category. It covers skill and agent-definition installation integrity, harness symlinks, and any markdown files large enough to strain harness context windows - including instruction files, skill content, and general project docs.
 
 ## Checks performed
 
@@ -20,7 +20,7 @@ For each skill recorded in the lock file:
 
 ### Agent definitions
 
-For each [agent definition](agent-artifacts.md) recorded in the lock file: whether its canonical file (`.agents/agents/<name>.md`) still exists, and whether every harness it is installed in has a healthy copy — distinguishing a broken symlink in a harness (target missing; run `mdm agents update <name>`) from the definition not being installed in any harness at all (run `mdm agents install`).
+For each [agent definition](agent-artifacts.md) recorded in the lock file: whether its canonical file (`.agents/agents/<name>.md`) still exists, and whether every harness it is installed in has a healthy copy - distinguishing a broken symlink in a harness (target missing; run `mdm agents update <name>`) from the definition not being installed in any harness at all (run `mdm agents install`).
 
 ### Instruction files
 
@@ -43,8 +43,8 @@ Walks the entire project tree and flags any other `.md` file that is too large. 
 
 | Size     | Severity                                             |
 | -------- | ------------------------------------------------------ |
-| ≥ 20 KB  | Warning — may strain harness context windows         |
-| ≥ 100 KB | Error — likely too large for harness context windows |
+| ≥ 20 KB  | Warning - may strain harness context windows         |
+| ≥ 100 KB | Error - likely too large for harness context windows |
 
 ## Output
 
@@ -58,16 +58,16 @@ Project skills:
     ✗ skill directory not found on disk - run `mdm skills install` to restore
 
   ▲ large-skill
-    ▲ SKILL.md is 45KB — may strain harness context windows
+    ▲ SKILL.md is 45KB - may strain harness context windows
 
 Agent definitions:
 
-  ▲ agent "code-reviewer" is not installed in any harness — run `mdm agents install` to restore
-  ✗ agent "test-writer": broken symlink in Cursor — target missing, run `mdm agents update test-writer` to repair
+  ▲ agent "code-reviewer" is not installed in any harness - run `mdm agents install` to restore
+  ✗ agent "test-writer": broken symlink in Cursor - target missing, run `mdm agents update test-writer` to repair
 
 Instruction files:
 
-  ▲ CLAUDE.md is 32KB — may strain harness context windows
+  ▲ CLAUDE.md is 32KB - may strain harness context windows
 
 Rules linking:
 
@@ -79,7 +79,7 @@ Skill coverage:
 
 Project markdown:
 
-  ▲ docs/reference.md is 28KB — may strain harness context windows
+  ▲ docs/reference.md is 28KB - may strain harness context windows
 
 Doctor complete: 3 skill(s) checked, project markdown scanned, 1 error(s), 4 warning(s)
 ```

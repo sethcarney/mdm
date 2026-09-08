@@ -2,8 +2,8 @@
 
 Manage the list of AI harnesses mdm should support by default.
 
-A harness is the AI coding tool itself — Claude Code, Cursor, Windsurf, and so
-on — as distinct from an [agent definition](agent-artifacts.md), which is a
+A harness is the AI coding tool itself - Claude Code, Cursor, Windsurf, and so
+on - as distinct from an [agent definition](agent-artifacts.md), which is a
 markdown file installed *into* a harness. The configured harness list is the
 single source of truth for which harnesses skills are installed to. It is
 read whenever `mdm skills add` needs to know which harnesses to target and is
@@ -15,15 +15,15 @@ Harnesses fall into three categories that determine whether they need explicit c
 
 | Category               | Description                                             | Needs tracking?                                   |
 | ---------------------- | --------------------------------------------------------- | ------------------------------------------------- |
-| **Shared skills dir**  | Uses `.agents/skills` — skills are auto-installed        | Only if they also have a unique instructions file |
+| **Shared skills dir**  | Uses `.agents/skills` - skills are auto-installed        | Only if they also have a unique instructions file |
 | **Uses AGENTS.md**     | Reads `AGENTS.md` natively for instructions               | Only if they also have a unique skills dir         |
-| **Both (no tracking)** | Shared skills dir + AGENTS.md (or no instructions file)   | Never — always supported automatically             |
+| **Both (no tracking)** | Shared skills dir + AGENTS.md (or no instructions file)   | Never - always supported automatically             |
 
 Harnesses in the "both" category (Codex, Gemini CLI, Warp, Replit, etc.) appear as **always included** in every picker and are never added to `configuredHarnesses`. Harnesses with a unique skills directory or a non-AGENTS.md instructions file (Claude Code, Cursor, GitHub Copilot, etc.) must be explicitly configured.
 
 ## Why configure harnesses?
 
-Without a configured list, `mdm skills add` prompts you to pick harnesses every time. Once you run `mdm harnesses add`, your preferred harnesses are pre-selected in every future install prompt — and `mdm skills add --yes` installs to exactly that list without prompting at all.
+Without a configured list, `mdm skills add` prompts you to pick harnesses every time. Once you run `mdm harnesses add`, your preferred harnesses are pre-selected in every future install prompt - and `mdm skills add --yes` installs to exactly that list without prompting at all.
 
 `mdm rules link` also updates `configuredHarnesses` automatically when you select harnesses interactively.
 
@@ -73,7 +73,7 @@ If no harnesses are configured yet, the command tells you how to set them up.
 
 ## mdm harnesses add
 
-With no arguments, opens a searchable multiselect. Harnesses that are always supported automatically (shared skills dir + AGENTS.md) are shown in a locked panel to the right of the prompt — they require no configuration and cannot be deselected. Your current configured list is pre-checked in the left panel. Confirming replaces the entire list with your selection.
+With no arguments, opens a searchable multiselect. Harnesses that are always supported automatically (shared skills dir + AGENTS.md) are shown in a locked panel to the right of the prompt - they require no configuration and cannot be deselected. Your current configured list is pre-checked in the left panel. Confirming replaces the entire list with your selection.
 
 ```
 Which harnesses do you want to configure?  │  always included:
@@ -88,7 +88,7 @@ Which harnesses do you want to configure?  │  always included:
 When called with harness names, those harnesses are appended to the existing list (duplicates are ignored).
 
 ```bash
-# Interactive picker — replaces the current list
+# Interactive picker - replaces the current list
 mdm harnesses add
 
 # Append specific harnesses
@@ -121,16 +121,16 @@ Remove 1 harness(es): Windsurf? [y/N]
 
 After removing harnesses from the configured list, mdm also cleans up the files that belong exclusively to each removed harness:
 
-- **Skills directory** — the harness's own skills folder (e.g. `.claude/skills/`, `.roo/skills/`) is removed if it exists. The shared `.agents/skills/` directory is never touched.
+- **Skills directory** - the harness's own skills folder (e.g. `.claude/skills/`, `.roo/skills/`) is removed if it exists. The shared `.agents/skills/` directory is never touched.
 
     !!! warning "OpenClaw's skills directory is `./skills/`"
-        Removing OpenClaw deletes `./skills/` — the same directory many projects
+        Removing OpenClaw deletes `./skills/` - the same directory many projects
         use for hand-written skills. mdm cannot tell your own skills from an
         OpenClaw install, so anything in there that is not a
         [cherry-picked fork](skills/cherry-pick.md) goes with it. Commit the
         directory first, or keep your skills elsewhere. See
         [Troubleshooting](troubleshooting.md#mdm-harnesses-remove-deleted-skills-i-wrote-by-hand).
-- **Instructions file** — the harness's instructions file (e.g. `CLAUDE.md`, `.cursorrules`, `.github/copilot-instructions.md`) is removed. The shared `AGENTS.md` is never touched.
+- **Instructions file** - the harness's instructions file (e.g. `CLAUDE.md`, `.cursorrules`, `.github/copilot-instructions.md`) is removed. The shared `AGENTS.md` is never touched.
 
 ```bash
 # Interactive removal

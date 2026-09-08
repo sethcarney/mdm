@@ -652,7 +652,7 @@ func TestCherryPickDryRunWritesNothing(t *testing.T) {
 
 // `mdm harnesses` owns what `mdm agents` used to mean (the configured AI
 // harness list). `mdm agents` is reclaimed in this same release for agent
-// definitions, a different concept — so the two commands must both resolve,
+// definitions, a different concept - so the two commands must both resolve,
 // and their help text must not read as the same thing under two names.
 func TestHarnessesReplacesAgentsCommand(t *testing.T) {
 	out, _, code := runMdm(t, "harnesses", "--help")

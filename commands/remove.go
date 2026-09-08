@@ -35,7 +35,7 @@ func buildRemoveCmd() *cobra.Command {
 
 If no skill names are provided an interactive selection menu is shown.
 
-The --harness and --skill (-s) flags accept multiple values — space-
+The --harness and --skill (-s) flags accept multiple values - space-
 separated after the flag or repeated:
 
   mdm skills remove --harness claude-code cursor
@@ -367,7 +367,7 @@ func executeRemovals(toRemove []*InstalledSkill, harnessFilter []string, global 
 			failures++
 			ui.LogError(fmt.Sprintf("%s: %v", sk.Name, err))
 		case len(retained) > 0:
-			ui.LogWarn(fmt.Sprintf("%s: removed from %s, but %s still %s it — keeping the skill and its lock entry",
+			ui.LogWarn(fmt.Sprintf("%s: removed from %s, but %s still %s it - keeping the skill and its lock entry",
 				sk.Name,
 				strings.Join(harnessDisplayNames(harnessFilter), ", "),
 				strings.Join(harnessDisplayNames(retained), ", "),

@@ -322,7 +322,7 @@ func TestRemoveHarnessSkillsDirRemovesEverythingWhenNoForks(t *testing.T) {
 }
 
 // Installing a fork into a harness that reads the forks directory would replace
-// the fork with a symlink to a copy of itself — destroying the source.
+// the fork with a symlink to a copy of itself - destroying the source.
 func TestClobbersForks(t *testing.T) {
 	cwd := t.TempDir()
 	forksRoot := filepath.Join(cwd, defaultForksDir)

@@ -14,7 +14,7 @@ mdm skills cherry-pick <source>
 
 |  | `mdm skills add` | `mdm skills cherry-pick` |
 | --- | --- | --- |
-| Where the skill lands | each harness's skills directory | `./skills/<name>` — your source tree |
+| Where the skill lands | each harness's skills directory | `./skills/<name>` - your source tree |
 | Who owns it afterwards | upstream | you |
 | `mdm skills update` | re-fetches and replaces it | leaves it alone |
 | Provenance | `mdm.lock` entry | `.mdm-origin.json` + `ATTRIBUTION.md` inside the fork |
@@ -29,7 +29,7 @@ mdm skills cherry-pick <source>
 4. Licensing is resolved - see [Licensing](#licensing) below - and you are asked to confirm if a source declares no terms at all.
 5. Each skill directory is copied to `./skills/<name>`, renamed if `--as` was given.
 6. Provenance is written into the fork: `.mdm-origin.json`, `ATTRIBUTION.md`, and the upstream license file when the skill directory did not already carry one.
-7. With `--install`, the forks are installed into your harnesses from your copy — recorded in `mdm.lock` as a local source, which `mdm skills update` skips.
+7. With `--install`, the forks are installed into your harnesses from your copy - recorded in `mdm.lock` as a local source, which `mdm skills update` skips.
 
 ## Flags
 
@@ -104,7 +104,7 @@ skills/our-code-review/
 }
 ```
 
-The hash is what `--status` compares against to tell an untouched fork from one you have started building on. The dot prefix keeps the file out of installed copies — `copyDirectory` skips dotfiles — while `ATTRIBUTION.md` is not dot-prefixed on purpose, so the notice follows the material into every harness's skills directory.
+The hash is what `--status` compares against to tell an untouched fork from one you have started building on. The dot prefix keeps the file out of installed copies - `copyDirectory` skips dotfiles - while `ATTRIBUTION.md` is not dot-prefixed on purpose, so the notice follows the material into every harness's skills directory.
 
 When you fork a skill mdm installed earlier, the lock file still knows where it really came from, so the record credits the original repository and notes the local path it was copied through as `via`.
 
@@ -121,7 +121,7 @@ Honouring the terms - attribution, share-alike, or simply asking first - remains
 ## The forks directory and OpenClaw
 
 `./skills` is also OpenClaw's project skills directory, which is what makes it a
-publishable location — but it means harness-level commands can reach your forks
+publishable location - but it means harness-level commands can reach your forks
 through it. mdm treats a directory carrying `.mdm-origin.json` as your source
 code rather than an install, so:
 
@@ -129,12 +129,12 @@ code rather than an install, so:
   in `./skills` alone.
 - `mdm harnesses remove openclaw` cleans the directory but keeps the forks in it,
   reporting how many it kept.
-- `--install` skips any harness that reads the forks directory directly — the fork
+- `--install` skips any harness that reads the forks directory directly - the fork
   is already where that harness looks, and installing would replace it with a
   symlink to a copy of itself.
 
 Hand-written skills in `./skills` that were never cherry-picked carry no origin
-file and are **not** covered by these guards — `mdm harnesses remove openclaw` still
+file and are **not** covered by these guards - `mdm harnesses remove openclaw` still
 deletes them (see [Troubleshooting](../troubleshooting.md)). Pass `--dir` to keep forks somewhere
 else if you would rather not share the directory at all.
 

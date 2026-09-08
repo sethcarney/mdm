@@ -663,13 +663,13 @@ func TestDoctorReportsABrokenAgentSymlink(t *testing.T) {
 func TestDoctorDistinguishesMissingAgentFromBrokenSymlink(t *testing.T) {
 	cwd := t.TempDir()
 
-	// "vanished": recorded in the lock, but nothing on disk in any harness —
+	// "vanished": recorded in the lock, but nothing on disk in any harness -
 	// not even a broken link.
 	if err := lock.AddAgentToLocalLock("vanished", lock.AgentLockEntry{Source: "o/r", SourceType: "github", AgentPath: "agents/vanished.md"}, cwd); err != nil {
 		t.Fatal(err)
 	}
 
-	// "critic": one harness has a dangling symlink — installed, but broken.
+	// "critic": one harness has a dangling symlink - installed, but broken.
 	installDir := filepath.Join(cwd, ".claude", "agents")
 	if err := os.MkdirAll(installDir, 0755); err != nil {
 		t.Fatal(err)

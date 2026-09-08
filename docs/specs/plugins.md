@@ -39,8 +39,8 @@ plugin package itself.
    only; a broken server or skill is skipped individually).
 3. **MCP wiring**: translate `mcp.json` into each harness's native MCP config
    (Claude Code's `.mcp.json`, Cursor's `.cursor/mcp.json`), performing the
-   launcher duties the spec assigns to clients — `${PLUGIN_ROOT}` /
-   `${PLUGIN_DATA}` expansion, env injection, command resolution — at install
+   launcher duties the spec assigns to clients - `${PLUGIN_ROOT}` /
+   `${PLUGIN_DATA}` expansion, env injection, command resolution - at install
    time, since the harness (not mdm) launches the servers.
 4. **Author tooling**: `mdm plugins init` scaffolds a conformant plugin;
    `mdm plugins validate` checks one against the spec.
@@ -82,7 +82,7 @@ mdm plugins
 - `.agents/plugins-data/<name>/` - the spec's `PLUGIN_DATA`: created on
   install, preserved across updates, deleted only by `remove --purge-data`.
   Doctor suggests gitignoring `plugins-data/` once it holds anything.
-- `.agents/skills/<skill>` — a **symlink into the plugin directory**, and each
+- `.agents/skills/<skill>` - a **symlink into the plugin directory**, and each
   harness's skills dir links to the canonical entry as usual. One copy on disk,
   atomic updates, and ownership is self-evident from the link target.
 

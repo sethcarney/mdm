@@ -23,7 +23,7 @@ func buildRulesCmd() *cobra.Command {
 		Short: "Manage harness instruction files",
 		Long: fmt.Sprintf(`Manage project-level instruction files for AI harnesses.
 
-%sAGENTS.md%s is the universal source of truth — read natively by Codex, Gemini CLI,
+%sAGENTS.md%s is the universal source of truth - read natively by Codex, Gemini CLI,
 OpenCode, and Replit. Use %smdm rules link%s to symlink harness-specific files
 (CLAUDE.md, .cursorrules, .windsurfrules, etc.) to it so every tool sees the
 same instructions.
@@ -61,8 +61,8 @@ func buildRulesLinkCmd() *cobra.Command {
 You will be prompted to select which AI tools you use. The command then:
 
   1. Checks whether any of your harness instruction files already have content
-  2. If one does — promotes its content into AGENTS.md
-  3. If several do — asks which one to use as the source
+  2. If one does - promotes its content into AGENTS.md
+  3. If several do - asks which one to use as the source
   4. Symlinks all harness-specific files (CLAUDE.md, .cursorrules, etc.) → AGENTS.md
 
 Existing real files are replaced with symlinks only after confirmation (or with -y).

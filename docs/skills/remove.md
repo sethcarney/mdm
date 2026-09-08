@@ -62,7 +62,7 @@ canonical directory:
   entry are kept, and mdm says so:
 
   ```
-  ! demo: removed from Claude Code, but Roo Code still has it — keeping the skill and its lock entry
+  ! demo: removed from Claude Code, but Roo Code still has it - keeping the skill and its lock entry
   ```
 
   Keeping both matters because every other harness installs by symlinking the
@@ -71,8 +71,8 @@ canonical directory:
   `mdm skills list` and `mdm doctor` notice.
 
 - **Nothing else has it.** The named harness was the last one, so the removal
-  finishes the same way an unfiltered one does — canonical directory and lock
-  entry included — and reports `Removed <skill>`.
+  finishes the same way an unfiltered one does - canonical directory and lock
+  entry included - and reports `Removed <skill>`.
 
 A harness that reads the shared `.agents/skills` directory is skipped while
 something outside the filter still holds the skill: its "own" copy *is* the copy

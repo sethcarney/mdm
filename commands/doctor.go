@@ -378,12 +378,12 @@ func checkLargeMarkdown(r *doctorResult) {
 		case size >= fileSizeErrorBytes:
 			r.Issues = append(r.Issues, doctorIssue{
 				Level:   "error",
-				Message: fmt.Sprintf("%s is %s — likely too large for harness context windows", rel, formatFileSize(size)),
+				Message: fmt.Sprintf("%s is %s - likely too large for harness context windows", rel, formatFileSize(size)),
 			})
 		case size >= fileSizeWarnBytes:
 			r.Issues = append(r.Issues, doctorIssue{
 				Level:   "warn",
-				Message: fmt.Sprintf("%s is %s — may strain harness context windows", rel, formatFileSize(size)),
+				Message: fmt.Sprintf("%s is %s - may strain harness context windows", rel, formatFileSize(size)),
 			})
 		}
 		return nil
@@ -510,7 +510,7 @@ func diagnoseAgentInstall(name string, entry lock.AgentLockEntry, cwd string) []
 	if _, err := os.Stat(canonical); err != nil {
 		issues = append(issues, doctorIssue{
 			Level:   "error",
-			Message: fmt.Sprintf("agent %q: canonical file missing — run `mdm agents install` to restore", name),
+			Message: fmt.Sprintf("agent %q: canonical file missing - run `mdm agents install` to restore", name),
 		})
 	}
 
@@ -528,7 +528,7 @@ func diagnoseAgentInstall(name string, entry lock.AgentLockEntry, cwd string) []
 		}
 		installedAnywhere = true
 		if info.Mode()&os.ModeSymlink == 0 {
-			continue // a real file (copy-mode install) — healthy
+			continue // a real file (copy-mode install) - healthy
 		}
 		if _, statErr := os.Stat(target); statErr != nil {
 			cfg := harness.AllHarnesses[harnessName]
@@ -538,7 +538,7 @@ func diagnoseAgentInstall(name string, entry lock.AgentLockEntry, cwd string) []
 			}
 			issues = append(issues, doctorIssue{
 				Level:   "error",
-				Message: fmt.Sprintf("agent %q: broken symlink in %s — target missing, run `mdm agents update %s` to repair", name, displayName, name),
+				Message: fmt.Sprintf("agent %q: broken symlink in %s - target missing, run `mdm agents update %s` to repair", name, displayName, name),
 			})
 		}
 	}
@@ -546,7 +546,7 @@ func diagnoseAgentInstall(name string, entry lock.AgentLockEntry, cwd string) []
 	if !installedAnywhere {
 		issues = append(issues, doctorIssue{
 			Level:   "warn",
-			Message: fmt.Sprintf("agent %q is not installed in any harness — run `mdm agents install` to restore", name),
+			Message: fmt.Sprintf("agent %q is not installed in any harness - run `mdm agents install` to restore", name),
 		})
 	}
 
@@ -579,12 +579,12 @@ func checkInstructionFiles(cwd string) []doctorIssue {
 		case size >= fileSizeErrorBytes:
 			issues = append(issues, doctorIssue{
 				Level:   "error",
-				Message: fmt.Sprintf("%s is %s — likely too large for harness context windows", fname, formatFileSize(size)),
+				Message: fmt.Sprintf("%s is %s - likely too large for harness context windows", fname, formatFileSize(size)),
 			})
 		case size >= fileSizeWarnBytes:
 			issues = append(issues, doctorIssue{
 				Level:   "warn",
-				Message: fmt.Sprintf("%s is %s — may strain harness context windows", fname, formatFileSize(size)),
+				Message: fmt.Sprintf("%s is %s - may strain harness context windows", fname, formatFileSize(size)),
 			})
 		}
 	}
@@ -649,12 +649,12 @@ func checkProjectMarkdown(cwd string, skipDirs map[string]bool, skipFiles map[st
 		case size >= fileSizeErrorBytes:
 			issues = append(issues, doctorIssue{
 				Level:   "error",
-				Message: fmt.Sprintf("%s is %s — likely too large for harness context windows", rel, formatFileSize(size)),
+				Message: fmt.Sprintf("%s is %s - likely too large for harness context windows", rel, formatFileSize(size)),
 			})
 		case size >= fileSizeWarnBytes:
 			issues = append(issues, doctorIssue{
 				Level:   "warn",
-				Message: fmt.Sprintf("%s is %s — may strain harness context windows", rel, formatFileSize(size)),
+				Message: fmt.Sprintf("%s is %s - may strain harness context windows", rel, formatFileSize(size)),
 			})
 		}
 		return nil

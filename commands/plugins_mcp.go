@@ -12,7 +12,7 @@ import (
 
 // wirePluginMCP translates the plugin's mcp.json servers into each target
 // harness's native MCP config and returns harness → namespaced server ids.
-// Harnesses without an MCP config descriptor are skipped silently — skills
+// Harnesses without an MCP config descriptor are skipped silently - skills
 // still install for them, matching the spec's incremental-adoption rule.
 func wirePluginMCP(c pluginCandidate, destDir, dataDir string, harnesses []string, opts PluginsAddOptions, cwd string) map[string][]string {
 	if opts.SkipMCP {

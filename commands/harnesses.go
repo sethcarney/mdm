@@ -224,7 +224,7 @@ Use %s--global%s / %s-g%s to configure harnesses at the user level.`, ansiBold, 
 // pickAndSaveHarnesses shows an interactive picker pre-seeded with the current
 // configured list and replaces the entire list with the user's selection.
 // Truly universal harnesses (share .agents/skills AND have no unique instruction
-// file) are excluded from the picker — they are always supported and need no
+// file) are excluded from the picker - they are always supported and need no
 // configuration. Returns the saved harness names so the caller can act on them.
 func pickAndSaveHarnesses(global bool, scope, cwd string) ([]string, error) {
 	current := lock.GetConfiguredHarnesses(global, cwd)

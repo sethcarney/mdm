@@ -213,7 +213,7 @@ func TestAgentLockEntryWrittenUnderAgentsKey(t *testing.T) {
 	}
 }
 
-// A skills write must never touch the agents section, and vice versa —
+// A skills write must never touch the agents section, and vice versa -
 // mirrors TestProjectLockSectionsAreIsolated for the new section.
 func TestProjectLockAgentsSectionIsolatedFromSkills(t *testing.T) {
 	cwd := t.TempDir()

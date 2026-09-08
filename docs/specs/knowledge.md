@@ -12,7 +12,7 @@
 ## Summary
 
 Add an experimental `mdm knowledge` command group that installs, validates, and
-manages **Open Knowledge Format (OKF) bundles** — directories of markdown files
+manages **Open Knowledge Format (OKF) bundles** - directories of markdown files
 with YAML frontmatter that give AI harnesses durable reference context ("LLM-wiki"
 pattern). The feature reuses mdm's existing acquisition, locking, and security
 pipeline, ships behind a named experimental gate, and makes no stability
@@ -72,7 +72,7 @@ gate itself.
   OKF yet; `mdm knowledge find` is out of scope until an ecosystem exists.
 - **Rendering/visualization** - the OKF repo ships an HTML visualizer; we
   don't compete with it.
-- **Automatic harness wiring** — injecting bundle references into
+- **Automatic harness wiring** - injecting bundle references into
   CLAUDE.md/AGENTS.md is deferred to a later phase (see Future value); it
   needs its own design because it mutates user-owned files.
 - **Serving knowledge at runtime** (MCP server, HTTP) - out of scope entirely.

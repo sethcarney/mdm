@@ -3,13 +3,13 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 `CLAUDE.md` is a symlink to this file. Edit `AGENTS.md`; never replace the
-symlink with a copy. The filename `AGENTS.md` is an ecosystem contract — several
-harnesses look for exactly that name — and does not change, even though this
+symlink with a copy. The filename `AGENTS.md` is an ecosystem contract - several
+harnesses look for exactly that name - and does not change, even though this
 project now calls the tools themselves "harnesses" rather than "agents".
 
 ## What This Project Is
 
-**MDM** (Markdown Management) is a Go CLI tool for managing "skills" — reusable markdown-based prompt libraries for AI coding tools (Claude Code, Cursor, Cline, Copilot, and 40+ others). Skills are installed from GitHub repos, GitLab, URLs, or local paths and placed into each tool's skills directory.
+**MDM** (Markdown Management) is a Go CLI tool for managing "skills" - reusable markdown-based prompt libraries for AI coding tools (Claude Code, Cursor, Cline, Copilot, and 40+ others). Skills are installed from GitHub repos, GitLab, URLs, or local paths and placed into each tool's skills directory.
 
 ### "Harness" and "agent" mean two different things
 
@@ -19,14 +19,14 @@ and the distinction runs through every name in the codebase:
 | Term | Means | Command | Lives in |
 | --- | --- | --- | --- |
 | **harness** | an AI coding tool mdm installs into (Claude Code, Cursor, Codex, …) | `mdm harnesses` | `internal/harness/`, `commands/harnesses.go` |
-| **agent definition** | one file that gives a harness a named subagent persona — markdown with `name` + `description` frontmatter for every harness but Codex, which reads a TOML file with `name`, `description`, and `developer_instructions` | `mdm agents` | `internal/agentfile/`, `commands/agent_artifacts.go` |
+| **agent definition** | one file that gives a harness a named subagent persona - markdown with `name` + `description` frontmatter for every harness but Codex, which reads a TOML file with `name`, `description`, and `developer_instructions` | `mdm agents` | `internal/agentfile/`, `commands/agent_artifacts.go` |
 
 So `mdm agents add` installs *into* a harness; `mdm harnesses add` configures
 *which* harnesses are the default install targets. A skill is a directory with a
 `SKILL.md`; an agent definition is a single file. Both are installed from the
 same sources, recorded in the same lock, and obey the same per-scope install
 mode. mdm converts an agent definition between markdown and TOML as needed
-per target harness — see `internal/agentfile`'s `Encode`/`ParseAgentFile`
+per target harness - see `internal/agentfile`'s `Encode`/`ParseAgentFile`
 and [docs/agent-artifacts.md](docs/agent-artifacts.md#formats-markdown-and-toml).
 
 Three names deliberately keep the old word and must not be renamed: `AGENTS.md`
@@ -444,7 +444,7 @@ mdm
 │   ├── list                                # Show configured harnesses for the current scope (alias: ls)
 │   ├── add [harnesses...]                  # Add harnesses to the configured list (interactive picker with no args)
 │   └── remove [harnesses...]               # Remove harnesses and their unique skill/instruction files
-├── agents                                  # Manage agent definitions — subagent persona files installed into a harness
+├── agents                                  # Manage agent definitions - subagent persona files installed into a harness
 │   ├── add <source>                        # Install agent definitions from GitHub, a URL, or a local path (alias: a)
 │   ├── list                                # List installed agent definitions (alias: ls)
 │   ├── remove [names...]                   # Remove installed agent definitions (aliases: rm, r)
@@ -519,16 +519,16 @@ mdm
 5. User is prompted for which harnesses to install to (or `--harness` flag)
 6. Skill dirs are written to `.agents/skills/<name>` and symlinked (or copied,
    per the scope's `installMode`) into each harness's skills directory. A skill
-   whose source directory IS its destination — `mdm skills add .` rediscovering
-   mdm's own canonical copies — is skipped rather than copied. The check is
+   whose source directory IS its destination - `mdm skills add .` rediscovering
+   mdm's own canonical copies - is skipped rather than copied. The check is
    `os.Stat` + `os.SameFile` at the level where both paths are known, immediately
    before the destination is emptied; a same-file guard inside `copyFile` would
    be too late, because in symlink mode the directory it would read is deleted a
    layer above it.
 7. `lock/` records the installation in the skills section of `mdm.lock`
 
-Directories a source declares for itself — `skillDirs` in `skill/`, `agentsDirs`
-in `agentfile/`, both read out of `.claude-plugin/marketplace.json` — are
+Directories a source declares for itself - `skillDirs` in `skill/`, `agentsDirs`
+in `agentfile/`, both read out of `.claude-plugin/marketplace.json` - are
 third-party input and go through `pathsafe/` before they are opened: the lexical
 `IsSafeRelDir` first, then `ResolvedContains` against the resolved search root, so
 that a directory which only looks local but is really a symlink out of the tree
@@ -536,7 +536,7 @@ is refused. A rejected entry is dropped silently. Note the asymmetry: the
 `agentfile/` guard is live, reached by `mdm agents add` and `mdm agents update`
 through `DiscoverAgentFiles`, while the `skill/` guard sits in `DiscoverSkills`,
 `GetPluginSkillPaths` and `GetPluginGroupings`, none of which any command in
-`commands/` calls today — the discovery the CLI runs is
+`commands/` calls today - the discovery the CLI runs is
 `DiscoverNodeModuleSkills`. The skills-side guard hardens a latent hazard rather
 than closing a reachable hole.
 
@@ -560,12 +560,12 @@ specifically:
   drops the lock entry, finds nothing to delete, and leaves the definition live
   in the harness with no record of it.
 - A harness with no agent-definition directory recorded is a **skip** with a
-  printed reason, not a failure — but a run that installed nothing anywhere
+  printed reason, not a failure - but a run that installed nothing anywhere
   prints no success line and exits non-zero.
 
 `mdm skills cherry-pick` → `cherrypick.go` reuses steps 1–3, then diverges:
 
-4. The skill directory is copied into `./skills/<name>` — the project's own tree,
+4. The skill directory is copied into `./skills/<name>` - the project's own tree,
    not a harness's
 5. `fork/` writes `.mdm-origin.json` (source, ref, commit, license, content hash)
    and `ATTRIBUTION.md`, and the upstream license text is copied in when the
@@ -584,7 +584,7 @@ dir path(s) and an optional `DetectInstalled()` function. If the harness also
 loads subagent persona files, set `AgentsInstallDir` (and
 `GlobalAgentsInstallDir`), plus:
 
-- `AgentFileSuffix` when the harness wants an extension other than `.md` —
+- `AgentFileSuffix` when the harness wants an extension other than `.md` -
   GitHub Copilot CLI wants `.agent.md`, Codex wants `.toml`. Writing a file
   under the wrong extension installs one the harness silently never loads.
 - `AgentFileFormat` when the harness reads TOML rather than markdown (Codex
@@ -592,7 +592,7 @@ loads subagent persona files, set `AgentsInstallDir` (and
   `AgentFileSuffix`: Copilot is markdown under a different extension, Codex
   is a different format entirely, and the two fields say which is which.
 - `AgentAlwaysMaterialize` when a symlinked definition is unsafe for this
-  harness's directory even when the format matches — true for Copilot,
+  harness's directory even when the format matches - true for Copilot,
   whose `.github/agents` sits inside a tree people commit.
 - `AgentNamePattern` to document a naming constraint mdm warns about but
   does not enforce (see `commands/agent_artifacts.go`'s `warnAgentNamePattern`).
@@ -604,7 +604,7 @@ concept, and every agent-definition path treats it as a skip.
 Resolve paths through the helpers (`SkillsInstallDir`, `AgentsInstallDirFor`,
 `CanonicalSkillsDir`, `CanonicalAgentsDir`, `UsesSharedSkillsDir`), not by
 string-comparing `SkillsDir`. The TODO on `SkillsInstallDir` lists the older
-callers that still build paths by hand — check a new layout against those too.
+callers that still build paths by hand - check a new layout against those too.
 
 ### Adding a new command
 
@@ -615,7 +615,7 @@ Create a file in `commands/`, define a `cobra.Command`, and register it either o
 Anything that writes third-party markdown into a place a model will read must
 call the `hidden_scan.go` gate first and expose `--allow-hidden-chars`. The
 README promises this for *every* install, and an install path that skips it
-makes that claim false — most sharply for agent definitions, which exist to
+makes that claim false - most sharply for agent definitions, which exist to
 become a persona the model adopts.
 
 ## Pre-PR Checklist

@@ -1,6 +1,6 @@
 # mdm agents
 
-Manage agent definitions — single files that give a harness a named
+Manage agent definitions - single files that give a harness a named
 subagent persona (e.g. Claude Code subagents). An agent definition is
 distinct from a [harness](harnesses.md), which is the AI coding tool itself,
 and distinct from a skill, which is a reusable prompt library rather than a
@@ -27,14 +27,14 @@ description = "Reviews pull requests for correctness and style issues."
 developer_instructions = "You are a meticulous code reviewer..."
 ```
 
-The markdown body and `developer_instructions` hold the same content —
+The markdown body and `developer_instructions` hold the same content -
 `mdm` converts between the two shapes as needed on install, so a definition
 authored in either format still reaches every harness regardless of which
 format that harness reads. See [Formats: markdown and
 TOML](#formats-markdown-and-toml) below.
 
 A markdown file missing `name` or `description` frontmatter, or a TOML file
-missing `name` or `description`, is not treated as an agent definition — it
+missing `name` or `description`, is not treated as an agent definition - it
 is silently skipped rather than reported as an error, since a plain file
 with no such structure is a normal thing to find in a source tree.
 
@@ -50,7 +50,7 @@ files in this order, and the **first occurrence of a name wins**:
    `agents`, `subagents`, `.claude/agents`, `.github/agents`, `.agents/agents`.
 
 Only files directly inside one of these directories are scanned (not
-subdirectories), and only files ending in `.md` or `.toml` are considered —
+subdirectories), and only files ending in `.md` or `.toml` are considered -
 this is independent of the file extension a *target* harness expects on
 install (see [GitHub Copilot's `.agent.md`
 requirement](#github-copilot-loads-only-agentmd) and [Formats: markdown and
@@ -137,7 +137,7 @@ mdm agents remove code-reviewer -y
 ```
 
 With no names, an interactive multiselect lets you choose which definitions
-to remove. `--harness` scopes the removal to specific harnesses only — the
+to remove. `--harness` scopes the removal to specific harnesses only - the
 canonical file and the lock entry are kept as long as any harness (including
 one outside the filter) still has a copy.
 
@@ -160,7 +160,7 @@ mdm agents update -g
 Re-fetches from the recorded source and ref. Definitions sharing a source
 repository and ref are re-fetched together, one clone per update run rather
 than one per definition. Every harness a definition is *currently* installed
-to is refreshed — not just the canonical copy — so a copy-mode harness
+to is refreshed - not just the canonical copy - so a copy-mode harness
 install is kept in sync too, instead of going stale.
 
 | Flag | Description |
@@ -199,12 +199,12 @@ Installing an agent definition writes it twice, mirroring how skills are
 installed:
 
 1. A canonical copy at `.agents/agents/<name>` (project scope) or
-   `~/.agents/agents/<name>` (global scope) — the one place the content
+   `~/.agents/agents/<name>` (global scope) - the one place the content
    actually lives. The extension mirrors the *source*: a markdown source
    produces `<name>.md`; a Codex TOML source produces `<name>.toml`.
 2. Something under each target harness's own agent directory, named
    `<name>` plus that harness's expected extension (`.md` for most
-   harnesses, `.agent.md` for GitHub Copilot, `.toml` for Codex) — see the
+   harnesses, `.agent.md` for GitHub Copilot, `.toml` for Codex) - see the
    [harness support table](#harness-support) below for the exact
    directories.
 
@@ -214,13 +214,13 @@ harness's directory is generated output nobody commits. Otherwise it is a
 real file: either a plain copy (install-mode `copy`, or the symlink fallback
 below) or, when the harness reads the other format, a converted copy. See
 [Formats: markdown and TOML](#formats-markdown-and-toml) for exactly when
-each case applies — notably, GitHub Copilot and Codex are real files
+each case applies - notably, GitHub Copilot and Codex are real files
 **regardless of the scope's install mode**, because a symlink is unsafe or
 impossible for both of them respectively.
 
 If a symlink cannot be created (Windows without Developer Mode or the
 symlink privilege, typically), mdm copies instead, per install, without
-recording anything — exactly the fallback `mdm skills add` uses.
+recording anything - exactly the fallback `mdm skills add` uses.
 
 ## Install mode
 
@@ -228,9 +228,9 @@ recording anything — exactly the fallback `mdm skills add` uses.
 `--symlink` flags, but a flag on either one does the same thing a flag on
 `mdm skills add` does: it switches the install mode for the whole scope,
 not just for agent definitions. Agent definitions and skills share one
-scope-wide mode — set it from either side, with `mdm agents add --copy`,
+scope-wide mode - set it from either side, with `mdm agents add --copy`,
 `mdm skills add --copy`, or the equivalent flag on `mdm agents install` /
-`mdm skills install` — and the change applies to both. `mdm agents update`
+`mdm skills install` - and the change applies to both. `mdm agents update`
 has no mode flags of its own; it obeys whatever mode the scope is already
 in. A scope in copy mode installs agent definitions as real files from the
 start; a scope in the default symlink mode links them, falling back to a
@@ -239,7 +239,7 @@ copy only when the link itself cannot be created.
 **This no longer describes every file in the scope.** Whatever mode a scope
 is in, GitHub Copilot's copy and every install that crosses formats (a
 markdown definition installed to Codex, or a Codex definition installed to
-a markdown harness) are real files regardless — `--copy` and `--symlink`
+a markdown harness) are real files regardless - `--copy` and `--symlink`
 only decide the harnesses left over: the ones that read the canonical
 format natively out of a directory that is safe to symlink into. Switching
 a scope's mode converts those; it leaves Copilot's copy and every
@@ -263,7 +263,7 @@ See [mdm doctor](doctor.md) for the full check list.
 
 These six harnesses are the ones mdm can install agent definitions to, each
 checked against its own vendor documentation. A harness that is not listed
-here has no agent-definition directory recorded in mdm — `mdm agents add`
+here has no agent-definition directory recorded in mdm - `mdm agents add`
 installs to it are skipped with a notice rather than failing, the same way a
 harness with no skills directory would be. That is a statement about what
 mdm has configured, not a claim about whether the harness itself supports
@@ -271,24 +271,24 @@ agent definitions; most other harnesses have not been checked either way.
 
 | Harness | Project directory | User directory | File extension | Format | Source |
 | --- | --- | --- | --- | --- | --- |
-| Claude Code | `.claude/agents` | `~/.claude/agents` | `.md` | markdown | [code.claude.com/docs/en/sub-agents](https://code.claude.com/docs/en/sub-agents) — checked 2026-09-03 |
-| GitHub Copilot | `.github/agents` | `~/.copilot/agents` | `.agent.md` | markdown | [docs.github.com/.../create-custom-agents-for-cli](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli) — checked 2026-09-03 |
-| OpenCode | `.opencode/agents` | `$XDG_CONFIG_HOME/opencode/agents` (default `~/.config/opencode/agents`) | `.md` | markdown | [opencode.ai/docs/agents](https://opencode.ai/docs/agents/) — checked 2026-09-03 |
-| Cursor | `.cursor/agents` | `~/.cursor/agents` | `.md` | markdown | [cursor.com/docs/subagents](https://cursor.com/docs/subagents) — checked 2026-09-03 |
-| Gemini CLI | `.gemini/agents` | `~/.gemini/agents` | `.md` | markdown | [geminicli.com/docs/core/subagents](https://geminicli.com/docs/core/subagents/) — checked 2026-09-03 |
-| Codex | `.codex/agents` | `$CODEX_HOME/agents` (default `~/.codex/agents`) | `.toml` | **TOML** | [learn.chatgpt.com/docs/agent-configuration/subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents) — checked 2026-09-05 |
+| Claude Code | `.claude/agents` | `~/.claude/agents` | `.md` | markdown | [code.claude.com/docs/en/sub-agents](https://code.claude.com/docs/en/sub-agents) - checked 2026-09-03 |
+| GitHub Copilot | `.github/agents` | `~/.copilot/agents` | `.agent.md` | markdown | [docs.github.com/.../create-custom-agents-for-cli](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli) - checked 2026-09-03 |
+| OpenCode | `.opencode/agents` | `$XDG_CONFIG_HOME/opencode/agents` (default `~/.config/opencode/agents`) | `.md` | markdown | [opencode.ai/docs/agents](https://opencode.ai/docs/agents/) - checked 2026-09-03 |
+| Cursor | `.cursor/agents` | `~/.cursor/agents` | `.md` | markdown | [cursor.com/docs/subagents](https://cursor.com/docs/subagents) - checked 2026-09-03 |
+| Gemini CLI | `.gemini/agents` | `~/.gemini/agents` | `.md` | markdown | [geminicli.com/docs/core/subagents](https://geminicli.com/docs/core/subagents/) - checked 2026-09-03 |
+| Codex | `.codex/agents` | `$CODEX_HOME/agents` (default `~/.codex/agents`) | `.toml` | **TOML** | [learn.chatgpt.com/docs/agent-configuration/subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents) - checked 2026-09-05 |
 
 Both directories, project and user, hold plain markdown files with `name`
 and `description` frontmatter for every harness above except GitHub Copilot
 (whose files additionally need the `.agent.md` extension, covered below) and
-Codex, which reads TOML instead of markdown — see [Formats: markdown and
+Codex, which reads TOML instead of markdown - see [Formats: markdown and
 TOML](#formats-markdown-and-toml) below.
 
 ### GitHub Copilot loads only `.agent.md`
 
 Copilot CLI reads agent definitions **only** from files ending in
 `.agent.md`. A plain `.md` file placed in `.github/agents` or
-`~/.copilot/agents` is silently never read — there is no error, no warning,
+`~/.copilot/agents` is silently never read - there is no error, no warning,
 it just never loads. `mdm` accounts for this automatically (see
 [Install layout](#install-layout) above), but if you are placing a file by
 hand rather than through `mdm agents add`, name it accordingly.
@@ -300,7 +300,7 @@ directory (`~/.copilot/agents`) takes precedence over the **project**
 directory (`.github/agents`) one. This is confirmed from Copilot's own
 documentation, not a guess, and it is the **opposite** of Claude Code (where
 the project definition wins) and the opposite of how mdm's own skills
-scoping behaves. It is deliberate and specific to Copilot CLI — do not
+scoping behaves. It is deliberate and specific to Copilot CLI - do not
 expect it to generalize.
 
 For OpenCode, Cursor, and Gemini CLI, no such precedence rule is confirmed
@@ -311,16 +311,16 @@ assuming either side wins.
 ### Codex reads TOML, not markdown
 
 Codex supports custom agents as standalone `.toml` files (`.codex/agents`
-for project scope, `$CODEX_HOME/agents` — `~/.codex/agents` by default —
+for project scope, `$CODEX_HOME/agents` - `~/.codex/agents` by default -
 for user scope), with required fields `name`, `description`, and
 `developer_instructions`. Source:
 [learn.chatgpt.com/docs/agent-configuration/subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents)
-— checked 2026-09-05.
+- checked 2026-09-05.
 
 `mdm agents add` installs to Codex like any other harness: point it at a
 source holding markdown definitions, TOML definitions, or a mix of both, and
 add `codex` to `--harness` (or accept it from the interactive picker, or
-`*`). A markdown source is converted to TOML on the way in — no more risk of
+`*`). A markdown source is converted to TOML on the way in - no more risk of
 handing Codex a `.md` file it silently never reads. See [Formats: markdown
 and TOML](#formats-markdown-and-toml) below for exactly how the conversion
 works and what its edges are.
@@ -361,7 +361,7 @@ An install into a harness's own directory is a symlink back to the
 canonical file only when *both* are true: the harness reads the same
 format the canonical file is already in, and the harness's directory is
 generated output nobody is expected to commit. Otherwise it is a real file
-— a plain copy, or, when the formats differ, a converted copy:
+- a plain copy, or, when the formats differ, a converted copy:
 
 | Canonical format | Harness | Result |
 | --- | --- | --- |
@@ -377,7 +377,7 @@ whenever the source is markdown. GitHub Copilot fails the second clause
 regardless of format: `.github/agents` sits inside `.github`, which holds
 workflows and CODEOWNERS and is never gitignored wholesale, and GitHub
 documents repo-scoped agents as the way to share them through a
-repository — a symlink committed there arrives on a teammate's Windows
+repository - a symlink committed there arrives on a teammate's Windows
 checkout as a text file containing a path, not the agent definition.
 
 This is what **Install mode** above means by "no longer describes every
@@ -390,12 +390,12 @@ mode the scope records, and switching modes does not touch them.
 
 Claude Code and Gemini CLI require the frontmatter `name` to match a
 specific pattern (lowercase with hyphens, for example). mdm does not
-normalize a definition's name to fit — the source owns it, and rewriting it
+normalize a definition's name to fit - the source owns it, and rewriting it
 per target harness would force every install of that definition to be a
 real file, since a symlink hands the harness the source's bytes verbatim.
 When a definition's name will not satisfy a target harness's documented
 pattern, `mdm agents add` warns, naming the definition and the harness, and
-installs it anyway — the alternative is an install that reports success and
+installs it anyway - the alternative is an install that reports success and
 is then silently ignored by that harness.
 
 The name is still sanitized once, to build the file name mdm writes to disk
@@ -403,6 +403,6 @@ and the lock key it is tracked under (`code-reviewer` for a definition named
 `Code Reviewer`, for instance). That sanitized form, not the raw
 frontmatter, is what has to be unique: if a markdown definition and a TOML
 definition sanitize to the same name, the second one to install is refused
-and the error names both files — accepting it would silently change which
+and the error names both files - accepting it would silently change which
 format that name's canonical file is in, and re-convert every harness that
 already has it.

@@ -28,7 +28,7 @@ func buildAgentArtifactsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "agents",
 		Short: "Manage agent definitions for AI harnesses",
-		Long: fmt.Sprintf(`Manage agent definitions — single markdown files that give a harness
+		Long: fmt.Sprintf(`Manage agent definitions - single markdown files that give a harness
 a named subagent persona (e.g. Claude Code subagents), distinct from the
 reusable prompt libraries %smdm skills%s installs.
 
@@ -319,8 +319,8 @@ func agentNameCharsFor(pattern string) string {
 
 // warnAgentNamePattern warns once, naming every target harness whose
 // documented naming rule this definition's frontmatter name does not
-// satisfy. mdm does not rewrite the name — the source owns it, which is what
-// keeps a symlink install possible — so the install still happens; this only
+// satisfy. mdm does not rewrite the name - the source owns it, which is what
+// keeps a symlink install possible - so the install still happens; this only
 // says what to fix.
 func warnAgentNamePattern(rawName string, harnesses []string) {
 	var bad []string
@@ -378,7 +378,7 @@ func installAgentsForHarnesses(agents []*agentfile.AgentFile, harnesses []string
 		// "code-reviewer"). Installing both would write one canonical file and
 		// count two, so the name belongs to whichever source claimed it first.
 		if prior, ok := claimed[name]; ok {
-			ui.LogWarn(fmt.Sprintf("%s: %s and %s both install as %s — skipping the second, rename one of them", a.Name, prior, a.Path, name))
+			ui.LogWarn(fmt.Sprintf("%s: %s and %s both install as %s - skipping the second, rename one of them", a.Name, prior, a.Path, name))
 			continue
 		}
 		claimed[name] = a.Path
@@ -407,7 +407,7 @@ func installAgentsForHarnesses(agents []*agentfile.AgentFile, harnesses []string
 		}
 
 		for _, reason := range skipReasons {
-			ui.LogInfo(fmt.Sprintf("%s: skipped — %s", a.Name, reason))
+			ui.LogInfo(fmt.Sprintf("%s: skipped - %s", a.Name, reason))
 		}
 
 		if !installedAny {
@@ -814,7 +814,7 @@ func runAgentRemove(positional []string, opts AgentOptions) {
 		case fullyRemoved:
 			ui.LogSuccess("Removed " + name)
 		default:
-			ui.LogWarn(fmt.Sprintf("%s: removed from the given harness(es), but it is still installed elsewhere — keeping the definition and its lock entry", name))
+			ui.LogWarn(fmt.Sprintf("%s: removed from the given harness(es), but it is still installed elsewhere - keeping the definition and its lock entry", name))
 		}
 	}
 	fmt.Println()
@@ -879,8 +879,8 @@ func restoreAgentsFromLock(opts restoreOptions) {
 			restoreAgentsMap(localAgents, false, opts, cwd)
 		} else {
 			idx, ok := ui.UiSelect("Restore agent definitions from which lock file?", []ui.UIOption{
-				{Label: fmt.Sprintf("Local  — %d agent definition(s)", len(localAgents)), Hint: lock.GetProjectLockPath(cwd)},
-				{Label: fmt.Sprintf("Global — %d agent definition(s)", len(globalAgents)), Hint: lock.GetGlobalStatePath()},
+				{Label: fmt.Sprintf("Local  - %d agent definition(s)", len(localAgents)), Hint: lock.GetProjectLockPath(cwd)},
+				{Label: fmt.Sprintf("Global - %d agent definition(s)", len(globalAgents)), Hint: lock.GetGlobalStatePath()},
 			})
 			if !ok {
 				return
@@ -949,7 +949,7 @@ func buildAgentsUpdateCmd() *cobra.Command {
 Definitions that share a source repository and target ref are re-fetched
 together, so a repo holding many agent definitions is cloned once per
 update run rather than once per definition. Every harness a definition is
-currently installed to is refreshed — not just the canonical copy — so a
+currently installed to is refreshed - not just the canonical copy - so a
 copy-mode harness install picks up the change too, instead of going stale.
 
 %sExamples:%s
@@ -1086,7 +1086,7 @@ func runAgentUpdateGroups(groups []updateGroup, global bool, cwd string, allowHi
 			// One lock key matches every definition whose name sanitizes to it,
 			// and they would all be written to the one canonical file.
 			if prior, ok := claimed[name]; ok {
-				ui.LogWarn(fmt.Sprintf("%s: %s and %s both install as %s — skipping the second, rename one of them", a.Name, prior, a.Path, name))
+				ui.LogWarn(fmt.Sprintf("%s: %s and %s both install as %s - skipping the second, rename one of them", a.Name, prior, a.Path, name))
 				continue
 			}
 			claimed[name] = a.Path
@@ -1104,10 +1104,10 @@ func runAgentUpdateGroups(groups []updateGroup, global bool, cwd string, allowHi
 			// thing that may have moved on: installAgentFile writes it before
 			// the first harness write, so it can hold the new bytes while the
 			// lock and every harness hold the old ones. The entry is not this
-			// run's to rewrite for that alone — the recorded source is what
+			// run's to rewrite for that alone - the recorded source is what
 			// every harness is still running.
 			if !installedAny {
-				ui.LogWarn(fmt.Sprintf("%s: update failed for every installed harness (%s) — lock entry left unchanged", a.Name, strings.Join(failedHarnesses, ", ")))
+				ui.LogWarn(fmt.Sprintf("%s: update failed for every installed harness (%s) - lock entry left unchanged", a.Name, strings.Join(failedHarnesses, ", ")))
 				continue
 			}
 			if len(failedHarnesses) == 0 {

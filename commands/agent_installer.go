@@ -78,8 +78,8 @@ func sameFileOnDisk(a, b string) bool {
 // the destination O_TRUNC first, which would empty the file it then reads.
 //
 // The copy replaces dst rather than being written into it. In symlink mode the
-// canonical file is not a spare copy — it is what every harness symlink
-// resolves to — so truncating it in place is a window in which every harness
+// canonical file is not a spare copy - it is what every harness symlink
+// resolves to - so truncating it in place is a window in which every harness
 // reads a zero-length definition, and a crash inside that window leaves it that
 // way with nothing to restore it from.
 func copyAgentFileUnlessSame(src, dst string) error {
@@ -155,7 +155,7 @@ func checkAgentFormatCollision(name string, format agentfile.Format, sourcePath 
 	if _, err := os.Stat(existing); err != nil {
 		return nil
 	}
-	return fmt.Errorf("%s already has a canonical file at %s, and %s is %s — remove the existing definition with `mdm agents remove %s` before adding the same name in the other format",
+	return fmt.Errorf("%s already has a canonical file at %s, and %s is %s - remove the existing definition with `mdm agents remove %s` before adding the same name in the other format",
 		name, existing, sourcePath, format, name)
 }
 
@@ -228,7 +228,7 @@ func reportAgentFailure(displayName string, f *agentFailures) {
 
 // replaceFilePath has build write the new content of path under a reserved
 // sibling name, then renames that over path. The rename replaces the name
-// itself, so whatever path held — a symlink included — is discarded rather than
+// itself, so whatever path held - a symlink included - is discarded rather than
 // written through, and path never holds a partial file: until the rename it
 // holds its previous content, and after it holds all of the new one. Writing
 // into path can do neither, because both os.WriteFile and copyFile open the
@@ -264,8 +264,8 @@ func replaceFileFrom(src, dst string) error {
 
 // writeMaterializedAgent writes already-encoded bytes into the harness's own
 // directory as a real file. The path is replaced rather than written to: a
-// symlink can already be there — GitHub documents committing .github/agents, so
-// a teammate on a platform with symlinks can commit one — and writing through it
+// symlink can already be there - GitHub documents committing .github/agents, so
+// a teammate on a platform with symlinks can commit one - and writing through it
 // would put this harness's re-encoding in the canonical file every other harness
 // links at, while leaving the install a link where the harness needs a real file.
 func writeMaterializedAgent(data []byte, harnessDir, harnessPath, canonicalPath string, mode InstallMode) InstallResult {

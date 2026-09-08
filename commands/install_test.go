@@ -81,7 +81,7 @@ func seedAgentsOnlyLock(t *testing.T, cwd, src string) {
 
 // Mutation this test catches: computing the presence check from the skills
 // sections alone. A project whose lock holds only agent definitions is then
-// told there is no lock, and pointed at `mdm skills add` — which is not the
+// told there is no lock, and pointed at `mdm skills add` - which is not the
 // command that would fix anything for it.
 func TestSkillRestoreOnAnAgentsOnlyLockDoesNotDenyTheLock(t *testing.T) {
 	isolateHome(t)

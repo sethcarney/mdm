@@ -16,7 +16,7 @@ Every install path is gated, not just `mdm skills add`. That covers
 `skills add`, `skills install`, `skills sync`, `skills update`,
 `skills cherry-pick`, `agents add`, `agents install`, `agents update`,
 `knowledge add`, `knowledge install`, `knowledge update`, `plugins add`,
-`plugins install` and `plugins update` — each exposes `--allow-hidden-chars`.
+`plugins install` and `plugins update` - each exposes `--allow-hidden-chars`.
 Agent definitions matter most sharply here, because they exist to become a
 persona the model adopts.
 

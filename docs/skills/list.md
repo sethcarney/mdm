@@ -59,7 +59,7 @@ mdm skills list --json
 
 ## JSON output
 
-With `--json`, each skill entry includes (field names are capitalized, matching Go's default JSON marshaling — the harness-name array keeps the key `Agents` for output-compatibility with earlier releases):
+With `--json`, each skill entry includes (field names are capitalized, matching Go's default JSON marshaling - the harness-name array keeps the key `Agents` for output-compatibility with earlier releases):
 
 ```json
 [

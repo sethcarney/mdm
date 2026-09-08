@@ -322,7 +322,7 @@ func TestAgentStatusForFlagsMissingCanonical(t *testing.T) {
 
 // Mutation this test catches: agentInstalledHarnesses (and so
 // agentStatusFor) reporting a harness as installed after its own copy was
-// deleted directly on disk, without going through mdm — e.g. hardcoding
+// deleted directly on disk, without going through mdm - e.g. hardcoding
 // InstalledIn from the harnesses requested at install time instead of
 // checking the filesystem.
 func TestAgentStatusForReportsPerHarnessBreakage(t *testing.T) {
@@ -425,7 +425,7 @@ func TestAgentsUpdateRefreshesCopyModeHarnessInstalls(t *testing.T) {
 
 // The symmetric case of the copy-mode test above: a symlink-mode scope must
 // still have a real symlink at the harness path after an update, not a copy
-// — mode correctness runs both directions.
+// - mode correctness runs both directions.
 func TestAgentsUpdateKeepsSymlinkModeHarnessInstallsAsSymlinks(t *testing.T) {
 	cwd := t.TempDir()
 	// No lock.SetInstallMode call: the default (unrecorded) mode is symlink.
@@ -802,7 +802,7 @@ func TestInstallAgentsForHarnessesRecordsTheCanonicalFormat(t *testing.T) {
 
 // Mutation this test catches: removing the collision check, which lets the
 // install succeed and leaves one name with two canonical files in two
-// formats — and silently changes the format every harness gets.
+// formats - and silently changes the format every harness gets.
 func TestAddingTheSameNameInTheOtherFormatIsRefused(t *testing.T) {
 	cwd := t.TempDir()
 	installCriticTo(t, cwd, []string{"claude-code"})

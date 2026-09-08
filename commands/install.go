@@ -30,7 +30,7 @@ func buildInstallFromLockCmd(ver string) *cobra.Command {
 		Short: "Restore skills, then agent definitions, from " + lockName,
 		Long: `Restore every skill recorded in ` + lockName + `, then every agent
 definition recorded there too, each re-fetched from its original source
-and ref. Intended for CI and onboarding — run it after cloning a repo to
+and ref. Intended for CI and onboarding - run it after cloning a repo to
 get everything back without remembering each package source.`,
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
@@ -89,8 +89,8 @@ func restoreSkillsFromCurrentLock(opts restoreOptions, cwd string) {
 	switch {
 	case !hasLocal && !hasGlobal:
 		// A lock holding only agent definitions is still a lock. The agent
-		// restore step reports those, so announcing there is none here — and
-		// pointing at `mdm skills add` — would be wrong.
+		// restore step reports those, so announcing there is none here - and
+		// pointing at `mdm skills add` - would be wrong.
 		if hasAgents {
 			return
 		}
@@ -166,7 +166,7 @@ type sourceRef struct {
 	ref    string
 }
 
-// sourceGroup is a set of lock entries (names only — skill names, agent
+// sourceGroup is a set of lock entries (names only - skill names, agent
 // definition names, whatever the caller is restoring) that resolve to the
 // same source at the same target ref. Every group costs exactly one fetch.
 type sourceGroup struct {

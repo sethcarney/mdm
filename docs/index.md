@@ -12,7 +12,7 @@ hide:
 
 <p class="mdm-hero__tagline">
 The markdown management CLI. Install skills, keep every harness's instruction file
-in sync, and audit them all for prompt-injection risks — from one fast, Go-native tool.
+in sync, and audit them all for prompt-injection risks - from one fast, Go-native tool.
 <strong>No telemetry. Fully open source.</strong>
 </p>
 

@@ -52,7 +52,7 @@ func buildCherryPickCmd(ver string) *cobra.Command {
 		Long: fmt.Sprintf(`Copy selected skills out of someone else's repository and into your own,
 so you can edit them and ship them as yours.
 
-Unlike %smdm skills add%s — which installs a skill into each harness's skills
+Unlike %smdm skills add%s - which installs a skill into each harness's skills
 directory and tracks the upstream source so %smdm skills update%s can replace it
 - cherry-pick vendors the skill into ./%s, where it becomes part of your
 repository. Nothing overwrites it afterwards; divergence from upstream is the
@@ -495,8 +495,8 @@ func printCherryPickSummary(forked []string, licenses map[string]licenseInfo, op
 
 // clobbersForks reports whether installing to this harness would write over the
 // forks directory itself. Installing a skill replaces the harness's <skills
-// dir>/<name>, so when that directory is the forks directory — OpenClaw reads
-// ./skills, mdm's own default — the install would destroy the very source it is
+// dir>/<name>, so when that directory is the forks directory - OpenClaw reads
+// ./skills, mdm's own default - the install would destroy the very source it is
 // installing from.
 func clobbersForks(harnessName string, global bool, cwd, forksRoot string) bool {
 	forksAbs, err := filepath.Abs(forksRoot)

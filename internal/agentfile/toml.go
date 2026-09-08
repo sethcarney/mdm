@@ -190,7 +190,7 @@ func walkNilSlice(rv reflect.Value, path string) (string, bool) {
 // parseAgentTOML already keeps all three out of Extra, so a TOML source can
 // never carry one. A markdown source can: ParseAgentMd only filters name and
 // description, because in markdown the body, not a frontmatter key, is the
-// instructions — so frontmatter may legitimately hold a key of that name and
+// instructions - so frontmatter may legitimately hold a key of that name and
 // markdown encoding keeps it beside the body.
 var reservedTOMLKeys = []struct{ key, holds string }{
 	{"name", "name"},
@@ -203,7 +203,7 @@ var reservedTOMLKeys = []struct{ key, holds string }{
 //
 // It refuses a definition whose Extra carries one of those three key names.
 // The Extra loop below writes into the same table, so such a key would
-// silently replace what the definition itself says — a frontmatter
+// silently replace what the definition itself says - a frontmatter
 // developer_instructions would reach Codex as the whole of the agent's
 // instructions with the real body dropped. It refuses a nil value for the
 // same reason: TOML has no null, and the encoder writes nothing for one, so
@@ -216,7 +216,7 @@ func encodeTOML(a *AgentFile) ([]byte, error) {
 	}
 	for _, r := range reservedTOMLKeys {
 		if _, ok := a.Extra[r.key]; ok {
-			return nil, fmt.Errorf("cannot encode %q: TOML writes the definition's %s under that key, so a frontmatter key of the same name would replace it — rename or remove the key", r.key, r.holds)
+			return nil, fmt.Errorf("cannot encode %q: TOML writes the definition's %s under that key, so a frontmatter key of the same name would replace it - rename or remove the key", r.key, r.holds)
 		}
 	}
 	doc := map[string]any{

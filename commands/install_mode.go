@@ -333,9 +333,9 @@ func materializeLinkReplacement(installDir, name, resolved string, srcInfo os.Fi
 // link right up to the moment it holds the copy, and a failed rename leaves it
 // exactly as it was, with nothing to restore.
 //
-// A directory cannot be renamed over a symlink — MoveFileEx will not replace a
+// A directory cannot be renamed over a symlink - MoveFileEx will not replace a
 // reparse point with a directory, and rename(2) refuses a directory over a
-// non-directory — so that link is renamed aside first and renamed back if the
+// non-directory - so that link is renamed aside first and renamed back if the
 // move in fails. A rename, not a fresh createSymlink: copy mode exists for hosts
 // that are not allowed to create a symlink at all, and a link can be sitting
 // there anyway, cloned or committed by a teammate. There, restoring by creating

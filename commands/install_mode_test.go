@@ -142,7 +142,7 @@ func failRenameNth(t *testing.T, n int) {
 }
 
 // failSymlink swaps symlinkFn for one that always errors, standing in for a
-// Windows host without the symlink privilege — the host class copy mode exists
+// Windows host without the symlink privilege - the host class copy mode exists
 // for. Shared mutable state, so not parallel-safe.
 func failSymlink(t *testing.T) {
 	t.Helper()
@@ -694,7 +694,7 @@ func TestInstallForksDoesNotConvertWhenEveryHarnessIsDropped(t *testing.T) {
 //
 // Each command's Run is replaced with a stub first. Cobra rejects the pair in
 // ValidateFlagGroups, before Run, so the real handler must never be reached
-// here — and reaching it is not harmless. "o/r" is a GitHub shorthand: with a
+// here - and reaching it is not harmless. "o/r" is a GitHub shorthand: with a
 // MarkFlagsMutuallyExclusive registration lost, which is the one regression
 // this test exists to catch, `add` and `agents add` would clone
 // https://github.com/o/r.git for real and then call os.Exit(1) on the
@@ -900,7 +900,7 @@ func TestRematerializeFileFailureLeavesSymlinkUnchanged(t *testing.T) {
 
 // A file is renamed straight over its link, so the install path is never
 // emptied first and a failed rename needs no recovery: the link is still there,
-// exactly as it was. failSymlink is what makes that load-bearing — a conversion
+// exactly as it was. failSymlink is what makes that load-bearing - a conversion
 // that removes the link first can only put one back by creating it, and this
 // host cannot.
 //
@@ -1184,8 +1184,8 @@ func TestApplyScopeInstallModeKeepsOneCanonicalFileForASuffixedHarness(t *testin
 // copyToLink is reached only through scopeAgentInstallPaths, which marks every
 // harness reading its own extension as materialized, so no production path can
 // now hand it a canonicalName differing from the target's basename. The guard
-// stays reachable by a plausible harness — a custom extension in a directory
-// nobody commits — so it is exercised here directly, with no wiring in front.
+// stays reachable by a plausible harness - a custom extension in a directory
+// nobody commits - so it is exercised here directly, with no wiring in front.
 func TestCopyToLinkUsesTheGivenCanonicalName(t *testing.T) {
 	if !symlinkProbe(t) {
 		t.Skip("symlinks unavailable on this host; a copy here proves nothing")

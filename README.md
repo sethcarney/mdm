@@ -24,7 +24,7 @@ Managing markdown across multiple agentic coding tools is more painful than it s
 - **Reproducible installs.** Repos can commit an `mdm.lock` with their recommended skills, knowledge bundles, and plugins so new teammates run `mdm skills install` once and onboard with whatever harness they prefer.
 - **Security-focused by default.** Every install runs a deterministic local scan for hidden characters and prompt-smuggling patterns, and `mdm skills audit` checks for updates and OSV security advisories.
 - **Knowledge bundles.** `mdm knowledge` installs, validates, and updates [Open Knowledge Format (OKF)](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf) bundles for AI harnesses.
-- **Agent Plugins.** `mdm plugins` installs, validates, and updates [Agent Plugins](https://agent-plugins.org) — portable packages of skills and MCP servers — and wires their MCP servers into each harness's config.
+- **Agent Plugins.** `mdm plugins` installs, validates, and updates [Agent Plugins](https://agent-plugins.org) - portable packages of skills and MCP servers - and wires their MCP servers into each harness's config.
 - **Agent definitions.** `mdm agents` installs subagent persona files (e.g. Claude Code subagents) into each harness that supports them.
 - **No telemetry, fully open source.**
 
@@ -114,9 +114,9 @@ Run `mdm --help` for the full command reference. See [docs/rules.md](docs/rules.
 > in a directory no harness claims. Every other harness uses a dot-prefixed or shared
 > directory. See [Troubleshooting](https://sethcarney.github.io/mdm/troubleshooting/).
 
-Every install path — skills, agent definitions, knowledge bundles and plugins — runs a deterministic local hidden-character scan over markdown files before copying or symlinking content, and each exposes `--allow-hidden-chars` to override it deliberately. See [docs/security/hidden-character-scan.md](docs/security/hidden-character-scan.md) for the exact checks and bypass policy.
+Every install path - skills, agent definitions, knowledge bundles and plugins - runs a deterministic local hidden-character scan over markdown files before copying or symlinking content, and each exposes `--allow-hidden-chars` to override it deliberately. See [docs/security/hidden-character-scan.md](docs/security/hidden-character-scan.md) for the exact checks and bypass policy.
 
-`mdm agents add` additionally refuses any directory a source declares for itself (an `agentsDirs` entry in `.claude-plugin/marketplace.json`) that would leave the source tree — a parent escape, a rooted path, or a directory that resolves through a symlink to somewhere else on your disk. Such an entry is dropped silently; the source's legitimate directories still install.
+`mdm agents add` additionally refuses any directory a source declares for itself (an `agentsDirs` entry in `.claude-plugin/marketplace.json`) that would leave the source tree - a parent escape, a rooted path, or a directory that resolves through a symlink to somewhere else on your disk. Such an entry is dropped silently; the source's legitimate directories still install.
 
 When installing from a git source, mdm restricts git to the **https** and **ssh** transports. This blocks git's `ext::`/`fd::` local-command transports, which would otherwise let a repository source string - including one replayed from a checked-in `mdm.lock` - execute arbitrary commands. See [docs/security/git-transport-restrictions.md](docs/security/git-transport-restrictions.md) for the rationale and the full allow/deny list.
 
@@ -192,9 +192,9 @@ they can be committed and edited as your own. See
 
 ### Agent definitions
 
-`mdm agents` writes agent definitions the same way — a canonical copy plus a
+`mdm agents` writes agent definitions the same way - a canonical copy plus a
 link or a real copy per harness, governed by the same scope-wide install
-mode — and the same "commit `mdm.lock`, not the files it produces" rule
+mode - and the same "commit `mdm.lock`, not the files it produces" rule
 applies. **But `--copy` and `--symlink` no longer describe every file in
 the scope.** GitHub Copilot's own copy, and any install that crosses
 formats (a markdown definition installed to Codex, or a Codex TOML
@@ -208,7 +208,7 @@ into that is not meant to be ignored by default: GitHub documents it as the
 way to share agents through the repository, so mdm always writes a real
 file there, never a symlink. If your team does not want that,
 `.github/agents` can be gitignored on its own line while the rest of
-`.github` — workflows, CODEOWNERS, `copilot-instructions.md` — stays
+`.github` - workflows, CODEOWNERS, `copilot-instructions.md` - stays
 tracked:
 
 ```gitignore

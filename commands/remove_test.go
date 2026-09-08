@@ -52,14 +52,14 @@ func TestRemoveSkillScopedToOneHarnessKeepsCanonicalAndLock(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !contains(retained, "roo") {
-		t.Errorf("retained = %v, want it to name roo — roo still has the skill", retained)
+		t.Errorf("retained = %v, want it to name roo - roo still has the skill", retained)
 	}
 
 	if _, statErr := os.Lstat(filepath.Join(cwd, ".claude", "skills", "demo")); !os.IsNotExist(statErr) {
 		t.Errorf("claude-code's install should be gone, stat err = %v", statErr)
 	}
 	// os.Stat follows the link, so this fails if the canonical directory was
-	// deleted out from under it — the dangling-symlink damage, not just the
+	// deleted out from under it - the dangling-symlink damage, not just the
 	// absence of the link itself.
 	if _, statErr := os.Stat(filepath.Join(rooLink, "SKILL.md")); statErr != nil {
 		t.Errorf("roo's install must still resolve to a real skill: %v", statErr)
@@ -125,7 +125,7 @@ func TestRemoveSkillWithNoHarnessFilterRemovesEverything(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(retained) != 0 {
-		t.Errorf("retained = %v, want none — the skill was removed everywhere", retained)
+		t.Errorf("retained = %v, want none - the skill was removed everywhere", retained)
 	}
 	for _, dir := range []string{".claude", ".roo"} {
 		if _, statErr := os.Lstat(filepath.Join(cwd, dir, "skills", "demo")); !os.IsNotExist(statErr) {

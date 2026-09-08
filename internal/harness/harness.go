@@ -29,7 +29,7 @@ type HarnessConfig struct {
 
 	// SharedSkillsDir is true when this harness reads skills from the shared
 	// .agents/skills directory. Skills installed there are available
-	// automatically — no per-harness skills directory needs to be configured.
+	// automatically - no per-harness skills directory needs to be configured.
 	SharedSkillsDir bool
 
 	// NativeInstructions is true when this harness reads AGENTS.md natively or
@@ -39,7 +39,7 @@ type HarnessConfig struct {
 
 	// AgentsInstallDir is the project-relative directory this harness reads
 	// agent definitions from. Empty means mdm has no directory recorded for
-	// this harness, and an install skips it with a notice — not a claim that
+	// this harness, and an install skips it with a notice - not a claim that
 	// the harness lacks the concept. GlobalAgentsInstallDir is the user-level one.
 	AgentsInstallDir       string
 	GlobalAgentsInstallDir string
@@ -164,7 +164,7 @@ func Reload() {
 			InstructionsFile:   ".cursorrules",
 			SharedSkillsDir:    true,
 			NativeInstructions: false,
-			// https://cursor.com/docs/subagents — checked 2026-09-03. Project
+			// https://cursor.com/docs/subagents - checked 2026-09-03. Project
 			// and user dirs both hold plain .md files with name/description
 			// frontmatter.
 			AgentsInstallDir:       ".cursor/agents",
@@ -179,12 +179,12 @@ func Reload() {
 			InstructionsFile:   "GEMINI.md",
 			SharedSkillsDir:    true,
 			NativeInstructions: false,
-			// https://geminicli.com/docs/core/subagents/ — checked 2026-09-03.
+			// https://geminicli.com/docs/core/subagents/ - checked 2026-09-03.
 			// Project and user dirs both hold plain .md files.
 			AgentsInstallDir:       ".gemini/agents",
 			GlobalAgentsInstallDir: filepath.Join(home, ".gemini/agents"),
 			// https://github.com/google-gemini/gemini-cli/blob/main/docs/core/subagents.md
-			// — checked 2026-09-05. Lowercase letters, digits, hyphens,
+			// - checked 2026-09-05. Lowercase letters, digits, hyphens,
 			// underscores.
 			AgentNamePattern: "lowercase letters, digits, hyphens, underscores",
 			DetectInstalled:  func() bool { return pathExists(filepath.Join(home, ".gemini")) },
@@ -198,7 +198,7 @@ func Reload() {
 			SharedSkillsDir:    true,
 			NativeInstructions: false,
 			// https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli
-			// — checked 2026-09-03. Copilot CLI loads only files ending
+			// - checked 2026-09-03. Copilot CLI loads only files ending
 			// ".agent.md". That page confirms the precedence: a user file in
 			// ~/.copilot/agents beats the project's .github/agents, the
 			// opposite of claude-code. Deliberate; do not align it with those.
@@ -231,7 +231,7 @@ func Reload() {
 		},
 		// Codex has custom agents: standalone .toml files (name, description,
 		// developer_instructions) in .codex/agents and ~/.codex/agents.
-		// https://learn.chatgpt.com/docs/agent-configuration/subagents —
+		// https://learn.chatgpt.com/docs/agent-configuration/subagents -
 		// checked 2026-09-05.
 		"codex": {
 			Name:                   "codex",
@@ -282,7 +282,7 @@ func Reload() {
 			InstructionsFile:   "AGENTS.md",
 			SharedSkillsDir:    true,
 			NativeInstructions: true,
-			// https://opencode.ai/docs/agents/ — checked 2026-09-03. The
+			// https://opencode.ai/docs/agents/ - checked 2026-09-03. The
 			// loader uses the plural "agents" in both directories.
 			AgentsInstallDir:       ".opencode/agents",
 			GlobalAgentsInstallDir: filepath.Join(configHome, "opencode/agents"),
@@ -336,12 +336,12 @@ func Reload() {
 			InstructionsFile:   "CLAUDE.md",
 			SharedSkillsDir:    false,
 			NativeInstructions: false,
-			// https://code.claude.com/docs/en/sub-agents — checked 2026-09-03.
+			// https://code.claude.com/docs/en/sub-agents - checked 2026-09-03.
 			// Project and user dirs both hold plain .md files with name and
 			// description frontmatter, scanned recursively.
 			AgentsInstallDir:       ".claude/agents",
 			GlobalAgentsInstallDir: filepath.Join(claudeHome, "agents"),
-			// https://code.claude.com/docs/en/sub-agents — checked
+			// https://code.claude.com/docs/en/sub-agents - checked
 			// 2026-09-05. Lowercase letters and hyphens; must not contain ":".
 			AgentNamePattern: "lowercase letters and hyphens, no colon",
 			DetectInstalled:  func() bool { return pathExists(claudeHome) },

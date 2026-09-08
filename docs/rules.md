@@ -2,7 +2,7 @@
 
 Manage project-level instruction files for AI harnesses.
 
-`AGENTS.md` is the universal source of truth. It is read natively by Codex CLI, Gemini CLI, OpenCode, and Replit. `mdm rules link` symlinks every other harness's instruction file — `CLAUDE.md`, `.cursorrules`, `.windsurfrules`, `.clinerules`, etc. — to `AGENTS.md` so every tool reads the same content from one place.
+`AGENTS.md` is the universal source of truth. It is read natively by Codex CLI, Gemini CLI, OpenCode, and Replit. `mdm rules link` symlinks every other harness's instruction file - `CLAUDE.md`, `.cursorrules`, `.windsurfrules`, `.clinerules`, etc. - to `AGENTS.md` so every tool reads the same content from one place.
 
 ## Why AGENTS.md?
 
@@ -50,7 +50,7 @@ The command scans your project for any known instruction files that already cont
 
 ### Step 2 - Select your tools
 
-A searchable multiselect shows harnesses that have a unique instruction file. Harnesses that read `AGENTS.md` natively (Codex, Gemini CLI, OpenCode, Replit, etc.) are shown in a locked panel on the right — they need no symlinking and are always covered. Harnesses you have previously configured or that are detected as installed are pre-checked.
+A searchable multiselect shows harnesses that have a unique instruction file. Harnesses that read `AGENTS.md` natively (Codex, Gemini CLI, OpenCode, Replit, etc.) are shown in a locked panel on the right - they need no symlinking and are always covered. Harnesses you have previously configured or that are detected as installed are pre-checked.
 
 ```
 Which AI tools are you using in this project?  │  always included:
@@ -148,7 +148,7 @@ mdm rules status --json
 !!! note "The JSON field is still called `agents`"
     `mdm rules status --json` keeps the harness-name array under the key
     `"agents"` for output-compatibility with scripts written against earlier
-    releases — even though the human-readable table above says `harnesses:`.
+    releases - even though the human-readable table above says `harnesses:`.
     This is a deliberate, narrow exception; it does not affect anything else
     documented on this page.
 
@@ -172,7 +172,7 @@ Remove 2 symlink(s)? [y/N]
 Pass `--harness` to skip the picker and target specific harnesses directly, or `-y` to skip the confirmation prompt.
 
 ```bash
-mdm rules unlink                        # interactive — pick then confirm
+mdm rules unlink                        # interactive - pick then confirm
 mdm rules unlink --harness cursor       # only remove cursor's symlink (no picker)
 mdm rules unlink -y                     # skip confirmation
 ```

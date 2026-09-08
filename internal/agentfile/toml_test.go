@@ -13,12 +13,12 @@ import (
 // everywhere else that matters here:
 //
 //   - Too loose: DeepEqual cannot tell int64(3) from float64(3), and
-//     json.Marshal comparison (tried and reverted) can't either — both would
+//     json.Marshal comparison (tried and reverted) can't either - both would
 //     wave through a TOML float silently becoming a TOML integer. This
 //     compares numeric values by kind, so an integer and a float holding the
 //     same number are never equal.
 //   - Too strict: a TOML array of tables decodes to []map[string]any from
-//     BurntSushi but []any (of map[string]any elements) from yaml.v3 — same
+//     BurntSushi but []any (of map[string]any elements) from yaml.v3 - same
 //     value, different concrete Go slice type. Map and slice comparisons
 //     here recurse by reflect.Kind, indifferent to that difference, rather
 //     than requiring identical concrete types.

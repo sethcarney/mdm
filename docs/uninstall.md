@@ -24,7 +24,7 @@ Aliases: `remove-cli`
 
 On **Windows**, the binary cannot be deleted while it is running. `mdm uninstall` instead writes a small batch script to the system temp directory and launches it in the background. The binary is removed after the current process exits.
 
-Skills, lock files, and harness configuration are **not** affected — only the `mdm` binary itself is removed.
+Skills, lock files, and harness configuration are **not** affected - only the `mdm` binary itself is removed.
 
 ## Examples
 

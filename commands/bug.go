@@ -55,7 +55,7 @@ func buildBugCmd(ver string) *cobra.Command {
 
 Collects the mdm version, OS and architecture, shell, Go runtime, and
 the AI harnesses detected on this machine, then builds an issue-form URL
-with those fields already filled in. Nothing is sent anywhere — the
+with those fields already filled in. Nothing is sent anywhere - the
 command only constructs a URL and (when a browser is available) opens
 it; you review and submit the form yourself.
 

@@ -1094,7 +1094,7 @@ func promptHarnesses(opts AddOptions, global bool, cwd string) ([]string, bool) 
 	lockedOptions := buildLockedHarnessOptions(global)
 
 	// If the user has a configured harness list for this scope, use it as the
-	// default — for both --yes and the interactive picker.
+	// default - for both --yes and the interactive picker.
 	configured := lock.GetConfiguredHarnesses(global, cwd)
 
 	if opts.Yes {
@@ -1142,7 +1142,7 @@ func promptHarnesses(opts AddOptions, global bool, cwd string) ([]string, bool) 
 		}
 	}
 	// Only save the user's explicit non-universal selections. Universal harnesses
-	// (.agents/skills) are always supported — no need to track them.
+	// (.agents/skills) are always supported - no need to track them.
 	if err := lock.SetConfiguredHarnesses(userSelected, global, cwd); err != nil {
 		ui.LogWarn(fmt.Sprintf("could not save harness preferences: %v", err))
 	}

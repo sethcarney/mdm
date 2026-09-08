@@ -89,7 +89,7 @@ func TestAgentsAddSanitizesTheNameOnDiskAndInTheLock(t *testing.T) {
 
 // An agent definition is third-party markdown installed specifically to
 // become a persona the model adopts, so it gets the same pre-install scan
-// every other install path in mdm runs — and the same escape hatch.
+// every other install path in mdm runs - and the same escape hatch.
 func TestAgentsAddBlocksHiddenMarkdownCharacters(t *testing.T) {
 	projectDir := t.TempDir()
 	stateDir := t.TempDir()
@@ -179,7 +179,7 @@ func TestAgentsAddOnTheProjectItselfLeavesTheDefinitionIntact(t *testing.T) {
 }
 
 // A harness with no agent-definition directory recorded is a skip, not a
-// failure — but a run that installed nothing anywhere is still a failed run,
+// failure - but a run that installed nothing anywhere is still a failed run,
 // and "✓ Installed 1 agent definition" with exit 0 tells CI the opposite. The
 // example is "universal", mdm's own convention rather than a vendor product,
 // so no release can give it a directory and make it stale as Codex's did.
@@ -322,7 +322,7 @@ func TestAgentsAddLeavesNothingBehindWhenTheDefinitionCannotBeConverted(t *testi
 }
 
 // Mutation this test catches: dropping the --harness validation from
-// runAgentRemove. An unrecognized harness name is not a no-op — it reports
+// runAgentRemove. An unrecognized harness name is not a no-op - it reports
 // "removed from the given harness(es)" about a harness that does not exist,
 // leaves the definition installed, and exits 0. `mdm agents add` rejects the
 // same typo, so removal accepting it is the inconsistency that hides it.

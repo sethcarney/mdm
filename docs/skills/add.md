@@ -24,7 +24,7 @@ mdm skills add <package>
 1. The source is fetched (shallow clone or GitHub API tree query).
 2. `SKILL.md` files inside the repo are discovered.
 3. If the repo contains multiple skills, a picker lets you choose which ones to install.
-4. You are prompted for scope (project or global) and which harnesses to install to — unless flags are provided.
+4. You are prompted for scope (project or global) and which harnesses to install to - unless flags are provided.
 5. Markdown files are scanned for hidden Unicode characters.
 6. One canonical copy of each skill is written to `.agents/skills/<name>`, and
    each harness with a skills directory of its own is symlinked to it (or given
@@ -40,7 +40,7 @@ copy rather than performing it.
 
 The skip is not an error. Asking to install something that is already exactly in
 place is a reasonable thing to do, and there is nothing for you to fix. In the
-default symlink mode the skip covers the copy only — the harness symlink is still
+default symlink mode the skip covers the copy only - the harness symlink is still
 created, so `mdm skills add . --harness roo` on an already-installed skill still
 does the one useful thing it can.
 
@@ -76,7 +76,7 @@ mdm skills add owner/repo --harness claude-code --harness cursor   # equivalent
 
 ## Harness selection
 
-The harness picker shows harnesses with unique skills directories in the left panel. Harnesses that are always auto-covered (shared `.agents/skills` directory) appear in a locked panel to the right — they are always installed to and cannot be deselected.
+The harness picker shows harnesses with unique skills directories in the left panel. Harnesses that are always auto-covered (shared `.agents/skills` directory) appear in a locked panel to the right - they are always installed to and cannot be deselected.
 
 ```
 Which harnesses would you like to install to?  │  always included:
@@ -89,7 +89,7 @@ Which harnesses would you like to install to?  │  always included:
 
 If you have a configured harness list (set via `mdm harnesses add` or `mdm rules link`), those harnesses are pre-checked. Otherwise harnesses detected as installed are pre-checked. Your selection is saved back to `configuredHarnesses` for future installs.
 
-Harnesses that use the shared `.agents/skills` directory but also have a unique instruction file (such as GitHub Copilot, which uses `.github/copilot-instructions.md`) do not appear in the left panel — they are always included via the locked panel. If such a harness was previously configured via `mdm rules link`, it is preserved in `configuredHarnesses` even though it is not shown as a selectable option.
+Harnesses that use the shared `.agents/skills` directory but also have a unique instruction file (such as GitHub Copilot, which uses `.github/copilot-instructions.md`) do not appear in the left panel - they are always included via the locked panel. If such a harness was previously configured via `mdm rules link`, it is preserved in `configuredHarnesses` even though it is not shown as a selectable option.
 
 **Project scope** (default): skills are installed under `.agents/skills/` in the current directory. Each harness that has its own skills directory gets a symlink pointing to the shared location.
 
@@ -108,7 +108,7 @@ Only what mdm installed is converted. Switching to copy mode converts the symlin
 ## Examples
 
 ```bash
-# Install interactively — prompts for scope, harnesses, and skill selection
+# Install interactively - prompts for scope, harnesses, and skill selection
 mdm skills add vercel-labs/agent-skills
 
 # Install a specific skill, skip prompts

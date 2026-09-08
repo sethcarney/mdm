@@ -74,7 +74,7 @@ mdm
 
 ## `mdm skills`
 
-Manage skills — reusable markdown prompt libraries — for your AI harnesses.
+Manage skills - reusable markdown prompt libraries - for your AI harnesses.
 
 ### `skills add` <small>alias: `a`</small>
 
@@ -233,7 +233,7 @@ mdm skills init [name]
 
 ### `skills install`
 
-Restore all skills, then any agent definitions, from `mdm.lock` — ideal for CI and onboarding.
+Restore all skills, then any agent definitions, from `mdm.lock` - ideal for CI and onboarding.
 
 ```bash
 mdm skills install
@@ -309,7 +309,7 @@ project and global scope.
 
 ## `mdm agents`
 
-Manage agent definitions — single markdown files that give a harness a named
+Manage agent definitions - single markdown files that give a harness a named
 subagent persona, installed into each target harness's own agent directory.
 Distinct from `mdm harnesses` above, which manages the AI tools themselves.
 

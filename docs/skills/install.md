@@ -8,7 +8,7 @@ Restore skills from `mdm.lock`.
 mdm skills install
 ```
 
-Reads the lock file and re-installs every recorded skill from its original source, then restores any [agent definitions](../agent-artifacts.md) recorded in the same lock. Intended for CI pipelines and onboarding — run it after cloning a repo to get everything back without having to remember each package source.
+Reads the lock file and re-installs every recorded skill from its original source, then restores any [agent definitions](../agent-artifacts.md) recorded in the same lock. Intended for CI pipelines and onboarding - run it after cloning a repo to get everything back without having to remember each package source.
 
 ## How it works
 
@@ -28,7 +28,7 @@ Each restored skill is scanned for hidden Unicode characters before files are co
 
 Restores happen in whatever mode the scope's lock records. A project installed with `--copy` restores as real files, not symlinks. Pass `--copy` or `--symlink` to switch the scope's mode as part of the restore, the same as on [`mdm skills add`](add.md).
 
-Agent definitions restore after skills, using the same scope and lock resolution — a plain `mdm skills install` (or the `postCreateCommand: mdm skills install` pattern in a dev container) is enough to get both back. A project with no agent definitions produces no extra output for that step. To restore agent definitions only, use [`mdm agents install`](../agent-artifacts.md#mdm-agents-install) directly.
+Agent definitions restore after skills, using the same scope and lock resolution - a plain `mdm skills install` (or the `postCreateCommand: mdm skills install` pattern in a dev container) is enough to get both back. A project with no agent definitions produces no extra output for that step. To restore agent definitions only, use [`mdm agents install`](../agent-artifacts.md#mdm-agents-install) directly.
 
 ## Flags
 

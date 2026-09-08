@@ -281,7 +281,7 @@ func resolvePluginHarnesses(opts PluginsAddOptions, cwd string) ([]string, bool)
 	if detected := harness.DetectInstalledHarnesses(); len(detected) > 0 {
 		return detected, true
 	}
-	fmt.Fprintf(os.Stderr, "%sError:%s no harnesses detected — pass --harness (e.g. --harness claude-code)\n", ansiText, ansiReset)
+	fmt.Fprintf(os.Stderr, "%sError:%s no harnesses detected - pass --harness (e.g. --harness claude-code)\n", ansiText, ansiReset)
 	return nil, false
 }
 

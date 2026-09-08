@@ -110,7 +110,7 @@ func TestInstallAgentFileWritesTheHarnessRequiredFilename(t *testing.T) {
 // The frontmatter name is third-party text: "Code Reviewer" is a perfectly
 // ordinary thing to write there, and a perfectly bad file name. It has to be
 // sanitized at the point it becomes a path component, because the same
-// sanitized string is the lock key — a divergence there is what let `mdm
+// sanitized string is the lock key - a divergence there is what let `mdm
 // agents remove` drop the lock entry while the file stayed on disk.
 func TestInstallAgentFileSanitizesTheNameForEveryPath(t *testing.T) {
 	cwd := t.TempDir()
@@ -163,7 +163,7 @@ func TestInstallAgentFileDoesNotCopyTheCanonicalFileOntoItself(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The source IS the canonical file — exactly what discovery hands back
+	// The source IS the canonical file - exactly what discovery hands back
 	// when the source tree is the project itself.
 	a := &agentfile.AgentFile{Name: "critic", Description: "d", Path: canonical}
 	res := installAgentFile(a, "claude-code", false, cwd, InstallModeCopy)
@@ -189,7 +189,7 @@ func TestInstallAgentFileDoesNotCopyTheCanonicalFileOntoItself(t *testing.T) {
 
 // The same guard has to hold when the source is a harness's symlink back
 // into the canonical directory, which is what discovery finds first for
-// `mdm agents add .` — .claude/agents is scanned before .agents/agents.
+// `mdm agents add .` - .claude/agents is scanned before .agents/agents.
 func TestInstallAgentFileDoesNotTruncateThroughAHarnessSymlink(t *testing.T) {
 	cwd := t.TempDir()
 	canonicalDir := harness.CanonicalAgentsDir(false, cwd)
@@ -371,7 +371,7 @@ func TestInstallAgentFileMaterializesForAnAlwaysMaterializeHarness(t *testing.T)
 // itself. os.WriteFile opens O_TRUNC and follows a symlink, so the materialized
 // write would land Copilot's re-encoded bytes in the canonical file every other
 // harness links at, and leave the install a link where the harness needs a real
-// file — while the run reports success and explains that Copilot always gets a
+// file - while the run reports success and explains that Copilot always gets a
 // real file.
 //
 // Mutation this test catches: writeMaterializedAgent writing the encoded bytes
@@ -577,7 +577,7 @@ func TestInstallAgentFileInstallsAnEmptyBodyToAMarkdownHarness(t *testing.T) {
 }
 
 // truncateThenFailCopyFile swaps copyFileFn for one that opens the destination
-// exactly as copyFile does — O_CREATE|O_WRONLY|O_TRUNC — and then fails without
+// exactly as copyFile does - O_CREATE|O_WRONLY|O_TRUNC - and then fails without
 // writing anything. That is what a crash, a full volume or an I/O error inside
 // copyFile's io.Copy leaves behind, and the only way to observe the truncation
 // window without a fault injector. Shared mutable state, so not parallel-safe.
