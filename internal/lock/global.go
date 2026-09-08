@@ -15,7 +15,7 @@ import (
 // Per-user, per-machine state: globally installed skills, dismissed
 // prompts, the global configured-agent list, and experimental opt-ins.
 // v1 called this file skills-lock.json, but unlike the project lock it is
-// never committed or shared — v2 names it what it is. Unknown top-level
+// never committed or shared - v2 names it what it is. Unknown top-level
 // keys survive a read/write round trip, same as the project lock.
 //
 // Reads fall back to the v1 skills-lock.json when mdm-state.json does not
@@ -161,7 +161,7 @@ func readGlobalStateE() (GlobalState, error) {
 		if os.IsNotExist(err) {
 			return readLegacyGlobalLock(), nil
 		}
-		// Only absence falls back to the legacy file — an unreadable
+		// Only absence falls back to the legacy file - an unreadable
 		// mdm-state.json must abort, not read as empty.
 		return EmptyGlobalState(), errUnreadableLock(path, err)
 	}
@@ -191,7 +191,7 @@ func readGlobalStateE() (GlobalState, error) {
 // readLegacyGlobalLock keeps v1's deliberate read-as-empty tolerance for
 // the global lock (version resets there were how old global locks were
 // discarded on upgrade). Everyday reads may fall back through it, but
-// `mdm migrate` strict-parses the file before retiring it — see
+// `mdm migrate` strict-parses the file before retiring it - see
 // PlanGlobalMigration.
 func readLegacyGlobalLock() GlobalState {
 	data, err := os.ReadFile(legacyGlobalLockPath())

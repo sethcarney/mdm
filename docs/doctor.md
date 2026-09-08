@@ -2,7 +2,7 @@
 
 Check the health of installed skills and project markdown files.
 
-`mdm doctor` runs a series of local checks and prints a report grouped by category. It covers skill installation integrity, agent symlinks, and any markdown files large enough to strain agent context windows — including instruction files, skill content, and general project docs.
+`mdm doctor` runs a series of local checks and prints a report grouped by category. It covers skill installation integrity, agent symlinks, and any markdown files large enough to strain agent context windows - including instruction files, skill content, and general project docs.
 
 ## Checks performed
 
@@ -39,8 +39,8 @@ Walks the entire project tree and flags any other `.md` file that is too large. 
 
 | Size     | Severity                                           |
 | -------- | -------------------------------------------------- |
-| ≥ 20 KB  | Warning — may strain agent context windows         |
-| ≥ 100 KB | Error — likely too large for agent context windows |
+| ≥ 20 KB  | Warning - may strain agent context windows         |
+| ≥ 100 KB | Error - likely too large for agent context windows |
 
 ## Output
 
@@ -51,26 +51,26 @@ Project skills:
     .agents/skills/my-skill
 
   ✗ broken-skill
-    ✗ skill directory not found on disk — run `mdm skills install` to restore
+    ✗ skill directory not found on disk - run `mdm skills install` to restore
 
   ▲ large-skill
-    ▲ SKILL.md is 45KB — may strain agent context windows
+    ▲ SKILL.md is 45KB - may strain agent context windows
 
 Instruction files:
 
-  ▲ CLAUDE.md is 32KB — may strain agent context windows
+  ▲ CLAUDE.md is 32KB - may strain agent context windows
 
 Rules linking:
 
-  ▲ Windsurf (windsurf) is configured but .windsurfrules is missing — run `mdm rules link` to create it
+  ▲ Windsurf (windsurf) is configured but .windsurfrules is missing - run `mdm rules link` to create it
 
 Skill coverage:
 
-  ▲ Cursor (cursor) is configured but skill "my-skill" is not installed for it — run `mdm skills add` to include it
+  ▲ Cursor (cursor) is configured but skill "my-skill" is not installed for it - run `mdm skills add` to include it
 
 Project markdown:
 
-  ▲ docs/reference.md is 28KB — may strain agent context windows
+  ▲ docs/reference.md is 28KB - may strain agent context windows
 
 Doctor complete: 3 skill(s) checked, project markdown scanned, 1 error(s), 4 warning(s)
 ```
@@ -95,7 +95,7 @@ mdm doctor -p    Check project skills and project markdown only
 ### Examples
 
 ```bash
-# Full check — skills (both scopes) + all project markdown
+# Full check - skills (both scopes) + all project markdown
 mdm doctor
 
 # Only check globally installed skills

@@ -15,10 +15,10 @@ import (
 )
 
 // ──────────────────────────────────────────────────────────
-// mdm bug — prefilled issue reporting
+// mdm bug - prefilled issue reporting
 //
 // The command constructs a GitHub issue-form prefill URL and hands it
-// over. It does no network I/O, no authentication, and no telemetry —
+// over. It does no network I/O, no authentication, and no telemetry -
 // nothing leaves the machine until the user submits the form themselves.
 // Prior art: `npm bugs`, rustc's ICE handler, `brew gist-logs`.
 // ──────────────────────────────────────────────────────────
@@ -29,7 +29,7 @@ const bugRepoURL = "https://github.com/sethcarney/mdm"
 const BugTemplateName = "agent-issue.yml"
 
 // BugFieldIDs are the issue-form field ids `mdm bug` prefills. They must
-// match the `id:` values in .github/ISSUE_TEMPLATE/agent-issue.yml —
+// match the `id:` values in .github/ISSUE_TEMPLATE/agent-issue.yml -
 // tests/bug_template_test.go fails the build when they drift.
 var BugFieldIDs = []string{"version", "os", "shell", "go", "agents", "command", "logs"}
 
@@ -59,7 +59,7 @@ func buildBugCmd(ver string) *cobra.Command {
 
 Collects the mdm version, OS and architecture, shell, Go runtime, and
 the agent tools detected on this machine, then builds an issue-form URL
-with those fields already filled in. Nothing is sent anywhere — the
+with those fields already filled in. Nothing is sent anywhere - the
 command only constructs a URL and (when a browser is available) opens
 it; you review and submit the form yourself.
 
@@ -112,7 +112,7 @@ func runBug(report bugReport, printOnly bool) {
 	// The URL is printed unconditionally: headless environments (SSH,
 	// containers, WSL2 without a browser bridge) still get something usable
 	// even when opening fails silently.
-	fmt.Printf("\n%sOpening a prefilled issue form — review before submitting:%s\n", ansiText, ansiReset)
+	fmt.Printf("\n%sOpening a prefilled issue form - review before submitting:%s\n", ansiText, ansiReset)
 	fmt.Printf("%s\n\n", issueURL)
 	openInBrowser(issueURL)
 }
@@ -139,7 +139,7 @@ func buildBugURL(report bugReport) string {
 
 func renderBugBody(report bugReport) string {
 	var b strings.Builder
-	b.WriteString("mdm bug report (nothing has been sent — review, then submit via the URL below)\n\n")
+	b.WriteString("mdm bug report (nothing has been sent - review, then submit via the URL below)\n\n")
 	write := func(label, v string) {
 		if v != "" {
 			fmt.Fprintf(&b, "  %-10s %s\n", label+":", v)
@@ -172,7 +172,7 @@ func truncateForURL(s string) string {
 	if len(s) <= bugLogsLimit {
 		return s
 	}
-	return s[:bugLogsLimit] + "\n… (truncated — attach the full output to the form)"
+	return s[:bugLogsLimit] + "\n… (truncated - attach the full output to the form)"
 }
 
 func openInBrowser(target string) {
@@ -184,7 +184,7 @@ func openInBrowser(target string) {
 		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", target)
 	default:
 		if _, err := exec.LookPath("xdg-open"); err != nil {
-			return // headless — the URL is already printed
+			return // headless - the URL is already printed
 		}
 		cmd = exec.Command("xdg-open", target)
 	}
@@ -215,7 +215,7 @@ func HandlePanic(ver string) {
 
 	logsPath := writePanicLog(full)
 	if logsPath != "" {
-		fmt.Fprintf(os.Stderr, "Full crash output written to %s — attach it to the report.\n\n", scrubHome(logsPath))
+		fmt.Fprintf(os.Stderr, "Full crash output written to %s - attach it to the report.\n\n", scrubHome(logsPath))
 	} else {
 		fmt.Fprintf(os.Stderr, "%s\n\n", full)
 	}

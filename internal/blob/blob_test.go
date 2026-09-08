@@ -120,7 +120,7 @@ func installFakeRepo(t *testing.T, skillsByPath map[string]string) {
 
 // A repo that contains installed copies of its skills committed under agent
 // directories (.claude/skills/, .cursor/skills/, …) must offer each skill once,
-// not once per copy — that's what the git-clone discovery path already does.
+// not once per copy - that's what the git-clone discovery path already does.
 func TestTryBlobInstallDeduplicatesSkillCopies(t *testing.T) {
 	installFakeRepo(t, map[string]string{
 		".claude/skills/foo/SKILL.md": "foo",

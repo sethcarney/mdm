@@ -12,10 +12,10 @@ server:
 
 | Transport | Behavior |
 |---|---|
-| `ext::<command>` | Runs `<command>` as the transport — i.e. the "URL" is an arbitrary shell command. |
+| `ext::<command>` | Runs `<command>` as the transport - i.e. the "URL" is an arbitrary shell command. |
 | `fd::<n>` | Communicates with git over already-open file descriptors. |
 
-Because of `ext::`, a string like the following is not a clone — it is code
+Because of `ext::`, a string like the following is not a clone - it is code
 execution:
 
 ```text
@@ -27,7 +27,7 @@ repository source string is **untrusted input**:
 
 - `mdm skills add <source>` takes the source from the command line.
 - `mdm skills install` and `mdm skills update` **replay the `source` field
-  stored in `skills-lock.json`** — a file that is commonly committed to a repo
+  stored in `skills-lock.json`** - a file that is commonly committed to a repo
   and shared across a team.
 
 Without a restriction, a poisoned `skills-lock.json` entry (or a crafted
@@ -42,15 +42,15 @@ rejected before mdm ever invokes git:
 - ✅ `https://github.com/owner/repo.git`
 - ✅ `ssh://git@github.com/owner/repo.git`
 - ✅ `git@github.com:owner/repo.git` (scp-like syntax, uses ssh)
-- ❌ `ext::…`, `fd::…` — local-command transports
-- ❌ `git://…`, `http://…`, `file://…` — disallowed schemes
-- ❌ any value beginning with `-` — could be misread by git as an option flag
+- ❌ `ext::…`, `fd::…` - local-command transports
+- ❌ `git://…`, `http://…`, `file://…` - disallowed schemes
+- ❌ any value beginning with `-` - could be misread by git as an option flag
 
 Enforcement happens at two layers:
 
 1. **`GIT_ALLOW_PROTOCOL=https:ssh`** is set on every git subprocess mdm spawns.
    This is git's own allowlist mechanism, and it is inherited by submodule and
-   recursive operations — so it holds even for git URLs that mdm's own parser
+   recursive operations - so it holds even for git URLs that mdm's own parser
    never saw.
 2. **A pre-flight check** in the git package rejects disallowed transports with
    a clear error before shelling out, and mdm passes `--` before positional

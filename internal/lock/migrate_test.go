@@ -108,7 +108,7 @@ func TestPlanRejectsCorruptLegacyFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := PlanProjectMigration(cwd); err == nil {
-		t.Error("expected an error for a corrupt legacy file — migration must never delete what it could not read")
+		t.Error("expected an error for a corrupt legacy file - migration must never delete what it could not read")
 	}
 	if err := os.WriteFile(filepath.Join(cwd, "skills-lock.json"), []byte(`{"skills":{}}`), 0600); err != nil {
 		t.Fatal(err)
@@ -187,7 +187,7 @@ func TestGlobalMigrationRejectsCorruptLegacyFile(t *testing.T) {
 	legacy := writeLegacyGlobalLock(t, `{"version":3,"skills":{"g1":`)
 
 	if _, err := PlanGlobalMigration(); err == nil {
-		t.Error("expected an error for a corrupt legacy global lock — migration must never delete what it could not read")
+		t.Error("expected an error for a corrupt legacy global lock - migration must never delete what it could not read")
 	}
 	if err := ExecuteGlobalMigration(); err == nil {
 		t.Error("execute must refuse a corrupt legacy global lock")

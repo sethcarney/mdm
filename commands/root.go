@@ -20,7 +20,7 @@ const appName = version.AppName
 // via vlog without threading a bool through each call site.
 var verboseFlag bool
 
-// ANSI shorthands — alias to ui constants so command files can keep using ansiXxx unchanged
+// ANSI shorthands - alias to ui constants so command files can keep using ansiXxx unchanged
 const (
 	ansiReset  = ui.Reset
 	ansiBold   = ui.Bold

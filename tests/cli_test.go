@@ -326,7 +326,7 @@ func TestLocalSkillLockUsesRelativePath(t *testing.T) {
 	}
 	content := string(data)
 
-	// The stored source must NOT be an absolute path — it should be relative.
+	// The stored source must NOT be an absolute path - it should be relative.
 	if strings.Contains(content, skillDir) {
 		t.Errorf("mdm.lock contains the absolute skill path %q; expected a relative path.\nlock file:\n%s", skillDir, content)
 	}

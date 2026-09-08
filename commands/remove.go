@@ -33,7 +33,7 @@ func buildRemoveCmd() *cobra.Command {
 
 If no skill names are provided an interactive selection menu is shown.
 
-The --agent (-a) and --skill (-s) flags accept multiple values — space-
+The --agent (-a) and --skill (-s) flags accept multiple values - space-
 separated after the flag or repeated:
 
   mdm skills remove -a claude-code cursor
@@ -161,7 +161,7 @@ func removeAgentSkillDir(agentBase, name, localSourceAbs string) {
 	_ = os.RemoveAll(agentSkillDir)
 }
 
-// isCherryPickedSource reports whether a directory is a cherry-picked fork —
+// isCherryPickedSource reports whether a directory is a cherry-picked fork -
 // the project's own source, carrying edits that exist nowhere else. Uninstalling
 // a skill must never delete one. This is reachable because an agent's skills
 // directory can be the forks directory itself (OpenClaw reads ./skills), which
@@ -305,7 +305,7 @@ func runRemove(positional []string, opts RemoveOptions) {
 	}
 }
 
-// excludePluginOwnedSkills drops skills that an installed plugin owns —
+// excludePluginOwnedSkills drops skills that an installed plugin owns -
 // those are managed by the plugins lock section, so `mdm plugins remove` is
 // the right tool. Only project scope can be plugin-owned.
 func excludePluginOwnedSkills(toRemove []*InstalledSkill, global bool, cwd string) []*InstalledSkill {
@@ -315,7 +315,7 @@ func excludePluginOwnedSkills(toRemove []*InstalledSkill, global bool, cwd strin
 	var keep []*InstalledSkill
 	for _, sk := range toRemove {
 		if owner := pluginOwningSkill(sk.Name, cwd); owner != "" {
-			ui.LogWarn(fmt.Sprintf("%s is managed by plugin %s — remove it with 'mdm plugins remove %s'", sk.Name, owner, owner))
+			ui.LogWarn(fmt.Sprintf("%s is managed by plugin %s - remove it with 'mdm plugins remove %s'", sk.Name, owner, owner))
 			continue
 		}
 		keep = append(keep, sk)

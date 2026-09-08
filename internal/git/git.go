@@ -30,7 +30,7 @@ func (e *GitCloneError) Error() string {
 //
 // GIT_ALLOW_PROTOCOL restricts git to the https and ssh transports. This is the
 // authoritative defense against git's local-command "remote helper" transports
-// (ext::, fd::), which turn a repository URL into arbitrary command execution —
+// (ext::, fd::), which turn a repository URL into arbitrary command execution -
 // e.g. `git clone 'ext::sh -c "…"'`. Because a skills-lock.json source string is
 // replayed verbatim by `mdm skills install`/`update`, an unrestricted git could
 // be coerced into running code from a checked-in lock file. The allowlist is

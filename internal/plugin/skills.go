@@ -31,7 +31,7 @@ func ListSkills(root string) ([]PluginSkill, []Issue) {
 			File:     SkillsDir,
 			Severity: SeverityError,
 			Rule:     "skills-not-directory",
-			Message:  "skills exists but is not a directory — skills component disabled",
+			Message:  "skills exists but is not a directory - skills component disabled",
 		}}
 	}
 	entries, err := os.ReadDir(skillsPath)

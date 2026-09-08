@@ -47,12 +47,12 @@ func buildInstallFromLockCmd(ver string) *cobra.Command {
 }
 
 // hintPluginsInstall points at `mdm plugins install` when the project has a
-// plugin section in its lock — plugin restore is a separate command.
+// plugin section in its lock - plugin restore is a separate command.
 func hintPluginsInstall(cwd string) {
 	if len(lock.ReadPluginsLock(cwd).Plugins) == 0 {
 		return
 	}
-	fmt.Printf("%sThis project also has plugins — restore them with 'mdm plugins install'.%s\n", ansiDim, ansiReset)
+	fmt.Printf("%sThis project also has plugins - restore them with 'mdm plugins install'.%s\n", ansiDim, ansiReset)
 }
 
 func runInstallFromLock(opts restoreOptions) {
@@ -72,11 +72,11 @@ func runInstallFromLock(opts restoreOptions) {
 		fmt.Printf("Add skills with %smdm skills add <package>%s\n\n", ansiText, ansiReset)
 
 	case hasLocal && !hasGlobal:
-		// Only local lock has skills — restore silently
+		// Only local lock has skills - restore silently
 		restoreFromLocalLock(localL, opts)
 
 	case !hasLocal && hasGlobal:
-		// Only global lock has skills — explain and ask
+		// Only global lock has skills - explain and ask
 		fmt.Printf("\n%sNo skills found in the local %s.%s\n", ansiDim, lockName, ansiReset)
 		fmt.Printf("%sFound %d skill(s) in the global state file (%s).%s\n\n",
 			ansiDim, len(globalL.Skills), lock.GetGlobalStatePath(), ansiReset)
@@ -95,8 +95,8 @@ func runInstallFromLock(opts restoreOptions) {
 			restoreFromLocalLock(localL, opts)
 		} else {
 			idx, ok := ui.UiSelect("Install from which lock file?", []ui.UIOption{
-				{Label: fmt.Sprintf("Local  — %d skill(s)", len(localL.Skills)), Hint: lock.GetProjectLockPath(cwd)},
-				{Label: fmt.Sprintf("Global — %d skill(s)", len(globalL.Skills)), Hint: lock.GetGlobalStatePath()},
+				{Label: fmt.Sprintf("Local  - %d skill(s)", len(localL.Skills)), Hint: lock.GetProjectLockPath(cwd)},
+				{Label: fmt.Sprintf("Global - %d skill(s)", len(globalL.Skills)), Hint: lock.GetGlobalStatePath()},
 			})
 			if !ok {
 				fmt.Println("Cancelled.")

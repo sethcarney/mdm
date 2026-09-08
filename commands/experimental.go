@@ -90,7 +90,7 @@ func buildExperimentalEnableCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 			if experimental.IsGraduated(name) {
-				return fmt.Errorf("%s graduated to full support in v2 — it is always on, no opt-in needed", name)
+				return fmt.Errorf("%s graduated to full support in v2 - it is always on, no opt-in needed", name)
 			}
 			if err := validateExperimentalFeature(name); err != nil {
 				return err
@@ -98,7 +98,7 @@ func buildExperimentalEnableCmd() *cobra.Command {
 			if err := experimental.Enable(experimental.Feature(name)); err != nil {
 				return fmt.Errorf("could not persist experimental opt-in: %w", err)
 			}
-			ui.LogSuccess(fmt.Sprintf("%s enabled — this feature may change or be removed in any release", name))
+			ui.LogSuccess(fmt.Sprintf("%s enabled - this feature may change or be removed in any release", name))
 			return nil
 		},
 	}
@@ -118,7 +118,7 @@ func buildExperimentalDisableCmd() *cobra.Command {
 				if err := experimental.Disable(experimental.Feature(name)); err != nil {
 					return fmt.Errorf("could not update the global state file: %w", err)
 				}
-				ui.LogSuccess(fmt.Sprintf("%s graduated to full support in v2 — removed the stale opt-in", name))
+				ui.LogSuccess(fmt.Sprintf("%s graduated to full support in v2 - removed the stale opt-in", name))
 				return nil
 			}
 			if err := validateExperimentalFeature(name); err != nil {

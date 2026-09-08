@@ -15,8 +15,8 @@ import (
 //
 // Everyday v2 reads tolerate some legacy oddities (a versionless file, a
 // tombstone); migration must not, because it retires the source files.
-// Every step here re-parses the legacy files strictly — down to the shape
-// of each entry — and aborts on anything unexpected, so a migration never
+// Every step here re-parses the legacy files strictly - down to the shape
+// of each entry - and aborts on anything unexpected, so a migration never
 // destroys data it could not read. Execution materializes the target from
 // the exact parse the plan validated, never from a second, more tolerant
 // read.
@@ -29,8 +29,8 @@ var LegacyProjectLockNames = []string{"skills-lock.json", "knowledge-lock.json",
 // version is deliberately newer than any v1 lock: the final v1 patch
 // releases refuse locks with a version they don't understand and print an
 // upgrade pointer, so a patched v1 binary fails loudly here. Older v1
-// binaries read the file as a valid, empty lock — they cannot be made to
-// error — so the _comment exists for the human who finds it.
+// binaries read the file as a valid, empty lock - they cannot be made to
+// error - so the _comment exists for the human who finds it.
 const SkillsTombstone = `{
   "version": 2,
   "skills": {},
@@ -99,7 +99,7 @@ func strictReadLegacy(path string) (legacyFileData, error) {
 		return d, fmt.Errorf("%s is not valid JSON: %w", filepath.Base(path), err)
 	}
 	if raw.MovedNote != "" {
-		// An earlier migration's tombstone — nothing left to carry over.
+		// An earlier migration's tombstone - nothing left to carry over.
 		d.isTombstone = true
 		return d, nil
 	}
@@ -374,7 +374,7 @@ func (m GlobalMigration) Needed() bool { return m.needed || m.InstallModeBackfil
 
 // strictReadLegacyGlobal parses the v1 global lock with no empty-on-error
 // tolerance for broken JSON. A lock below the last v1 version migrates as
-// empty — v1 itself deliberately discarded those on read.
+// empty - v1 itself deliberately discarded those on read.
 func strictReadLegacyGlobal(path string) (GlobalState, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -403,7 +403,7 @@ func strictReadLegacyGlobal(path string) (GlobalState, error) {
 }
 
 // PlanGlobalMigration inspects the machine's global state and reports what
-// a migration would do. It fails on a legacy file it cannot parse — the
+// a migration would do. It fails on a legacy file it cannot parse - the
 // file is per-machine state with no copy in version control, so it must
 // never be deleted on the strength of a read that fell back to empty.
 func PlanGlobalMigration() (GlobalMigration, error) {

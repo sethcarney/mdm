@@ -11,7 +11,7 @@ test:
 # can parse this module's sources; tests/devcontainer_test.go fails the build if
 # any of these versions drift.
 #
-# This target does not reformat anything — golangci-lint reports formatting the
+# This target does not reformat anything - golangci-lint reports formatting the
 # same way CI does. Use `make fmt` (or `golangci-lint fmt`) to fix it.
 ci:
 	go test ./...

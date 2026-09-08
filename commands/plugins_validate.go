@@ -120,13 +120,13 @@ func printPluginsValidateReport(name string, report *plugin.Report, errs, warns,
 	if len(report.Issues) > 0 {
 		fmt.Println()
 	}
-	summary := fmt.Sprintf("%s — %d skill(s), %d MCP server(s)", name, len(report.Skills), servers)
+	summary := fmt.Sprintf("%s - %d skill(s), %d MCP server(s)", name, len(report.Skills), servers)
 	switch {
 	case errs > 0:
-		fmt.Printf("%s✗%s %s — %d error(s), %d warning(s)\n\n", ansiRed, ansiReset, summary, errs, warns)
+		fmt.Printf("%s✗%s %s - %d error(s), %d warning(s)\n\n", ansiRed, ansiReset, summary, errs, warns)
 	case warns > 0:
-		fmt.Printf("%s✓%s %s valid — %d warning(s)\n\n", ansiGreen, ansiReset, summary, warns)
+		fmt.Printf("%s✓%s %s valid - %d warning(s)\n\n", ansiGreen, ansiReset, summary, warns)
 	default:
-		fmt.Printf("%s✓%s %s valid — no issues\n\n", ansiGreen, ansiReset, summary)
+		fmt.Printf("%s✓%s %s valid - no issues\n\n", ansiGreen, ansiReset, summary)
 	}
 }

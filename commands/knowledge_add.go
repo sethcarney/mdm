@@ -101,7 +101,7 @@ func runKnowledgeAdd(sourceInput string, opts KnowledgeAddOptions) {
 	}
 	fmt.Println()
 	if opts.DryRun {
-		fmt.Printf("%sDry run — nothing was written.%s\n\n", ansiDim, ansiReset)
+		fmt.Printf("%sDry run - nothing was written.%s\n\n", ansiDim, ansiReset)
 		return
 	}
 	fmt.Printf("%sInstalled %d bundle(s) to ./%s%s\n\n", ansiText, installed, opts.Dir, ansiReset)
@@ -282,7 +282,7 @@ func installKnowledgeCandidate(c knowledgeCandidate, baseEntry lock.KnowledgeLoc
 
 	msg := fmt.Sprintf("%s (%d document(s))", c.Name, c.Docs)
 	if n := len(issues); n > 0 {
-		msg += fmt.Sprintf(" — %d validation issue(s), run 'mdm knowledge validate %s'", n, entry.InstallDir)
+		msg += fmt.Sprintf(" - %d validation issue(s), run 'mdm knowledge validate %s'", n, entry.InstallDir)
 	}
 	ui.LogSuccess(msg)
 	return true

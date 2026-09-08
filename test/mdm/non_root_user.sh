@@ -22,7 +22,7 @@ check "mdm on PATH is a symlink" bash -c "test -L /usr/local/bin/mdm"
 
 # What `mdm upgrade` actually does: unlink the old binary and put a new one in
 # its place. That is a permission on the directory, so this replaces the binary
-# with a copy of itself — as the remoteUser, with no sudo anywhere.
+# with a copy of itself - as the remoteUser, with no sudo anywhere.
 check "non-root user can replace the binary" bash -c '
   real="$(readlink -f /usr/local/bin/mdm)"
   cp "$real" /tmp/mdm-copy

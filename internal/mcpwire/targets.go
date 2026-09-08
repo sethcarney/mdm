@@ -15,7 +15,7 @@ const (
 	// styleTyped writes an explicit "type" field per server, with
 	// streamable HTTP spelled "http" (Claude Code's .mcp.json).
 	styleTyped renderStyle = iota
-	// styleBare omits the type field — the presence of "command" vs
+	// styleBare omits the type field - the presence of "command" vs
 	// "url" implies the transport (Cursor's mcp.json).
 	styleBare
 )

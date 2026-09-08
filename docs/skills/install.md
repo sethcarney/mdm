@@ -8,7 +8,7 @@ Restore skills from `mdm.lock`.
 mdm skills install
 ```
 
-Reads the lock file and re-installs every recorded skill from its original source. Intended for CI pipelines and onboarding — run it after cloning a repo to get all skills back without having to remember each package source.
+Reads the lock file and re-installs every recorded skill from its original source. Intended for CI pipelines and onboarding - run it after cloning a repo to get all skills back without having to remember each package source.
 
 ## How it works
 
@@ -41,7 +41,7 @@ Restores happen in whatever mode the scope's lock records. A project installed w
 # Restore all project skills after cloning a repo
 mdm skills install
 
-# CI — restore without any prompts
+# CI - restore without any prompts
 mdm skills install -y
 
 # Restore even if a skill intentionally contains hidden characters

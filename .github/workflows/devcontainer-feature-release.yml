@@ -7,7 +7,7 @@ name: Publish Dev Container Feature
 # The feature's own version lives in src/mdm/devcontainer-feature.json and is
 # independent of the mdm release tags: it tracks changes to install.sh, not to
 # the binary being installed. Bump it there and this workflow publishes the new
-# version — the action skips any version already in the registry, so a run that
+# version - the action skips any version already in the registry, so a run that
 # changes nothing is a no-op.
 
 on:
@@ -47,7 +47,7 @@ jobs:
           devcontainer-cli-version: ${{ steps.cli.outputs.version }}
           # The action would otherwise push a git tag for each published
           # feature version. This repo's release workflow fires on `v*` tags
-          # and runs GoReleaser, so no CI job here gets to create tags — the
+          # and runs GoReleaser, so no CI job here gets to create tags - the
           # published artifact and the version in devcontainer-feature.json
           # are the record instead.
           disable-repo-tagging: "true"

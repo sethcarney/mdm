@@ -1,4 +1,4 @@
-// Package fork owns the provenance bookkeeping for cherry-picked skills —
+// Package fork owns the provenance bookkeeping for cherry-picked skills -
 // third-party skills copied into a project so the project can edit and ship
 // them as its own.
 //
@@ -295,12 +295,12 @@ func RenderAttribution(o Origin) string {
 
 	if o.Upstream.LicenseFile == "" && o.Upstream.License == "" {
 		b.WriteString("The source declared no license. Absent a license, the default is that no\n")
-		b.WriteString("redistribution rights are granted — check with the original author before\n")
+		b.WriteString("redistribution rights are granted - check with the original author before\n")
 		b.WriteString("publishing this fork.\n")
 		return b.String()
 	}
 	b.WriteString("The upstream license governs the material this fork started from. Keep this\n")
-	b.WriteString("file — and the upstream license text alongside it — with the skill when you\n")
+	b.WriteString("file - and the upstream license text alongside it - with the skill when you\n")
 	b.WriteString("redistribute it.\n")
 	return b.String()
 }

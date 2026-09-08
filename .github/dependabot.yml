@@ -19,7 +19,7 @@ updates:
           - patch
 
   # The docs site pins its Python deps by hand, so nothing bumps them unless
-  # Dependabot watches this directory — that is how mkdocs-material sat on a
+  # Dependabot watches this directory - that is how mkdocs-material sat on a
   # release whose pymdown-extensions cap excluded the fix for
   # GHSA-9xwg-3r6f-jcx2. requirements.in holds the direct deps and
   # requirements.txt is the hashed lock beside it, which Dependabot recompiles
@@ -42,7 +42,7 @@ updates:
 
   # The root package.json exists only to pin the devcontainer CLI that
   # .github/workflows/devcontainer-feature.yml installs with `npm ci`. Nothing
-  # in the mdm binary comes from npm — this entry keeps that one pin, and the
+  # in the mdm binary comes from npm - this entry keeps that one pin, and the
   # integrity hashes in package-lock.json beside it, from going stale.
   - package-ecosystem: npm
     directory: /
@@ -78,7 +78,7 @@ updates:
     groups:
       # codeql-action/init, /analyze and /upload-sarif are separate
       # dependencies to Dependabot but must be pinned to the same SHA,
-      # so they always ship in a single PR — including major bumps.
+      # so they always ship in a single PR - including major bumps.
       codeql-action:
         patterns:
           - "github/codeql-action*"
