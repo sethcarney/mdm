@@ -407,3 +407,91 @@ func TestEncodeTOMLRefusesANilValue(t *testing.T) {
 		})
 	}
 }
+
+// yaml.v3 decodes a mapping with a non-string key (ports: {8080: web}) as
+// map[interface{}]interface{}. The markdown encoder walked it with
+// reflect.Value.String on each key, which for an interface-kind value is the
+// literal text "<interface {} Value>", so the file a markdown harness received
+// carried that text where the key should be, with nothing reported. Quoting
+// the key would change its type, so the definition is refused by name.
+//
+// Mutation this detects: delete the non-string-key check from Encode. The
+// markdown subtest then succeeds and the output contains "<interface {} Value>".
+func TestEncodeRefusesANonStringKey(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "a.md")
+	src := "---\nname: porty\ndescription: has a numeric key\nports:\n  8080: web\n---\nBody.\n"
+	if err := os.WriteFile(p, []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a, err := ParseAgentFile(p)
+	if err != nil || a == nil {
+		t.Fatalf("fixture did not parse: %v", err)
+	}
+	for _, f := range []Format{FormatMarkdown, FormatTOML} {
+		t.Run(string(f), func(t *testing.T) {
+			out, err := Encode(a, f)
+			if err == nil {
+				t.Fatalf("Encode succeeded; output:\n%s", out)
+			}
+			if !strings.Contains(err.Error(), "ports.8080") {
+				t.Errorf("error should name the key ports.8080, got: %v", err)
+			}
+			if strings.Contains(string(out), "<interface {} Value>") {
+				t.Errorf("output carries the reflect placeholder:\n%s", out)
+			}
+		})
+	}
+}
+
+// The existing round trip starts from a TOML fixture. A markdown source takes
+// the other path first: yaml.v3 values (int, map[string]any, []any) go through
+// the TOML encoder and back. Extra is asserted straight after parsing, since
+// ParseAgentMd's Extra had no test of its own.
+func TestEncodeRoundTripsAMarkdownSource(t *testing.T) {
+	src := "---\nname: critic\ndescription: reviews code\nmodel: gpt-5\nsandbox_mode: read-only\ntemperature: 0.5\nretries: 3\ntags:\n  - go\n  - review\nmcp_servers:\n  docs:\n    command: docs-server\n    args:\n      - --port\n      - \"8080\"\nskills:\n  config:\n    strict: true\n---\n\nBe critical.\n\nTwo paragraphs.\n"
+	orig := parseBytes(t, []byte(src), ".md")
+	if orig.Extra["model"] != "gpt-5" || orig.Extra["retries"] != 3 {
+		t.Fatalf("Extra after parsing = %#v", orig.Extra)
+	}
+	mcp, _ := orig.Extra["mcp_servers"].(map[string]any)
+	docs, _ := mcp["docs"].(map[string]any)
+	if docs["command"] != "docs-server" {
+		t.Fatalf("nested Extra after parsing = %#v", orig.Extra["mcp_servers"])
+	}
+
+	mid := parseBytes(t, encodeOrFail(t, orig, FormatTOML), ".toml")
+	got := parseBytes(t, encodeOrFail(t, mid, FormatMarkdown), ".md")
+
+	if got.Name != orig.Name || got.Description != orig.Description {
+		t.Errorf("name/description changed: %q/%q", got.Name, got.Description)
+	}
+	if got.Instructions != orig.Instructions {
+		t.Errorf("Instructions changed:\n got %q\nwant %q", got.Instructions, orig.Instructions)
+	}
+	if !valuesEqual(got.Extra, orig.Extra) {
+		t.Errorf("Extra changed:\n got %#v\nwant %#v", got.Extra, orig.Extra)
+	}
+}
+
+func encodeOrFail(t *testing.T, a *AgentFile, f Format) []byte {
+	t.Helper()
+	out, err := Encode(a, f)
+	if err != nil {
+		t.Fatalf("Encode(%s): %v", f, err)
+	}
+	return out
+}
+
+// parseBytes writes data to a file with the given extension and parses it.
+func parseBytes(t *testing.T, data []byte, ext string) *AgentFile {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "a"+ext)
+	if err := os.WriteFile(p, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a, err := ParseAgentFile(p)
+	if err != nil || a == nil {
+		t.Fatalf("%s did not parse: %v\n%s", ext, err, data)
+	}
+	return a
+}
