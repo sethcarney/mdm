@@ -131,3 +131,41 @@ func TestBurntSushiLocalZoneNamesStillHold(t *testing.T) {
 		}
 	}
 }
+
+// developer_instructions is written as a multi-line basic string, so a
+// multi-paragraph body is reviewable in a diff, and it has to read back byte
+// for byte through BurntSushi's decoder whatever the body holds: quotes,
+// three quotes in a row, backslashes, a trailing backslash, tabs, CRLF, a
+// leading newline, a control character.
+//
+// Mutation this detects: drop the escape of the third consecutive quote, or
+// of the backslash; the matching body then fails to parse or comes back
+// changed.
+func TestEncodeTOMLWritesTheBodyMultilineAndRoundTripsIt(t *testing.T) {
+	bodies := []string{
+		"Be critical.\n\nSecond paragraph.\n",
+		"\nstarts with a newline",
+		"has \"quotes\" and \"\"\"three\"\"\" and ends with two \"\"",
+		"a backslash \\ in the middle and one at the end \\",
+		"tab\tseparated\r\nwindows lines\r\n",
+		"bell \x07 and delete \x7f inside",
+		"",
+	}
+	for _, body := range bodies {
+		a := &AgentFile{Name: "critic", Description: "d", Instructions: body, Format: FormatMarkdown, Extra: map[string]any{"model": "gpt-5", "mcp_servers": map[string]any{"docs": map[string]any{"command": "x"}}}}
+		out, err := Encode(a, FormatTOML)
+		if err != nil {
+			t.Fatalf("Encode(%q): %v", body, err)
+		}
+		if !strings.Contains(string(out), "developer_instructions = \"\"\"\n") {
+			t.Errorf("body is not written as a multi-line string:\n%s", out)
+		}
+		got := parseBytes(t, out, ".toml")
+		if got.Instructions != body {
+			t.Errorf("body changed through TOML:\n got: %q\nwant: %q\nfile:\n%s", got.Instructions, body, out)
+		}
+		if got.Extra["model"] != "gpt-5" {
+			t.Errorf("Extra lost after the body: %#v\n%s", got.Extra, out)
+		}
+	}
+}

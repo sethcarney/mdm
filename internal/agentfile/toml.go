@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -212,17 +213,63 @@ func encodeTOML(a *AgentFile) ([]byte, error) {
 			return nil, fmt.Errorf("cannot encode %q: TOML writes the definition's %s under that key, so a frontmatter key of the same name would replace it - rename or remove the key", r.key, r.holds)
 		}
 	}
-	doc := map[string]any{
-		"name":                   a.Name,
-		"description":            a.Description,
-		"developer_instructions": a.Instructions,
-	}
-	for k, v := range a.Extra {
-		doc[k] = v
-	}
+	// The body is written by hand as a multi-line basic string: BurntSushi
+	// emits every string on one line with escaped newlines, and a
+	// multi-paragraph body written that way cannot be read in a diff. The
+	// library still writes name and description, then the Extra keys and
+	// tables after the body; TOML orders simple keys before tables, and
+	// nothing before the body is a table.
 	var buf bytes.Buffer
-	if err := toml.NewEncoder(&buf).Encode(doc); err != nil {
+	if err := toml.NewEncoder(&buf).Encode(map[string]any{"name": a.Name, "description": a.Description}); err != nil {
 		return nil, fmt.Errorf("encoding TOML: %w", err)
 	}
+	buf.WriteString("developer_instructions = ")
+	buf.WriteString(tomlMultilineString(a.Instructions))
+	buf.WriteString("\n")
+	if len(a.Extra) > 0 {
+		if err := toml.NewEncoder(&buf).Encode(a.Extra); err != nil {
+			return nil, fmt.Errorf("encoding TOML: %w", err)
+		}
+	}
 	return buf.Bytes(), nil
+}
+
+// tomlMultilineString renders s as a TOML multi-line basic string that reads
+// back byte for byte. The newline after the opening delimiter is trimmed by
+// every reader, so one is always written and a body's own leading newline
+// survives behind it. Backslashes are escaped, so a body ending in one cannot
+// continue the line into the closing delimiter; a third quotation mark in a
+// row is escaped, since three would close the string, while one or two may
+// sit anywhere, the delimiters included; and a control character other than
+// tab and newline is written as a \u escape, carriage return included, so a
+// CRLF body comes back as CRLF rather than as whatever the reader normalizes.
+func tomlMultilineString(s string) string {
+	var b strings.Builder
+	b.WriteString(`"""` + "\n")
+	quotes := 0
+	for _, r := range s {
+		if r == '"' {
+			quotes++
+			if quotes == 3 {
+				b.WriteString(`\"`)
+				quotes = 0
+			} else {
+				b.WriteRune('"')
+			}
+			continue
+		}
+		quotes = 0
+		switch {
+		case r == '\\':
+			b.WriteString(`\\`)
+		case r == '\n' || r == '\t':
+			b.WriteRune(r)
+		case r < 0x20 || r == 0x7f:
+			fmt.Fprintf(&b, `\u%04X`, r)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	b.WriteString(`"""`)
+	return b.String()
 }
