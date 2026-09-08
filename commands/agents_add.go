@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -141,7 +142,7 @@ func runAgentAdd(sourceInput string, opts AgentOptions) bool {
 		os.Exit(1)
 	}
 
-	global, harnesses, ok := promptScopeAndHarnesses(opts.asAddOptions(), cwd)
+	global, harnesses, ok := promptAgentScopeAndHarnesses(opts, cwd)
 	if !ok {
 		return false
 	}
@@ -158,6 +159,121 @@ func runAgentAdd(sourceInput string, opts AgentOptions) bool {
 	printAgentInstallSummary(outcome, global, mode)
 	// A definition mdm already owns is not a failure to install it.
 	return outcome.installed > 0 || outcome.alreadyInstalled > 0
+}
+
+// promptAgentScopeAndHarnesses resolves the scope the way promptScopeAndHarnesses
+// does for skills, then picks harnesses with promptAgentHarnesses.
+func promptAgentScopeAndHarnesses(opts AgentOptions, cwd string) (bool, []string, bool) {
+	global := opts.Global
+	if !global && !opts.Project && !opts.Yes {
+		idx, ok := ui.UiSelect("Install scope?", []ui.UIOption{
+			{Label: "Project", Hint: "installs for this project only"},
+			{Label: "Global", Hint: "installs for your user account"},
+		})
+		if !ok {
+			return false, nil, false
+		}
+		global = idx == 1
+	}
+	harnesses, ok := promptAgentHarnesses(opts, global, cwd)
+	if !ok {
+		return false, nil, false
+	}
+	return global, harnesses, true
+}
+
+// agentCapableHarnesses lists, sorted, every harness with an agent-definition
+// directory recorded for the scope. It is the whole universe of the agents
+// picker: a harness without one is a skip on install, so offering it only
+// produces a line saying so.
+func agentCapableHarnesses(global bool, cwd string) []string {
+	var out []string
+	for name := range harness.AllHarnesses {
+		if harness.AgentsInstallDirFor(name, global, cwd) != "" {
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// promptAgentHarnesses returns the harnesses an agent install targets. It is
+// not the skills picker: that one is shaped by skills directories, locks the
+// shared-directory harnesses (which is most of the ones that take agent
+// definitions, so Codex could never be deselected and every interactive run
+// materialized a TOML file), and saves the selection as the scope's skills
+// defaults. This picker offers exactly the harnesses that can take a
+// definition, locks none of them, and records nothing; the configured skills
+// list is only the default selection.
+func promptAgentHarnesses(opts AgentOptions, global bool, cwd string) ([]string, bool) {
+	if len(opts.Harnesses) > 0 && opts.Harnesses[0] == "*" {
+		return agentCapableHarnesses(global, cwd), true
+	}
+	if len(opts.Harnesses) > 0 {
+		return validateNamedHarnesses(opts.Harnesses)
+	}
+	capable := agentCapableHarnesses(global, cwd)
+	if len(capable) == 0 {
+		fmt.Fprintf(os.Stderr, "%sNo harness has an agent-definition directory recorded for this scope.%s\n", ansiText, ansiReset)
+		return nil, false
+	}
+	detected := stringSet(harness.DetectInstalledHarnesses())
+	configured := stringSet(lock.GetConfiguredHarnesses(global, cwd))
+
+	preferred := keepIn(capable, configured)
+	if len(preferred) == 0 {
+		preferred = keepIn(capable, detected)
+	}
+	if opts.Yes {
+		// Nothing configured and nothing detected: every harness that can
+		// take a definition, rather than none.
+		if len(preferred) == 0 {
+			return capable, true
+		}
+		return preferred, true
+	}
+
+	options := make([]ui.UIOption, 0, len(capable))
+	var initSel []int
+	preferredSet := stringSet(preferred)
+	for i, name := range capable {
+		opt := ui.UIOption{Label: harness.AllHarnesses[name].DisplayName, Value: name}
+		if !detected[name] {
+			opt.Hint = "not detected"
+		}
+		options = append(options, opt)
+		if preferredSet[name] {
+			initSel = append(initSel, i)
+		}
+	}
+	selected, ok := ui.UiSearchMultiselect("Which harnesses should receive the agent definitions?", options, nil, initSel, false)
+	if !ok {
+		return nil, false
+	}
+	result := make([]string, 0, len(selected))
+	for _, i := range selected {
+		result = append(result, options[i].Value)
+	}
+	return result, true
+}
+
+func stringSet(names []string) map[string]bool {
+	set := make(map[string]bool, len(names))
+	for _, n := range names {
+		set[n] = true
+	}
+	return set
+}
+
+// keepIn returns the names in order that are also in set.
+func keepIn(names []string, set map[string]bool) []string {
+	var out []string
+	for _, n := range names {
+		if set[n] {
+			out = append(out, n)
+		}
+	}
+	return out
 }
 
 // filterAgentsByName keeps agents whose name matches one of names (by the

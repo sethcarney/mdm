@@ -96,8 +96,13 @@ mdm agents add ./my-agents
 
 With no `--agent` filter, every discovered definition is offered in an
 interactive multiselect (or installed automatically when there is exactly
-one, or `--yes` is passed). `--harness` and `--agent` both accept multiple
-values, space-separated after the flag or repeated:
+one, or `--yes` is passed). With no `--harness`, a second multiselect offers
+every harness that has an agent-definition directory for the scope, none of
+them locked, with the scope's configured harnesses (else the detected ones)
+preselected; the choice is not saved. Under `--yes` the same order applies:
+the configured harnesses that can take a definition, else the detected ones,
+else all of them. `--harness` and `--agent` both accept multiple values,
+space-separated after the flag or repeated:
 
 ```bash
 mdm agents add owner/repo --harness claude-code cursor
@@ -253,6 +258,15 @@ format natively out of a directory that is safe to symlink into. Switching
 a scope's mode converts those; it leaves Copilot's copy and every
 cross-format copy exactly as they were. See [Formats: markdown and
 TOML](#formats-markdown-and-toml) for why.
+
+**Edits belong in the source, not in an installed file.** Switching a scope
+from copy mode back to symlink mode compares each copy with the canonical
+file first: a copy that has been edited is kept as a copy, with a warning,
+rather than replaced by a link that would resolve to the unedited content.
+A real file that mdm materialized (Copilot's copy, or a cross-format
+conversion) is regenerated from the canonical file on every `mdm agents
+install` and `mdm agents update`, so an edit made there is overwritten the
+next time either runs. Edit the definition where it came from and re-add it.
 
 ## Doctor integration
 

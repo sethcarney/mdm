@@ -537,25 +537,101 @@ func TestRematerializeConvertsRealDirectoriesToSymlinks(t *testing.T) {
 }
 
 // An existing canonical directory is kept as is, not overwritten from the copy.
-func TestRematerializeToSymlinkKeepsExistingCanonical(t *testing.T) {
+// A copy that has drifted from the canonical directory holds edits nothing
+// else does. Linking it would resolve to the canonical content and the edits
+// would be gone, which is what the converter used to do (and what this test
+// used to assert). The copy stays a copy, uncounted, and the run says why.
+func TestRematerializeToSymlinkKeepsAnEditedCopyAsACopy(t *testing.T) {
 	cwd := t.TempDir()
 	symlinkOrSkip(t, cwd, filepath.Join(cwd, "probe"))
 	target := writeCopiedSkill(t, cwd, "s1")
+	if err := os.WriteFile(filepath.Join(target, "SKILL.md"), []byte("edited locally\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	canonical := filepath.Join(cwd, ".agents", "skills")
 	writeSkillDir(t, filepath.Join(canonical, "s1"))
 	if err := os.WriteFile(filepath.Join(canonical, "s1", "SKILL.md"), []byte("canonical\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := rematerializeScope(InstallModeSymlink, canonical, []conversionPath{selfNamedConversionPath(target)}); err != nil {
+	n, err := rematerializeScope(InstallModeSymlink, canonical, []conversionPath{selfNamedConversionPath(target)})
+	if err != nil {
 		t.Fatal(err)
 	}
+	if n != 0 {
+		t.Errorf("converted %d, want 0: an edited copy is not linked", n)
+	}
+	assertRealSkill(t, target)
 	got, err := os.ReadFile(filepath.Join(target, "SKILL.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(got) != "canonical\n" {
-		t.Errorf("link content = %q, want the existing canonical content", got)
+	if string(got) != "edited locally\n" {
+		t.Errorf("copy content = %q, want the local edits kept", got)
+	}
+}
+
+// A copy identical to the canonical directory has nothing to lose, so it is
+// linked, and the existing canonical content is what the link resolves to.
+func TestRematerializeToSymlinkLinksAnUnchangedCopy(t *testing.T) {
+	cwd := t.TempDir()
+	symlinkOrSkip(t, cwd, filepath.Join(cwd, "probe"))
+	target := writeCopiedSkill(t, cwd, "s1")
+	canonical := filepath.Join(cwd, ".agents", "skills")
+	if err := copyDirectory(target, filepath.Join(canonical, "s1")); err != nil {
+		t.Fatal(err)
+	}
+
+	n, err := rematerializeScope(InstallModeSymlink, canonical, []conversionPath{selfNamedConversionPath(target)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Errorf("converted %d, want 1", n)
+	}
+	assertLinkTo(t, target, filepath.Join(canonical, "s1"))
+}
+
+// A link whose canonical target is gone used to fail EvalSymlinks and abort
+// the whole conversion, leaving the scope half converted with the old mode
+// recorded. mdm's own dangling link is skipped with a pointer at doctor; the
+// healthy install beside it still converts.
+func TestRematerializeSkipsADanglingMdmLink(t *testing.T) {
+	cwd := t.TempDir()
+	canonicalDir := filepath.Join(cwd, ".agents", "agents")
+	if err := os.MkdirAll(canonicalDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	healthy := filepath.Join(canonicalDir, "critic.md")
+	if err := os.WriteFile(healthy, []byte("---\nname: critic\ndescription: d\n---\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	installDir := filepath.Join(cwd, ".claude", "agents")
+	if err := os.MkdirAll(installDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	dangling := filepath.Join(installDir, "ghost.md")
+	if err := os.Symlink(filepath.Join(canonicalDir, "ghost.md"), dangling); err != nil {
+		t.Skipf("symlinks unavailable on this host: %v", err)
+	}
+	good := filepath.Join(installDir, "critic.md")
+	if err := os.Symlink(healthy, good); err != nil {
+		t.Fatal(err)
+	}
+
+	paths := []conversionPath{selfNamedConversionPath(dangling), selfNamedConversionPath(good)}
+	n, err := rematerializeScope(InstallModeCopy, canonicalDir, paths)
+	if err != nil {
+		t.Fatalf("a dangling link aborted the conversion: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("converted %d, want 1: the healthy link", n)
+	}
+	if info, err := os.Lstat(good); err != nil || info.Mode()&os.ModeSymlink != 0 {
+		t.Errorf("the healthy link was not converted (err=%v)", err)
+	}
+	if info, err := os.Lstat(dangling); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("the dangling link should be left for doctor (err=%v)", err)
 	}
 }
 
@@ -975,27 +1051,58 @@ func TestRematerializeConvertsASingleFileToSymlink(t *testing.T) {
 	}
 }
 
-// An existing canonical file is kept as is, not overwritten from the copy.
-func TestRematerializeToSymlinkKeepsExistingCanonicalFile(t *testing.T) {
+// A copy that differs from the existing canonical file holds edits the
+// canonical file does not, so linking it would drop them. It stays a copy,
+// uncounted, with a warning. This test used to assert the opposite.
+func TestRematerializeToSymlinkKeepsAnEditedFileAsACopy(t *testing.T) {
 	cwd := t.TempDir()
 	symlinkOrSkip(t, cwd, filepath.Join(cwd, "probe"))
 	target := writeCopiedAgentFile(t, cwd, "critic")
+	if err := os.WriteFile(target, []byte("---\nname: critic\ndescription: edited locally\n---\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	canonicalDir := filepath.Join(cwd, ".agents", "agents")
 	canonicalPath := writeAgentFile(t, canonicalDir, "critic")
 	if err := os.WriteFile(canonicalPath, []byte("canonical\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := rematerializeScope(InstallModeSymlink, canonicalDir, []conversionPath{selfNamedConversionPath(target)}); err != nil {
+	n, err := rematerializeScope(InstallModeSymlink, canonicalDir, []conversionPath{selfNamedConversionPath(target)})
+	if err != nil {
 		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Errorf("converted %d, want 0: an edited copy is not linked", n)
+	}
+	if isSymlink(t, target) {
+		t.Fatal("the edited copy was replaced by a link")
 	}
 	got, err := os.ReadFile(target)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(got) != "canonical\n" {
-		t.Errorf("link content = %q, want the existing canonical content", got)
+	if string(got) != "---\nname: critic\ndescription: edited locally\n---\n" {
+		t.Errorf("copy content = %q, want the local edits kept", got)
 	}
+}
+
+// A copy identical to the existing canonical file is linked, and the
+// canonical file is what the link resolves to.
+func TestRematerializeToSymlinkLinksAnUnchangedFile(t *testing.T) {
+	cwd := t.TempDir()
+	symlinkOrSkip(t, cwd, filepath.Join(cwd, "probe"))
+	target := writeCopiedAgentFile(t, cwd, "critic")
+	canonicalDir := filepath.Join(cwd, ".agents", "agents")
+	canonicalPath := writeAgentFile(t, canonicalDir, "critic")
+
+	n, err := rematerializeScope(InstallModeSymlink, canonicalDir, []conversionPath{selfNamedConversionPath(target)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Errorf("converted %d, want 1", n)
+	}
+	assertLinkTo(t, target, canonicalPath)
 }
 
 // If the canonical copy cannot be created, the real file stays in place.

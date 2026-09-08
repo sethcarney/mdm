@@ -1,7 +1,10 @@
 package commands
 
 import (
+	"bytes"
 	"fmt"
+	"github.com/sethcarney/mdm/internal/fork"
+	"github.com/sethcarney/mdm/internal/ui"
 	"os"
 	"path/filepath"
 	"sort"
@@ -370,6 +373,15 @@ func replaceLinkWithCopy(installDir, name, target, temp string, removeTemp func(
 	return nil
 }
 
+// absLinkTarget returns where a link's raw target string points, made absolute
+// against the link's own directory and cleaned, without touching the disk.
+func absLinkTarget(linkDir, raw string) string {
+	if filepath.IsAbs(raw) {
+		return filepath.Clean(raw)
+	}
+	return filepath.Clean(filepath.Join(linkDir, raw))
+}
+
 // linkToCopy replaces one mdm symlink at target with a real copy of what it
 // points at, reporting whether it converted anything. The copy is built beside
 // the target and moved into place by replaceLinkWithCopy, so a failed copy
@@ -383,7 +395,13 @@ func linkToCopy(canonical, target string) (bool, error) {
 	}
 	resolved, err := filepath.EvalSymlinks(target)
 	if err != nil {
-		return false, fmt.Errorf("resolving %s: %w", target, err)
+		// A link whose target is gone. One of mdm's, pointing into the
+		// canonical directory, is a repair for doctor, not a reason to stop
+		// converting the rest of the scope; a foreign one is not mdm's.
+		if raw, rerr := os.Readlink(target); rerr == nil && isInsideOrEqual(absLinkTarget(installDir, raw), canonical) {
+			ui.LogWarn(fmt.Sprintf("skipping %s: its link target is missing; run mdm doctor", target))
+		}
+		return false, nil
 	}
 	// Not one of mdm's links: leave it alone.
 	if resolved == canonical || !isInsideOrEqual(resolved, canonical) {
@@ -463,6 +481,31 @@ func ensureCanonicalCopy(canonical, canonicalPath, target, name string, isDir bo
 	return nil
 }
 
+// sameContent reports whether two installs hold the same content: byte
+// equality for a file, fork.HashDir equality for a directory.
+func sameContent(a, b string, isDir bool) (bool, error) {
+	if isDir {
+		ha, err := fork.HashDir(a)
+		if err != nil {
+			return false, err
+		}
+		hb, err := fork.HashDir(b)
+		if err != nil {
+			return false, err
+		}
+		return ha == hb, nil
+	}
+	da, err := os.ReadFile(a)
+	if err != nil {
+		return false, err
+	}
+	db, err := os.ReadFile(b)
+	if err != nil {
+		return false, err
+	}
+	return bytes.Equal(da, db), nil
+}
+
 // copyToLink replaces one real install at target with an mdm symlink to
 // <canonical>/<canonicalName>, reporting whether it converted anything. The
 // canonical copy is created first when missing, then the original is set aside
@@ -488,6 +531,19 @@ func copyToLink(canonical, target, canonicalName string) (bool, error) {
 	}
 
 	canonicalPath := filepath.Join(canonical, canonicalName)
+	// A canonical copy that already exists is what the link will resolve to,
+	// so a copy that has drifted from it would lose its edits the moment it
+	// became a link. It stays a copy, and the run says so.
+	if _, statErr := os.Stat(canonicalPath); statErr == nil {
+		same, cmpErr := sameContent(target, canonicalPath, info.IsDir())
+		if cmpErr != nil {
+			return false, fmt.Errorf("comparing %s with %s: %w", name, canonicalPath, cmpErr)
+		}
+		if !same {
+			ui.LogWarn(fmt.Sprintf("%s differs from the canonical copy at %s; kept as a copy so the edits survive (put them in the source and reinstall to link it)", target, canonicalPath))
+			return false, nil
+		}
+	}
 	if err := ensureCanonicalCopy(canonical, canonicalPath, target, name, info.IsDir()); err != nil {
 		return false, err
 	}

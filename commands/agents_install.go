@@ -104,7 +104,7 @@ func restoreAgentsMap(entries map[string]lock.AgentLockEntry, global bool, opts 
 	}
 
 	// Resolve harnesses once so the user is not prompted for each source group.
-	harnesses, ok := promptHarnesses(baseOpts.asAddOptions(), global, cwd)
+	harnesses, ok := promptAgentHarnesses(baseOpts, global, cwd)
 	if !ok {
 		fmt.Println("Cancelled.")
 		return

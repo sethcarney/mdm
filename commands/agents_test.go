@@ -1112,3 +1112,64 @@ func TestCopilotMaterializationCopiesBytesWhenTheFormatAlreadyMatches(t *testing
 		t.Errorf("Copilot's file was re-encoded rather than copied:\n got: %q\nwant: %q", got, body)
 	}
 }
+
+// The interactive harness picker was the skills one: its options came from
+// skills directories, shared-directory harnesses were locked (so Codex could
+// not be deselected and every interactive agent install wrote a TOML file),
+// and the selection was saved as the scope's skills defaults. The agents
+// picker offers only harnesses with an agent-definition directory, locks
+// nothing, and records nothing. Under --yes it takes the configured list
+// narrowed to those harnesses, then the detected ones, then all of them.
+func TestPromptAgentHarnessesOffersOnlyAgentCapableHarnessesAndRecordsNothing(t *testing.T) {
+	cwd := t.TempDir()
+	isolateHome(t)
+
+	capable := agentCapableHarnesses(false, cwd)
+	for _, name := range capable {
+		if harness.AgentsInstallDirFor(name, false, cwd) == "" {
+			t.Errorf("%s is offered but has no agent-definition directory", name)
+		}
+	}
+	for name := range harness.AllHarnesses {
+		if harness.AgentsInstallDirFor(name, false, cwd) != "" && !stringSet(capable)[name] {
+			t.Errorf("%s has an agent-definition directory but is not offered", name)
+		}
+	}
+	if !stringSet(capable)["codex"] || !stringSet(capable)["claude-code"] {
+		t.Fatalf("capable list is missing an expected harness: %v", capable)
+	}
+
+	// universal has no agent directory and must not survive the narrowing;
+	// codex must not be forced in just because it shares a skills directory.
+	if err := lock.SetConfiguredHarnesses([]string{"claude-code", "universal"}, false, cwd); err != nil {
+		t.Fatal(err)
+	}
+	before := lock.GetConfiguredHarnesses(false, cwd)
+
+	got, ok := promptAgentHarnesses(AgentOptions{Yes: true}, false, cwd)
+	if !ok {
+		t.Fatal("promptAgentHarnesses declined under --yes")
+	}
+	if len(got) != 1 || got[0] != "claude-code" {
+		t.Errorf("--yes with a configured list = %v, want [claude-code]", got)
+	}
+
+	after := lock.GetConfiguredHarnesses(false, cwd)
+	if strings.Join(before, ",") != strings.Join(after, ",") {
+		t.Errorf("the agents picker changed the configured skills harnesses: %v -> %v", before, after)
+	}
+}
+
+// With nothing configured and nothing detected, --yes installs to every
+// harness that can take a definition rather than to none.
+func TestPromptAgentHarnessesYesFallsBackToEveryCapableHarness(t *testing.T) {
+	cwd := t.TempDir()
+	isolateHome(t)
+	got, ok := promptAgentHarnesses(AgentOptions{Yes: true}, false, cwd)
+	if !ok {
+		t.Fatal("promptAgentHarnesses declined under --yes")
+	}
+	if strings.Join(got, ",") != strings.Join(agentCapableHarnesses(false, cwd), ",") {
+		t.Errorf("fallback = %v, want every capable harness %v", got, agentCapableHarnesses(false, cwd))
+	}
+}
