@@ -202,62 +202,6 @@ func walkYAMLEncodable(rv reflect.Value) any {
 	}
 }
 
-// firstNonStringKey returns the dotted/indexed path to the first map key in v
-// that is not a string. yaml.v3 decodes a mapping such as {8080: web} into
-// map[interface{}]interface{} with an int key; quoting it would change its
-// type, and TOML has no other way to write it, so the caller refuses by name.
-func firstNonStringKey(v any, path string) (string, bool) {
-	return walkNonStringKey(reflect.ValueOf(v), path)
-}
-
-func walkNonStringKey(rv reflect.Value, path string) (string, bool) {
-	if !rv.IsValid() {
-		return "", false
-	}
-	switch rv.Kind() {
-	case reflect.Interface, reflect.Pointer:
-		if rv.IsNil() {
-			return "", false
-		}
-		return walkNonStringKey(rv.Elem(), path)
-	case reflect.Map:
-		return walkNonStringKeyMap(rv, path)
-	case reflect.Slice, reflect.Array:
-		return walkNonStringKeySlice(rv, path)
-	default:
-		return "", false
-	}
-}
-
-// walkNonStringKeyMap names the first non-string key in the map itself, then
-// looks inside each value. A key decoded from YAML arrives as an interface
-// value wrapping the int, so it is unwrapped before its kind is checked.
-func walkNonStringKeyMap(rv reflect.Value, path string) (string, bool) {
-	for _, k := range rv.MapKeys() {
-		keyPath := fmt.Sprintf("%s.%v", path, k.Interface())
-		kv := k
-		if kv.Kind() == reflect.Interface && !kv.IsNil() {
-			kv = kv.Elem()
-		}
-		if kv.Kind() != reflect.String {
-			return keyPath, true
-		}
-		if got, ok := walkNonStringKey(rv.MapIndex(k), keyPath); ok {
-			return got, true
-		}
-	}
-	return "", false
-}
-
-func walkNonStringKeySlice(rv reflect.Value, path string) (string, bool) {
-	for i := 0; i < rv.Len(); i++ {
-		if got, ok := walkNonStringKey(rv.Index(i), fmt.Sprintf("%s[%d]", path, i)); ok {
-			return got, true
-		}
-	}
-	return "", false
-}
-
 // wholeFloatNode returns f unchanged when it has a fractional part, which
 // yaml.v3 already renders with a decimal point; a whole value instead gets
 // an explicit *yaml.Node tagged !!float, so the emitted scalar (e.g. "3.0")

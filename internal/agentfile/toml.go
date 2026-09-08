@@ -54,18 +54,14 @@ var tomlLocalZoneNames = map[string]bool{
 	"datetime-local": true,
 }
 
-// firstUnsafeTemporalKey walks v looking for a TOML local date/time/datetime
-// value, returning the dotted/indexed path to the first one found so a
-// caller can name it in an error rather than silently reinterpreting it.
-//
-// It walks by reflect.Kind, not by a list of concrete types: a TOML array of
-// tables decodes to []map[string]any, a different concrete type from the
-// []any a plain array decodes to, and a hand-listed type switch is only ever
-// as complete as whatever the decoder happens to produce today.
+// firstUnsafeTemporalKey returns the dotted/indexed path to the first TOML
+// local date, time or date-time in v, so a caller can name it in an error
+// rather than silently reinterpreting it.
 func firstUnsafeTemporalKey(v any, path string) (string, bool) {
-	return walkTemporal(reflect.ValueOf(v), path, func(t time.Time) bool {
-		return tomlLocalZoneNames[t.Location().String()]
-	})
+	return walk(reflect.ValueOf(v), path, visitor{value: func(rv reflect.Value, _ string) bool {
+		t, ok := timeValue(rv)
+		return ok && tomlLocalZoneNames[t.Location().String()]
+	}})
 }
 
 // firstTemporalKey returns the path to the first time.Time of any kind in v.
@@ -73,61 +69,18 @@ func firstUnsafeTemporalKey(v any, path string) (string, bool) {
 // date to a time.Time; neither encoder writes that back as the source spelled
 // it, so the caller refuses by name.
 func firstTemporalKey(v any, path string) (string, bool) {
-	return walkTemporal(reflect.ValueOf(v), path, func(time.Time) bool { return true })
-}
-
-func walkTemporal(rv reflect.Value, path string, unsafe func(time.Time) bool) (string, bool) {
-	if !rv.IsValid() {
-		return "", false
-	}
-	if t, ok := rv.Interface().(time.Time); ok {
-		if unsafe(t) {
-			return path, true
-		}
-		return "", false
-	}
-	switch rv.Kind() {
-	case reflect.Interface, reflect.Pointer:
-		if rv.IsNil() {
-			return "", false
-		}
-		return walkTemporal(rv.Elem(), path, unsafe)
-	case reflect.Map:
-		return walkTemporalMap(rv, path, unsafe)
-	case reflect.Slice, reflect.Array:
-		return walkTemporalSlice(rv, path, unsafe)
-	default:
-		return "", false
-	}
-}
-
-// walkTemporalMap checks every value in a map keyed by its map key, so
-// a hit inside an mcp_servers-style nested table names that key, not just
-// the table's own name.
-func walkTemporalMap(rv reflect.Value, path string, unsafe func(time.Time) bool) (string, bool) {
-	for _, k := range rv.MapKeys() {
-		if got, ok := walkTemporal(rv.MapIndex(k), fmt.Sprintf("%s.%v", path, k.Interface()), unsafe); ok {
-			return got, true
-		}
-	}
-	return "", false
-}
-
-// walkTemporalSlice checks every element by index, so a hit inside a
-// TOML array of tables names its position (e.g. servers[0].when), not just
-// the array's own key.
-func walkTemporalSlice(rv reflect.Value, path string, unsafe func(time.Time) bool) (string, bool) {
-	for i := 0; i < rv.Len(); i++ {
-		if got, ok := walkTemporal(rv.Index(i), fmt.Sprintf("%s[%d]", path, i), unsafe); ok {
-			return got, true
-		}
-	}
-	return "", false
+	return walk(reflect.ValueOf(v), path, visitor{value: func(rv reflect.Value, _ string) bool {
+		_, ok := timeValue(rv)
+		return ok
+	}})
 }
 
 // firstNilExtraKey returns the dotted/indexed path to the first nil value in
-// extra, checking keys in sorted order so the key an error names does not
-// depend on Go's map iteration.
+// extra, checking top-level keys in sorted order so the key an error names
+// does not depend on Go's map iteration. TOML has no null, and BurntSushi's
+// encoder answers a nil interface by writing nothing at all and returning no
+// error (encode.go: `case reflect.Interface: if rv.IsNil() { return }`), so
+// the key would vanish from the file with nobody told.
 func firstNilExtraKey(extra map[string]any) (string, bool) {
 	keys := make([]string, 0, len(extra))
 	for k := range extra {
@@ -135,58 +88,88 @@ func firstNilExtraKey(extra map[string]any) (string, bool) {
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		if key, ok := walkNil(reflect.ValueOf(extra[k]), k); ok {
+		if key, ok := walk(reflect.ValueOf(extra[k]), k, visitor{value: isNilValue}); ok {
 			return key, true
 		}
 	}
 	return "", false
 }
 
-// walkNil finds a nil anywhere inside a value. TOML has no null, and
-// BurntSushi's encoder answers a nil interface by writing nothing at all and
-// returning no error (encode.go: `case reflect.Interface: if rv.IsNil() {
-// return }`), so the key vanishes from the file with nobody told. It walks by
-// reflect.Kind for the same reason walkUnsafeTemporal does: a TOML array of
-// tables decodes to []map[string]any, not []any.
-//
-// An invalid reflect.Value is the untyped nil an `any` holding nothing gives,
-// so it counts as a hit rather than as "nothing to look at".
-func walkNil(rv reflect.Value, path string) (string, bool) {
+// firstNonStringKey returns the dotted/indexed path to the first map key in v
+// that is not a string. yaml.v3 decodes a mapping such as {8080: web} into
+// map[interface{}]interface{} with an int key; quoting it would change its
+// type, and TOML has no other way to write it, so the caller refuses by name.
+func firstNonStringKey(v any, path string) (string, bool) {
+	return walk(reflect.ValueOf(v), path, visitor{key: func(k reflect.Value, _ string) bool {
+		if k.Kind() == reflect.Interface && !k.IsNil() {
+			k = k.Elem()
+		}
+		return k.Kind() != reflect.String
+	}})
+}
+
+// timeValue returns the time.Time rv holds, if it holds one.
+func timeValue(rv reflect.Value) (time.Time, bool) {
+	if !rv.IsValid() || !rv.CanInterface() {
+		return time.Time{}, false
+	}
+	t, ok := rv.Interface().(time.Time)
+	return t, ok
+}
+
+// isNilValue reports a nil: the invalid reflect.Value an `any` holding
+// nothing gives, or a nil interface or pointer.
+func isNilValue(rv reflect.Value, _ string) bool {
 	if !rv.IsValid() {
+		return true
+	}
+	return (rv.Kind() == reflect.Interface || rv.Kind() == reflect.Pointer) && rv.IsNil()
+}
+
+// visitor is what walk calls on the way down: value for every node, with its
+// path, and key for every map key, with the path of the entry it names.
+// Returning true stops the walk at that path.
+type visitor struct {
+	value func(rv reflect.Value, path string) bool
+	key   func(k reflect.Value, path string) bool
+}
+
+// walk visits v pre-order and returns the path where a visitor first answered
+// true. It walks by reflect.Kind, not by a list of concrete types: a TOML
+// array of tables decodes to []map[string]any, a different concrete type from
+// the []any a plain array decodes to, and a hand-listed type switch is only
+// ever as complete as whatever the decoder happens to produce today. A map
+// entry's path is the parent's plus ".key"; an element's is the parent's
+// plus "[index]", so a hit inside mcp_servers names the server, and one
+// inside an array of tables names its position.
+func walk(rv reflect.Value, path string, v visitor) (string, bool) {
+	if v.value != nil && v.value(rv, path) {
 		return path, true
+	}
+	if !rv.IsValid() {
+		return "", false
 	}
 	switch rv.Kind() {
 	case reflect.Interface, reflect.Pointer:
 		if rv.IsNil() {
-			return path, true
+			return "", false
 		}
-		return walkNil(rv.Elem(), path)
+		return walk(rv.Elem(), path, v)
 	case reflect.Map:
-		return walkNilMap(rv, path)
-	case reflect.Slice, reflect.Array:
-		return walkNilSlice(rv, path)
-	default:
-		return "", false
-	}
-}
-
-// walkNilMap checks every value in a map keyed by its map key, so a nil
-// inside a nested table names that key rather than the table's own name.
-func walkNilMap(rv reflect.Value, path string) (string, bool) {
-	for _, k := range rv.MapKeys() {
-		if got, ok := walkNil(rv.MapIndex(k), fmt.Sprintf("%s.%v", path, k.Interface())); ok {
-			return got, true
+		for _, k := range rv.MapKeys() {
+			entry := fmt.Sprintf("%s.%v", path, k.Interface())
+			if v.key != nil && v.key(k, entry) {
+				return entry, true
+			}
+			if got, ok := walk(rv.MapIndex(k), entry, v); ok {
+				return got, true
+			}
 		}
-	}
-	return "", false
-}
-
-// walkNilSlice checks every element by index, so a nil inside an array of
-// tables names its position (e.g. servers[0].when).
-func walkNilSlice(rv reflect.Value, path string) (string, bool) {
-	for i := 0; i < rv.Len(); i++ {
-		if got, ok := walkNil(rv.Index(i), fmt.Sprintf("%s[%d]", path, i)); ok {
-			return got, true
+	case reflect.Slice, reflect.Array:
+		for i := 0; i < rv.Len(); i++ {
+			if got, ok := walk(rv.Index(i), fmt.Sprintf("%s[%d]", path, i), v); ok {
+				return got, true
+			}
 		}
 	}
 	return "", false
