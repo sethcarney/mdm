@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode"
 )
 
 // UnicodeVersion is the Unicode release the vendored
@@ -137,7 +138,7 @@ func parseEmojiDataName(comment string) string {
 
 func parseCodepoint(s string) (rune, error) {
 	n, err := strconv.ParseUint(s, 16, 32)
-	if err != nil {
+	if err != nil || n > unicode.MaxRune {
 		return 0, fmt.Errorf("bad codepoint %q", s)
 	}
 	return rune(n), nil

@@ -58,6 +58,8 @@ func TestParseEmojiVariationSequencesRejectsMalformedLines(t *testing.T) {
 	cases := map[string]string{
 		"one codepoint":    "26A0 ; emoji style; # WARNING SIGN\n",
 		"bad hex":          "26A0 ZZZZ ; emoji style; # WARNING SIGN\n",
+		"beyond max rune":  "110000 FE0F ; emoji style; # OUT OF RANGE\n",
+		"overflows uint32": "100000000 FE0F ; emoji style; # OUT OF RANGE\n",
 		"wrong selector":   "26A0 200D ; emoji style; # WARNING SIGN\n",
 		"no sequences":     "# Version: 17.0\n",
 		"only blank lines": "\n\n",
