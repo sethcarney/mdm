@@ -145,3 +145,33 @@ func TestCodexHasAgentDirectories(t *testing.T) {
 		t.Error("GlobalAgentsInstallDir is empty; ~/.codex/agents is documented")
 	}
 }
+
+// The name warning used to build its regex by matching words like "digit" in
+// the prose, so a harness worded differently silently got no check. The rule
+// is now a regexp beside the prose, and the two travel together.
+func TestAgentNameRegexpAccompaniesEveryPattern(t *testing.T) {
+	for name, h := range AllHarnesses {
+		if (h.AgentNamePattern == "") != (h.AgentNameRegexp == nil) {
+			t.Errorf("%s: AgentNamePattern %q and AgentNameRegexp %v must be set together", name, h.AgentNamePattern, h.AgentNameRegexp)
+		}
+	}
+	for _, tc := range []struct {
+		harness, name string
+		ok            bool
+	}{
+		{"claude-code", "code-reviewer", true},
+		{"claude-code", "Code Reviewer", false},
+		{"claude-code", "CodeReviewer", false},
+		{"claude-code", "a:b", false},
+		{"gemini-cli", "review_2", true},
+		{"gemini-cli", "Review", false},
+	} {
+		h := AllHarnesses[tc.harness]
+		if h == nil || h.AgentNameRegexp == nil {
+			t.Fatalf("%s has no name regexp", tc.harness)
+		}
+		if got := h.AgentNameRegexp.MatchString(tc.name); got != tc.ok {
+			t.Errorf("%s: %q matches = %v, want %v", tc.harness, tc.name, got, tc.ok)
+		}
+	}
+}

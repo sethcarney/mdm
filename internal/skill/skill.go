@@ -27,6 +27,10 @@ type Skill struct {
 func ParseFrontmatter(raw string) (data map[string]interface{}, content string) {
 	// Match ---\n...\n---\n
 	const delim = "---"
+	// A UTF-8 byte order mark, which some Windows editors write, is not part
+	// of the file's text; left in place it made the file silently not a
+	// definition.
+	raw = strings.TrimPrefix(raw, "\ufeff")
 	if !strings.HasPrefix(raw, delim) {
 		return map[string]interface{}{}, raw
 	}

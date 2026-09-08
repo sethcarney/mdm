@@ -327,6 +327,9 @@ func (l *ProjectLockFile) UnmarshalJSON(data []byte) error {
 		if err := decode("configuredHarnesses", &l.ConfiguredHarnesses); err != nil {
 			return err
 		}
+		// A lock carrying both spellings keeps the new one; the old key must
+		// not ride along in the unknown-key passthrough forever.
+		delete(raw, "configuredAgents")
 	} else if _, ok := raw["configuredAgents"]; ok {
 		// mdm.lock's v2 format shipped this key spelled configuredAgents.
 		// Real locks exist on disk with that spelling, so decode falls back

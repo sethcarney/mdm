@@ -3,6 +3,7 @@ package harness
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/sethcarney/mdm/internal/agentfile"
@@ -61,9 +62,14 @@ type HarnessConfig struct {
 	AgentAlwaysMaterialize bool
 
 	// AgentNamePattern documents this harness's naming constraint on agent
-	// definition names, as prose or a regex fragment. Empty means mdm has
-	// not recorded a constraint for this harness.
+	// definition names, as prose for the warning that names it. Empty means
+	// mdm has not recorded a constraint for this harness.
 	AgentNamePattern string
+
+	// AgentNameRegexp is the same constraint as a check. It is set exactly
+	// when AgentNamePattern is; the warning is derived from it, never from
+	// words in the prose.
+	AgentNameRegexp *regexp.Regexp
 
 	DetectInstalled func() bool
 }
@@ -187,6 +193,7 @@ func Reload() {
 			// - checked 2026-09-05. Lowercase letters, digits, hyphens,
 			// underscores.
 			AgentNamePattern: "lowercase letters, digits, hyphens, underscores",
+			AgentNameRegexp:  regexp.MustCompile(`^[a-z0-9_-]+$`),
 			DetectInstalled:  func() bool { return pathExists(filepath.Join(home, ".gemini")) },
 		},
 		"github-copilot": {
@@ -344,6 +351,7 @@ func Reload() {
 			// https://code.claude.com/docs/en/sub-agents - checked
 			// 2026-09-05. Lowercase letters and hyphens; must not contain ":".
 			AgentNamePattern: "lowercase letters and hyphens, no colon",
+			AgentNameRegexp:  regexp.MustCompile(`^[a-z-]+$`),
 			DetectInstalled:  func() bool { return pathExists(claudeHome) },
 		},
 		"roo": {

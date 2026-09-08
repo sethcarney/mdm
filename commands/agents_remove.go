@@ -78,7 +78,11 @@ If no names are provided an interactive selection menu is shown.
   mdm agents remove code-reviewer -y`, ansiBold, ansiReset),
 		Args: cobra.ArbitraryArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			runAgentRemove(args, opts)
+			// A deletion that failed leaves the definition on disk and in
+			// the lock; a script must not read that as done.
+			if !runAgentRemove(args, opts) {
+				os.Exit(1)
+			}
 		},
 	}
 
@@ -264,13 +268,15 @@ func unadoptAgentLink(target, canonicalPath string) error {
 	return replaceFileFrom(canonicalPath, target)
 }
 
-func runAgentRemove(positional []string, opts AgentOptions) {
+// runAgentRemove reports whether every selected removal succeeded. A
+// cancelled prompt and an empty scope are not failures.
+func runAgentRemove(positional []string, opts AgentOptions) bool {
 	cwd, _ := os.Getwd()
 	filterNames := append(append([]string{}, opts.Agents...), positional...)
 
 	global, ok := resolveAgentRemoveScope(opts)
 	if !ok {
-		return
+		return true
 	}
 
 	// An unrecognized name would otherwise match no harness and report a
@@ -288,27 +294,29 @@ func runAgentRemove(positional []string, opts AgentOptions) {
 	lockNames, lockEntries := agentLockEntries(global, cwd)
 	if len(lockNames) == 0 {
 		fmt.Printf("%sNo agent definitions installed.%s\n", ansiDim, ansiReset)
-		return
+		return true
 	}
 
 	toRemove, ok := selectAgentsToRemove(lockNames, filterNames, opts)
 	if !ok || len(toRemove) == 0 {
-		return
+		return true
 	}
 
 	if !opts.Yes {
 		confirmed, ok := ui.UiConfirm(fmt.Sprintf("Remove %d agent definition(s): %s?", len(toRemove), strings.Join(toRemove, ", ")))
 		if !ok || !confirmed {
 			fmt.Println("Cancelled.")
-			return
+			return true
 		}
 	}
 
 	fmt.Println()
+	ok = true
 	for _, name := range toRemove {
 		fullyRemoved, kept, err := removeAgentFromDisk(name, opts.Harnesses, lockedAgentFormat(lockEntries[name]), global, cwd)
 		switch {
 		case err != nil:
+			ok = false
 			ui.LogError(fmt.Sprintf("%s: %v", name, err))
 		case fullyRemoved:
 			ui.LogSuccess("Removed " + name)
@@ -320,4 +328,5 @@ func runAgentRemove(positional []string, opts AgentOptions) {
 		}
 	}
 	fmt.Println()
+	return ok
 }

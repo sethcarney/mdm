@@ -531,3 +531,41 @@ func TestDiscoverRejectsAnUnsafeSubpathWithAnError(t *testing.T) {
 		t.Errorf("error should say it is the subpath that is invalid, got: %v", err)
 	}
 }
+
+// `name: [a, b]` is a file that meant to be a definition and is not one.
+// ParseAgentMd used to answer (nil, nil) for it, the same as for a README, so
+// discovery passed it over without a word. It is now noted like an
+// unparseable file, while a file with no name or description key at all is
+// still ignored in silence.
+func TestDiscoverNotesADefinitionWhoseNameIsNotAString(t *testing.T) {
+	repo := t.TempDir()
+	agentsDir := filepath.Join(repo, "agents")
+	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{
+		"listy.md":  "---\nname: [a, b]\ndescription: d\n---\nbody\n",
+		"readme.md": "# Just a readme\n",
+		"good.md":   "---\nname: good\ndescription: d\n---\nbody\n",
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(agentsDir, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var noted []string
+	restore := noteSkippedFile
+	noteSkippedFile = func(path string, err error) { noted = append(noted, filepath.Base(path)+": "+err.Error()) }
+	t.Cleanup(func() { noteSkippedFile = restore })
+
+	got, err := DiscoverAgentFiles(repo, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Name != "good" {
+		t.Errorf("discovered %d definitions, want only good", len(got))
+	}
+	if len(noted) != 1 || !strings.HasPrefix(noted[0], "listy.md: ") || !strings.Contains(noted[0], "name") {
+		t.Errorf("noted %v, want one note naming listy.md and its name key", noted)
+	}
+}

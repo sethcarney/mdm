@@ -59,6 +59,12 @@ func ParseAgentMd(path string) (*AgentFile, error) {
 	name, _ := data["name"].(string)
 	desc, _ := data["description"].(string)
 	if name == "" || desc == "" {
+		// A file that carries the keys with the wrong shape meant to be a
+		// definition; discovery reports it. One with no such keys is an
+		// ordinary file and is passed over in silence.
+		if key, ok := nonStringKey(data, "name", "description"); ok {
+			return nil, &NotADefinitionError{Path: path, Reason: fmt.Sprintf("frontmatter %s is not a string", key)}
+		}
 		return nil, nil
 	}
 	extra := map[string]any{}
@@ -142,7 +148,7 @@ func encodeMarkdown(a *AgentFile) ([]byte, error) {
 	}
 	yamlBytes, err := yaml.Marshal(fm)
 	if err != nil {
-		return nil, fmt.Errorf("agentfile: encoding frontmatter: %w", err)
+		return nil, fmt.Errorf("encoding frontmatter: %w", err)
 	}
 	var buf bytes.Buffer
 	buf.WriteString("---\n")
@@ -267,6 +273,30 @@ func wholeFloatNode(f float64) any {
 	}
 }
 
+// NotADefinitionError says a file has a definition's shape but not its
+// content: a name or description that is present and not a string.
+// DiscoverAgentFiles notes it and moves on; a caller that only wants to know
+// whether a file is a definition can treat it as "no".
+type NotADefinitionError struct {
+	Path   string
+	Reason string
+}
+
+func (e *NotADefinitionError) Error() string { return e.Reason }
+
+// nonStringKey returns the first of keys whose value is present in data and
+// is not a string.
+func nonStringKey(data map[string]any, keys ...string) (string, bool) {
+	for _, k := range keys {
+		if v, ok := data[k]; ok {
+			if _, isString := v.(string); !isString {
+				return k, true
+			}
+		}
+	}
+	return "", false
+}
+
 // FormatForExt maps a file extension to its format. Anything that is not TOML
 // is markdown, which is what every harness but Codex reads.
 func FormatForExt(ext string) Format {
@@ -332,9 +362,9 @@ func manifestAgentDirs(searchPath, resolvedRoot string) []string {
 // skip that says nothing leaves someone staring at a source whose definition
 // never appeared, with no way to tell a typo in their TOML from mdm ignoring
 // the file on purpose. It is a variable so a test can capture the note without
-// reading os.Stderr.
+// reading os.Stderr. No program prefix: nothing else mdm prints carries one.
 var noteSkippedFile = func(path string, err error) {
-	fmt.Fprintf(os.Stderr, "  mdm: skipping %s: %v\n", path, err)
+	fmt.Fprintf(os.Stderr, "  skipping %s: %v\n", path, err)
 }
 
 // DiscoverAgentFiles scans basePath, optionally joined with subpath, for

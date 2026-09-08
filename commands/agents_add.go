@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 
@@ -366,24 +365,6 @@ type agentInstallOutcome struct {
 	materialized *materializedInstalls
 }
 
-// agentNameCharsFor returns the regex character class harnessName's
-// documented AgentNamePattern allows. Letters and hyphens are always in it;
-// digits and underscores are added only when the pattern's own text says so.
-// Empty means no documented pattern, so mdm has nothing to check against.
-func agentNameCharsFor(pattern string) string {
-	if pattern == "" {
-		return ""
-	}
-	chars := "a-z-"
-	if strings.Contains(pattern, "digit") {
-		chars += "0-9"
-	}
-	if strings.Contains(pattern, "underscore") {
-		chars += "_"
-	}
-	return chars
-}
-
 // warnAgentNamePattern warns once, naming every target harness whose
 // documented naming rule this definition's frontmatter name does not
 // satisfy. mdm does not rewrite the name - the source owns it, which is what
@@ -396,8 +377,7 @@ func warnAgentNamePattern(rawName string, harnesses []string) {
 		if cfg == nil {
 			continue
 		}
-		chars := agentNameCharsFor(cfg.AgentNamePattern)
-		if chars == "" || regexp.MustCompile("^["+chars+"]+$").MatchString(rawName) {
+		if cfg.AgentNameRegexp == nil || cfg.AgentNameRegexp.MatchString(rawName) {
 			continue
 		}
 		bad = append(bad, fmt.Sprintf("%s (%s)", cfg.DisplayName, cfg.AgentNamePattern))

@@ -239,7 +239,7 @@ func encodeTOML(a *AgentFile) ([]byte, error) {
 	}
 	var buf bytes.Buffer
 	if err := toml.NewEncoder(&buf).Encode(doc); err != nil {
-		return nil, fmt.Errorf("agentfile: encoding TOML: %w", err)
+		return nil, fmt.Errorf("encoding TOML: %w", err)
 	}
 	return buf.Bytes(), nil
 }

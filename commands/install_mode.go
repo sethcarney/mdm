@@ -2,6 +2,7 @@ package commands
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"github.com/sethcarney/mdm/internal/fork"
 	"github.com/sethcarney/mdm/internal/ui"
@@ -446,6 +447,12 @@ func isMdmOwnedCopyInstall(target string, info os.FileInfo) (bool, error) {
 	// read error still surfaces as an error here.
 	agent, err := agentfile.ParseAgentFile(target)
 	if err != nil {
+		// A file shaped like a definition but not one is simply not an
+		// mdm install; only a read failure is worth stopping for.
+		var notDef *agentfile.NotADefinitionError
+		if errors.As(err, &notDef) {
+			return false, nil
+		}
 		return false, fmt.Errorf("checking %s: %w", target, err)
 	}
 	return agent != nil, nil

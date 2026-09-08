@@ -600,3 +600,36 @@ func TestAgentsAddRecordsARelativeLocalSourceAndDoesNotReclaimItsOwnInstalls(t *
 		t.Errorf("`agents add .` rewrote the recorded source:\n%s", after)
 	}
 }
+
+// `agents add` exits 1 when nothing landed; `agents remove` logged a failed
+// deletion and exited 0, so a script read a definition still on disk and in
+// the lock as removed. A non-empty directory where the harness file should
+// be is a deletion os.Remove cannot perform on any platform.
+func TestAgentsRemoveExitsNonZeroWhenADeletionFails(t *testing.T) {
+	projectDir := t.TempDir()
+	stateDir := t.TempDir()
+	src := writeAgentSourceWith(t, "critic")
+	env := isolatedEnv(projectDir, stateDir)
+	if stdout, stderr, code := runMdmInDir(t, projectDir, env,
+		"agents", "add", src, "--harness", "claude-code", "--project", "-y"); code != 0 {
+		t.Fatalf("setup install exited %d:\n%s%s", code, stdout, stderr)
+	}
+	harnessFile := filepath.Join(projectDir, ".claude", "agents", "critic.md")
+	if err := os.Remove(harnessFile); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(harnessFile, "blocker"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, stderr, code := runMdmInDir(t, projectDir, env, "agents", "remove", "critic", "--project", "-y")
+	if code == 0 {
+		t.Fatalf("mdm agents remove exited 0 although the deletion failed:\n%s%s", stdout, stderr)
+	}
+	if !strings.Contains(stdout+stderr, "could not remove") {
+		t.Errorf("expected the failure to be reported, got:\n%s%s", stdout, stderr)
+	}
+	if data, _ := os.ReadFile(filepath.Join(projectDir, lockName)); !strings.Contains(string(data), `"critic"`) {
+		t.Errorf("lock entry dropped despite the failed deletion:\n%s", data)
+	}
+}

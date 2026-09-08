@@ -610,3 +610,28 @@ func TestGlobalStateOldKeyDoesNotRoundTripAlongsideNewKey(t *testing.T) {
 		t.Errorf("written state still carries the old key alongside the new one:\n%s", raw)
 	}
 }
+
+// A lock that somehow carries both spellings (a hand merge, or a v2 build
+// writing over an older one) keeps configuredHarnesses. The old key used to
+// survive in the unknown-key passthrough and be written back on every save.
+func TestProjectLockWithBothHarnessKeysDropsTheOldOne(t *testing.T) {
+	cwd := t.TempDir()
+	both := `{"version":2,"skills":{},"configuredHarnesses":["cursor"],"configuredAgents":["claude-code"]}`
+	if err := os.WriteFile(GetProjectLockPath(cwd), []byte(both), 0600); err != nil {
+		t.Fatal(err)
+	}
+	lk := ReadProjectLock(cwd)
+	if len(lk.ConfiguredHarnesses) != 1 || lk.ConfiguredHarnesses[0] != "cursor" {
+		t.Errorf("ConfiguredHarnesses = %v, want the new key's value", lk.ConfiguredHarnesses)
+	}
+	if err := WriteProjectLock(lk, cwd); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(GetProjectLockPath(cwd))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), `"configuredAgents"`) {
+		t.Errorf("the old key survived a round trip beside the new one:\n%s", raw)
+	}
+}
