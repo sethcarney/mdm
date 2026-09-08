@@ -45,6 +45,22 @@ var multiValueFlags = map[string]bool{
 	"skill":   true, "s": true,
 }
 
+// RenamedFlagHint returns a one-line hint when err is cobra's complaint about
+// the flag this release renamed: --agent and its -a shorthand became
+// --harness on every command but `mdm agents`, where -a now means --agent.
+// An alias would have kept the old spelling working while its meaning
+// changed under the user, so the flag fails, and this says why.
+func RenamedFlagHint(err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "unknown flag: --agent") || strings.Contains(msg, "unknown shorthand flag: 'a' in -a") {
+		return "--agent became --harness in this release; harness management moved to `mdm harnesses`."
+	}
+	return ""
+}
+
 // normalizeMultiFlags rewrites space-separated multi-value flags into the
 // repeated-flag form that cobra/pflag expects.
 // e.g. ["--harness", "claude", "cursor"] → ["--harness", "claude", "--harness", "cursor"]

@@ -33,6 +33,28 @@ file as "no skills installed".
 **Recovery.** Fix the JSON by hand, or restore the file from version
 control (`git restore mdm.lock`), then re-run.
 
+## "unknown flag: --agent", or `mdm agents add cursor` tries to clone a repository
+
+This release renamed the AI tool from *agent* to *harness*. `--agent` and `-a`
+became `--harness` on the skills, plugins, rules and cherry-pick commands, and
+the `mdm agents` command group that managed the configured tool list became
+`mdm harnesses`. `mdm agents` now installs [agent definitions](agent-artifacts.md),
+so `mdm agents add cursor` reads `cursor` as a source and stops with a message
+pointing at `mdm harnesses add cursor`.
+
+Update the invocation:
+
+```bash
+mdm skills add ./sk --agent claude-code   # before
+mdm skills add ./sk --harness claude-code # now
+
+mdm agents add cursor                     # before
+mdm harnesses add cursor                  # now
+```
+
+There is deliberately no alias. `mdm agents add <name>` kept working across the
+rename would have changed meaning without telling anyone.
+
 ## `mdm harnesses remove` deleted skills I wrote by hand
 
 **Symptom.** You keep your own skills in `./skills/`, run `mdm harnesses remove openclaw`,

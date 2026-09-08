@@ -744,3 +744,48 @@ func TestSkillsRemoveAllRemovesEverySkill(t *testing.T) {
 		t.Errorf("lock file still records my-skill:\n%s", data)
 	}
 }
+
+// The rename has no alias, so an old invocation fails. It must fail with a
+// pointer, not a bare cobra error or a git clone of a repository called
+// "cursor". These drive the binary because the hint for the flag is printed
+// by main, after cobra has already rejected the flag.
+func TestRenamedFlagAndCommandFailWithAHint(t *testing.T) {
+	projectDir := t.TempDir()
+	stateDir := t.TempDir()
+	env := isolatedEnv(projectDir, stateDir)
+
+	_, stderr, code := runMdmInDir(t, projectDir, env, "skills", "add", "./sk", "--agent", "claude-code")
+	if code == 0 {
+		t.Fatal("`skills add --agent` succeeded; the flag was removed")
+	}
+	if !strings.Contains(stderr, "--harness") || !strings.Contains(stderr, "mdm harnesses") {
+		t.Errorf("`--agent` should fail with a hint naming --harness and mdm harnesses, got:\n%s", stderr)
+	}
+
+	_, stderr, code = runMdmInDir(t, projectDir, env, "skills", "add", "./sk", "-a", "claude-code")
+	if code == 0 {
+		t.Fatal("`skills add -a` succeeded; the shorthand was removed")
+	}
+	if !strings.Contains(stderr, "--harness") {
+		t.Errorf("`-a` should fail with the same hint, got:\n%s", stderr)
+	}
+
+	_, stderr, code = runMdmInDir(t, projectDir, env, "agents", "add", "cursor", "--project", "-y")
+	if code == 0 {
+		t.Fatal("`agents add cursor` succeeded; a harness name is not a source")
+	}
+	if !strings.Contains(stderr, "mdm harnesses add cursor") {
+		t.Errorf("`agents add cursor` should point at mdm harnesses add cursor, got:\n%s", stderr)
+	}
+	if strings.Contains(stderr, "repository") {
+		t.Errorf("`agents add cursor` should stop before any clone is attempted, got:\n%s", stderr)
+	}
+
+	stdout, _, code := runMdmInDir(t, projectDir, env, "agents", "list", "--project")
+	if code != 0 {
+		t.Fatalf("`agents list` exited %d", code)
+	}
+	if !strings.Contains(stdout, "mdm harnesses list") {
+		t.Errorf("the empty `agents list` should say where the harness list went, got:\n%s", stdout)
+	}
+}

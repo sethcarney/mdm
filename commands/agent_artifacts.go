@@ -162,6 +162,15 @@ func fetchAgentSource(parsed source.ParsedSource, verbose bool) (searchRoot, clo
 // harness.
 func runAgentAdd(sourceInput string, opts AgentOptions) bool {
 	cwd, _ := os.Getwd()
+	// `mdm agents add cursor` was how a harness was configured before this
+	// release. A bare harness name is never a source, so it would otherwise
+	// fail as a git clone of a repository called "cursor".
+	if harness.AllHarnesses[sourceInput] != nil {
+		fmt.Fprintf(os.Stderr, "%s%s is a harness, not a source of agent definitions.%s\n", ansiText, sourceInput, ansiReset)
+		fmt.Fprintf(os.Stderr, "Harness management moved to %smdm harnesses add %s%s in this release; %smdm agents add <source>%s installs agent definitions.\n",
+			ansiText, sourceInput, ansiReset, ansiText, ansiReset)
+		os.Exit(1)
+	}
 	parsed := source.ParseSource(sourceInput)
 	vlog(verboseFlag, "source %q → type=%s url=%s ref=%q subpath=%q",
 		sourceInput, parsed.Type, parsed.URL, parsed.Ref, parsed.Subpath)
@@ -652,7 +661,8 @@ func runAgentList(globalFlag, projectFlag bool) {
 	}
 	if total == 0 {
 		fmt.Printf("%sNo agent definitions installed.%s\n\n", ansiDim, ansiReset)
-		fmt.Printf("Add one with %smdm agents add <source>%s\n\n", ansiText, ansiReset)
+		fmt.Printf("Add one with %smdm agents add <source>%s\n", ansiText, ansiReset)
+		fmt.Printf("%sLooking for the configured harnesses? That list moved to mdm harnesses list.%s\n\n", ansiDim, ansiReset)
 	}
 }
 

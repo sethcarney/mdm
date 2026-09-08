@@ -103,6 +103,14 @@ mdm upgrade                Upgrade the mdm CLI binary
 
 Run `mdm --help` for the full command reference. See [docs/rules.md](docs/rules.md) for a detailed walkthrough of the `mdm rules` flow.
 
+> [!NOTE]
+> **Upgrading from an earlier v2 build:** the AI tool is now a *harness*. `mdm agents`
+> (which managed the configured tool list) is `mdm harnesses`, and `--agent` / `-a` on
+> the skills, plugins, rules and cherry-pick commands is `--harness`. `mdm agents` now
+> installs agent definitions, and `mdm agents add <name>` no longer configures a tool:
+> use `mdm harnesses add <name>`. There is no alias, so an old script fails rather than
+> doing something else. `mdm.lock` written by the earlier build is read as before.
+
 > [!WARNING]
 > **`mdm harnesses remove openclaw` deletes `./skills/`.** Removing a harness cleans
 > up the skills directory that belongs to it, and OpenClaw's project skills

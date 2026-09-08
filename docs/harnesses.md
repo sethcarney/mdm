@@ -9,6 +9,13 @@ single source of truth for which harnesses skills are installed to. It is
 read whenever `mdm skills add` needs to know which harnesses to target and is
 updated automatically when you pick harnesses interactively.
 
+!!! note "Upgrading from an earlier v2 build"
+    This command was `mdm agents`, and the flag that names a harness on the
+    skills, plugins, rules and cherry-pick commands was `--agent` / `-a`. Both
+    are now `--harness` and `mdm harnesses`; `mdm agents` installs agent
+    definitions instead. There is no alias: `mdm agents add cursor` stops with
+    a message pointing here rather than fetching a repository called `cursor`.
+
 ## Harness categories
 
 Harnesses fall into three categories that determine whether they need explicit configuration:

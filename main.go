@@ -41,6 +41,9 @@ func main() {
 
 	if cmdErr != nil {
 		fmt.Fprintln(os.Stderr, cmdErr)
+		if hint := commands.RenamedFlagHint(cmdErr); hint != "" {
+			fmt.Fprintln(os.Stderr, hint)
+		}
 		os.Exit(1)
 	}
 }
