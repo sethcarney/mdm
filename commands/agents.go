@@ -1,4 +1,4 @@
-// mdm agents manages agent-definition files: single markdown files that give a
+// mdm agents manages agent-definition files: single markdown or TOML files that give a
 // harness a named subagent persona, distinct from the prompt libraries
 // `mdm skills` installs. The harness concept `mdm agents` named before this
 // release is now `mdm harnesses`.
@@ -14,7 +14,7 @@ func buildAgentArtifactsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "agents",
 		Short: "Manage agent definitions for AI harnesses",
-		Long: fmt.Sprintf(`Manage agent definitions - single markdown files that give a harness
+		Long: fmt.Sprintf(`Manage agent definitions - single markdown or TOML files that give a harness
 a named subagent persona (e.g. Claude Code subagents), distinct from the
 reusable prompt libraries %smdm skills%s installs.
 

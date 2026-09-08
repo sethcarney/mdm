@@ -141,7 +141,7 @@ re-running it on a rebuild skips tools already at the pinned version.
 
 Bumping `go.mod` is enough to move the container. `post-create.sh` reads the
 `go` directive and runs `go env -w GOTOOLCHAIN=go<version>`, which every `go`
-command honours in any shell. The dev container feature only installs a
+command honors in any shell. The dev container feature only installs a
 bootstrap Go, so the first `go` command in a fresh container may download the
 pinned toolchain - a one-time cost that buys an exact match with CI.
 
@@ -411,7 +411,7 @@ mdm
 │   └── install                             # Write completion into shell rc file
 ├── skills                                  # Manage skills for AI harnesses
 │   ├── add <package>                       # Install a skill from GitHub, GitLab, URL, or local path (alias: a; --copy/--symlink)
-│   ├── cherry-pick <source>                # Fork skills into ./skills as your own, with provenance (aliases: fork, cp)
+│   ├── cherry-pick [source]                # Fork skills into ./skills as your own, with provenance (aliases: fork, cp)
 │   ├── remove [skills...]                  # Uninstall skills (aliases: rm, r)
 │   ├── list                                # List installed skills (alias: ls)
 │   ├── find [query]                        # Search the skills.sh registry and install interactively (aliases: search, f, s)

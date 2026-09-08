@@ -24,7 +24,7 @@ mdm
 │   └── install                             # Write completion into your shell rc
 ├── skills                                  # Manage skills for AI harnesses
 │   ├── add <package>                       # Install a skill (alias: a)
-│   ├── cherry-pick <source>                # Fork skills into ./skills as your own (aliases: fork, cp)
+│   ├── cherry-pick [source]                # Fork skills into ./skills as your own (aliases: fork, cp)
 │   ├── remove [skills...]                  # Uninstall skills (aliases: rm, r)
 │   ├── list                                # List installed skills (alias: ls)
 │   ├── find [query]                        # Search skills.sh and install interactively (aliases: search, f, s)
@@ -113,7 +113,7 @@ your own. Unlike `skills add`, nothing updates them afterwards - the copy is
 yours, with its provenance and license recorded inside it.
 
 ```bash
-mdm skills cherry-pick <source>
+mdm skills cherry-pick [source]
 ```
 
 | Flag | Description |
@@ -128,6 +128,9 @@ mdm skills cherry-pick <source>
 | `--list`, `-l` | List the skills available at the source without forking |
 | `--status` | Show this project's forks and whether they have been edited |
 | `--no-attribution` | Do not write `ATTRIBUTION.md` |
+| `--global`, `-g` / `--project`, `-p` | Scope for `--install` (global, or this project only) |
+| `--copy` / `--symlink` | Install mode for `--install`; switches the scope's mode like `skills add` |
+| `--yes`, `-y` | Skip confirmation prompts |
 
 [:octicons-arrow-right-24: Details](skills/cherry-pick.md)
 
@@ -280,6 +283,7 @@ friends) by pointing them all at a single source of truth.
 | --- | --- |
 | `--harness` | Limit to specific harnesses (repeatable) |
 | `--json` | Output status as a JSON array (`status`) |
+| `--yes`, `-y` | Skip the confirmation prompt (`link`: replace existing real files; `unlink`) |
 
 [:octicons-arrow-right-24: Details](rules.md)
 
@@ -309,7 +313,7 @@ project and global scope.
 
 ## `mdm agents`
 
-Manage agent definitions - single markdown files that give a harness a named
+Manage agent definitions - single markdown or TOML files that give a harness a named
 subagent persona, installed into each target harness's own agent directory.
 Distinct from `mdm harnesses` above, which manages the AI tools themselves.
 
@@ -323,11 +327,13 @@ Distinct from `mdm harnesses` above, which manages the AI tools themselves.
 
 | Flag | Applies to | Description |
 | --- | --- | --- |
-| `--global`, `-g` | all | Operate on the global scope |
+| `--global`, `-g` | `add` / `list` / `remove` / `update` | Operate on the global scope (`install` restores both scopes) |
 | `--project`, `-p` | `add` / `list` / `remove` / `update` | Force project scope |
 | `--harness` | `add` / `remove` | Harnesses to target (repeatable, use `*` for all) |
 | `--agent`, `-a` | `add` / `remove` | Agent definition names to target (repeatable, use `*` for all) |
-| `--yes`, `-y` | all | Skip confirmation prompts |
+| `--copy` / `--symlink` | `add` / `install` | Switch the scope's install mode (see [Install mode](agent-artifacts.md#install-mode)) |
+| `--allow-hidden-chars` | `add` / `update` / `install` | Allow markdown files with hidden Unicode characters |
+| `--yes`, `-y` | `add` / `remove` / `update` / `install` | Skip confirmation prompts |
 
 [:octicons-arrow-right-24: Details](agent-artifacts.md)
 

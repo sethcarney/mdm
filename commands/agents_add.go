@@ -27,7 +27,7 @@ func buildAgentAddCmd() *cobra.Command {
 		Use:     "add <source>",
 		Short:   "Add agent definitions from GitHub, a URL, or a local path",
 		Aliases: []string{"a"},
-		Long: fmt.Sprintf(`Add one or more agent-definition markdown files from GitHub, a URL,
+		Long: fmt.Sprintf(`Add one or more agent-definition files (markdown, or Codex TOML) from GitHub, a URL,
 or a local path.
 
 The --harness and --agent (-a) flags accept multiple values. You can

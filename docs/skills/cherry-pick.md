@@ -116,7 +116,7 @@ A fork redistributes someone else's work, and mdm cannot make that lawful for yo
 - **The license text is copied into the fork** as `LICENSE.upstream` when the skill directory did not already ship one, because most permissive licenses require the notice to travel with the copy.
 - **A source with no license at all stops the command** and asks for confirmation. Absent a license the default is that no redistribution rights are granted - a fork of it may not be yours to publish, and `ATTRIBUTION.md` says so.
 
-Honouring the terms - attribution, share-alike, or simply asking first - remains yours to do. `--no-attribution` omits the generated notice; it does not omit the obligation.
+Honoring the terms - attribution, share-alike, or simply asking first - remains yours to do. `--no-attribution` omits the generated notice; it does not omit the obligation.
 
 ## The forks directory and OpenClaw
 

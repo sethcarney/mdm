@@ -4,7 +4,7 @@ Manage the list of AI harnesses mdm should support by default.
 
 A harness is the AI coding tool itself - Claude Code, Cursor, Windsurf, and so
 on - as distinct from an [agent definition](agent-artifacts.md), which is a
-markdown file installed *into* a harness. The configured harness list is the
+single file (markdown, or TOML for Codex) installed *into* a harness. The configured harness list is the
 single source of truth for which harnesses skills are installed to. It is
 read whenever `mdm skills add` needs to know which harnesses to target and is
 updated automatically when you pick harnesses interactively.

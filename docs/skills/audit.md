@@ -49,7 +49,7 @@ Audit complete: 3 checked, 1 outdated, 1 advisory
 | `outdated` | A newer version is available |
 | `unknown` | Could not determine status (no hash stored or API error) |
 | `local` | Installed from a local path, not a git remote |
-| `unchecked` | Not a recognised source type |
+| `unchecked` | Not a recognized source type |
 
 ### Advisory severity levels
 

@@ -20,7 +20,7 @@ For each skill recorded in the lock file:
 
 ### Agent definitions
 
-For each [agent definition](agent-artifacts.md) recorded in the lock file: whether its canonical file (`.agents/agents/<name>.md`) still exists, and whether every harness it is installed in has a healthy copy - distinguishing a broken symlink in a harness (target missing; run `mdm agents update <name>`) from the definition not being installed in any harness at all (run `mdm agents install`).
+For each [agent definition](agent-artifacts.md) recorded in the lock file: whether its canonical file (`.agents/agents/<name>.md`, or `.toml` for a TOML source) still exists, and whether every harness it is installed in has a healthy copy - distinguishing a broken symlink in a harness (target missing; run `mdm agents update <name>`) from the definition not being installed in any harness at all (run `mdm agents install`).
 
 ### Instruction files
 

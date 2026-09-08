@@ -14,7 +14,7 @@ Reads the lock file and re-installs every recorded skill from its original sourc
 
 mdm looks for skills in both the project lock (`mdm.lock`) and the global state file (`~/.agents/mdm-state.json`):
 
-| Situation | Behaviour |
+| Situation | Behavior |
 |---|---|
 | Only project lock has skills | Restores project skills silently |
 | Only global lock has skills | Explains the situation and asks to confirm before restoring |

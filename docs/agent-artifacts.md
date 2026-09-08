@@ -293,7 +293,7 @@ agent definitions; most other harnesses have not been checked either way.
 
 | Harness | Project directory | User directory | File extension | Format | Source |
 | --- | --- | --- | --- | --- | --- |
-| Claude Code | `.claude/agents` | `~/.claude/agents` | `.md` | markdown | [code.claude.com/docs/en/sub-agents](https://code.claude.com/docs/en/sub-agents) - checked 2026-09-03 |
+| Claude Code | `.claude/agents` | `$CLAUDE_CONFIG_DIR/agents` (default `~/.claude/agents`) | `.md` | markdown | [code.claude.com/docs/en/sub-agents](https://code.claude.com/docs/en/sub-agents) - checked 2026-09-03 |
 | GitHub Copilot | `.github/agents` | `~/.copilot/agents` | `.agent.md` | markdown | [docs.github.com/.../create-custom-agents-for-cli](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/create-custom-agents-for-cli) - checked 2026-09-03 |
 | OpenCode | `.opencode/agents` | `$XDG_CONFIG_HOME/opencode/agents` (default `~/.config/opencode/agents`) | `.md` | markdown | [opencode.ai/docs/agents](https://opencode.ai/docs/agents/) - checked 2026-09-03 |
 | Cursor | `.cursor/agents` | `~/.cursor/agents` | `.md` | markdown | [cursor.com/docs/subagents](https://cursor.com/docs/subagents) - checked 2026-09-03 |
