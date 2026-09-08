@@ -59,14 +59,7 @@ func (f *symlinkFallbacks) warn() {
 	if !f.any() {
 		return
 	}
-	names := make([]string, 0, len(f.harnesses))
-	for _, a := range f.harnesses {
-		if cfg := harness.AllHarnesses[a]; cfg != nil {
-			names = append(names, cfg.DisplayName)
-		} else {
-			names = append(names, a)
-		}
-	}
+	names := harnessDisplayNames(f.harnesses)
 	noun, group := f.wording()
 	fmt.Printf("%s▲ Could not create symlinks for %s; those %s were copied instead.%s\n", ansiYellow, strings.Join(names, ", "), noun, ansiReset)
 	fmt.Printf("%s  The scope is still in symlink mode, so mdm %s install and mdm %s update will try to symlink again.%s\n", ansiDim, group, group, ansiReset)
@@ -126,12 +119,8 @@ func (m *materializedInstalls) explain() {
 		return
 	}
 	fmt.Printf("%sSome harnesses received a real file rather than a symlink:%s\n", ansiDim, ansiReset)
-	for _, a := range m.harnesses {
-		name := a
-		if cfg := harness.AllHarnesses[a]; cfg != nil {
-			name = cfg.DisplayName
-		}
-		fmt.Printf("%s  %s: %s.%s\n", ansiDim, name, materializeReason(a), ansiReset)
+	for i, name := range harnessDisplayNames(m.harnesses) {
+		fmt.Printf("%s  %s: %s.%s\n", ansiDim, name, materializeReason(m.harnesses[i]), ansiReset)
 	}
 	fmt.Println()
 }

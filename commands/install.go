@@ -97,44 +97,50 @@ func restoreSkillsFromCurrentLock(opts restoreOptions, cwd string) {
 		fmt.Printf("\n%sNo %s found.%s\n\n", ansiDim, lockName, ansiReset)
 		fmt.Printf("Add skills with %smdm skills add <package>%s\n\n", ansiText, ansiReset)
 
-	case hasLocal && !hasGlobal:
-		// Only local lock has skills - restore silently
-		restoreFromLocalLock(localL, opts)
-
-	case !hasLocal && hasGlobal:
-		// Only global lock has skills - explain and ask
-		fmt.Printf("\n%sNo skills found in the local %s.%s\n", ansiDim, lockName, ansiReset)
-		fmt.Printf("%sFound %d skill(s) in the global state file (%s).%s\n\n",
-			ansiDim, len(globalL.Skills), lock.GetGlobalStatePath(), ansiReset)
-		if !opts.yes {
-			confirmed, ok := ui.UiConfirm("Install from the globally recorded skills?")
-			if !ok || !confirmed {
-				fmt.Println("Cancelled.")
-				return
-			}
+	default:
+		global, ok := chooseRestoreScope(len(localL.Skills), len(globalL.Skills), opts.yes, "skill", cwd)
+		if !ok {
+			fmt.Println("Cancelled.")
+			return
 		}
-		restoreFromGlobalLock(globalL, opts)
-
-	default: // both have skills
-		if opts.yes {
-			// Default to local when -y flag is used
-			restoreFromLocalLock(localL, opts)
+		if global {
+			restoreFromGlobalLock(globalL, opts)
 		} else {
-			idx, ok := ui.UiSelect("Install from which lock file?", []ui.UIOption{
-				{Label: fmt.Sprintf("Local  - %d skill(s)", len(localL.Skills)), Hint: lock.GetProjectLockPath(cwd)},
-				{Label: fmt.Sprintf("Global - %d skill(s)", len(globalL.Skills)), Hint: lock.GetGlobalStatePath()},
-			})
-			if !ok {
-				fmt.Println("Cancelled.")
-				return
-			}
-			if idx == 1 {
-				restoreFromGlobalLock(globalL, opts)
-			} else {
-				restoreFromLocalLock(localL, opts)
-			}
+			restoreFromLocalLock(localL, opts)
 		}
 	}
+}
+
+// chooseRestoreScope decides which lock a restore reads when at least one of
+// the two records something: the only populated one, with a confirmation
+// when that is the global state file (which a project checkout does not
+// imply); under --yes the local lock when both are populated; otherwise the
+// user's choice. noun is the singular of what is being restored.
+func chooseRestoreScope(localCount, globalCount int, yes bool, noun, cwd string) (global bool, ok bool) {
+	switch {
+	case localCount > 0 && globalCount == 0:
+		return false, true
+	case localCount == 0 && globalCount > 0:
+		fmt.Printf("\n%sNo %ss found in the local %s.%s\n", ansiDim, noun, lockName, ansiReset)
+		fmt.Printf("%sFound %d %s(s) in the global state file (%s).%s\n\n",
+			ansiDim, globalCount, noun, lock.GetGlobalStatePath(), ansiReset)
+		if yes {
+			return true, true
+		}
+		confirmed, ok := ui.UiConfirm(fmt.Sprintf("Install from the globally recorded %ss?", noun))
+		return true, ok && confirmed
+	}
+	if yes {
+		return false, true
+	}
+	idx, ok := ui.UiSelect("Install from which lock file?", []ui.UIOption{
+		{Label: fmt.Sprintf("Local  - %d %s(s)", localCount, noun), Hint: lock.GetProjectLockPath(cwd)},
+		{Label: fmt.Sprintf("Global - %d %s(s)", globalCount, noun), Hint: lock.GetGlobalStatePath()},
+	})
+	if !ok {
+		return false, false
+	}
+	return idx == 1, true
 }
 
 // restoreFromLocalLock installs all skills recorded in the project-level lock file.

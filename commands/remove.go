@@ -91,31 +91,43 @@ func filterInstalledByName(installed []*InstalledSkill, names []string) ([]*Inst
 }
 
 func selectSkillsToRemove(installed []*InstalledSkill, skillFilter []string, opts RemoveOptions) ([]*InstalledSkill, bool) {
-	if len(skillFilter) == 1 && skillFilter[0] == "*" {
-		return installed, true
+	return pickForRemoval(installed, skillFilter, opts.Yes, "Which skills would you like to remove?", filterInstalledByName,
+		func(s *InstalledSkill) ui.UIOption {
+			hint := s.Description
+			if len(s.Harnesses) > 0 {
+				hint = strings.Join(s.Harnesses, ", ")
+			}
+			return ui.UIOption{Label: s.Name, Value: sanitizeName(s.Name), Hint: hint}
+		})
+}
+
+// pickForRemoval narrows items to the ones a removal targets: all of them for
+// "*", what byName keeps for an explicit filter, all of them under --yes or
+// when there is only one, and otherwise the user's choice from prompt. It is
+// the shape both `skills remove` and `agents remove` select with.
+func pickForRemoval[T any](items []T, filter []string, yes bool, prompt string,
+	byName func([]T, []string) ([]T, bool), option func(T) ui.UIOption) ([]T, bool) {
+	if len(filter) == 1 && filter[0] == "*" {
+		return items, true
 	}
-	if len(skillFilter) > 0 {
-		return filterInstalledByName(installed, skillFilter)
+	if len(filter) > 0 {
+		return byName(items, filter)
 	}
-	if opts.Yes || len(installed) == 1 {
-		return installed, true
+	if yes || len(items) == 1 {
+		return items, true
 	}
-	options := make([]ui.UIOption, len(installed))
-	for i, s := range installed {
-		hint := s.Description
-		if len(s.Harnesses) > 0 {
-			hint = strings.Join(s.Harnesses, ", ")
-		}
-		options[i] = ui.UIOption{Label: s.Name, Value: sanitizeName(s.Name), Hint: hint}
+	options := make([]ui.UIOption, len(items))
+	for i, it := range items {
+		options[i] = option(it)
 	}
-	indices, ok := ui.UiSearchMultiselect("Which skills would you like to remove?", options, nil, nil, true)
+	indices, ok := ui.UiSearchMultiselect(prompt, options, nil, nil, true)
 	if !ok {
 		fmt.Println("Cancelled.")
 		return nil, false
 	}
-	var selected []*InstalledSkill
+	var selected []T
 	for _, i := range indices {
-		selected = append(selected, installed[i])
+		selected = append(selected, items[i])
 	}
 	return selected, true
 }
@@ -323,15 +335,22 @@ func removeSkillFromDisk(sk *InstalledSkill, harnessFilter []string, global bool
 }
 
 func resolveRemoveScope(opts RemoveOptions) (global bool, ok bool) {
-	if opts.Global {
+	return resolveScope(opts.Global, false, opts.Yes, "remove from")
+}
+
+// resolveScope settles the scope a command acts on: an explicit flag wins,
+// --yes means project, and otherwise the user is asked. verb is what the
+// prompt's hints say the scope is for ("remove from", "install for").
+func resolveScope(global, project, yes bool, verb string) (bool, bool) {
+	if global {
 		return true, true
 	}
-	if opts.Yes {
+	if project || yes {
 		return false, true
 	}
 	idx, ok := ui.UiSelect("Which scope?", []ui.UIOption{
-		{Label: "Project", Hint: "remove from this project"},
-		{Label: "Global", Hint: "remove from your user account"},
+		{Label: "Project", Hint: verb + " this project"},
+		{Label: "Global", Hint: verb + " your user account"},
 	})
 	if !ok {
 		return false, false

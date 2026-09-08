@@ -5,7 +5,6 @@ package commands
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -342,14 +341,7 @@ func agentLockEntry(parsed source.ParsedSource, sourceInput string) lock.AgentLo
 // agentFileRepoPath returns the repo-relative path to a discovered agent
 // definition file. cloneDir is the git clone root, empty for a local install.
 func agentFileRepoPath(agentPath, cloneDir string) string {
-	if cloneDir == "" || agentPath == "" {
-		return ""
-	}
-	rel, err := filepath.Rel(cloneDir, agentPath)
-	if err != nil {
-		return ""
-	}
-	return filepath.ToSlash(rel)
+	return repoRelPath(agentPath, cloneDir)
 }
 
 // agentInstallOutcome is what an add run did. A definition can be skipped by

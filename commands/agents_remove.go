@@ -99,59 +99,31 @@ If no names are provided an interactive selection menu is shown.
 }
 
 func resolveAgentRemoveScope(opts AgentOptions) (global bool, ok bool) {
-	if opts.Global {
-		return true, true
-	}
-	if opts.Project || opts.Yes {
-		return false, true
-	}
-	idx, ok := ui.UiSelect("Which scope?", []ui.UIOption{
-		{Label: "Project", Hint: "remove from this project"},
-		{Label: "Global", Hint: "remove from your user account"},
-	})
-	if !ok {
-		return false, false
-	}
-	return idx == 1, true
+	return resolveScope(opts.Global, opts.Project, opts.Yes, "remove from")
 }
 
 func selectAgentsToRemove(lockNames, filterNames []string, opts AgentOptions) ([]string, bool) {
-	if len(filterNames) == 1 && filterNames[0] == "*" {
-		return lockNames, true
-	}
-	if len(filterNames) > 0 {
-		var keep []string
-		for _, f := range filterNames {
-			for _, n := range lockNames {
-				if skillNameMatches(n, f) {
-					keep = append(keep, n)
-					break
-				}
+	return pickForRemoval(lockNames, filterNames, opts.Yes, "Which agent definitions would you like to remove?", filterLockNames,
+		func(n string) ui.UIOption { return ui.UIOption{Label: n, Value: n} })
+}
+
+// filterLockNames keeps the lock names an explicit filter matches, in the
+// filter's order; none matching is reported and fails the removal.
+func filterLockNames(lockNames, filterNames []string) ([]string, bool) {
+	var keep []string
+	for _, f := range filterNames {
+		for _, n := range lockNames {
+			if skillNameMatches(n, f) {
+				keep = append(keep, n)
+				break
 			}
 		}
-		if len(keep) == 0 {
-			fmt.Fprintf(os.Stderr, "%sNo matching agent definitions found.%s\n", ansiText, ansiReset)
-			return nil, false
-		}
-		return keep, true
 	}
-	if opts.Yes || len(lockNames) == 1 {
-		return lockNames, true
-	}
-	options := make([]ui.UIOption, len(lockNames))
-	for i, n := range lockNames {
-		options[i] = ui.UIOption{Label: n, Value: n}
-	}
-	indices, ok := ui.UiSearchMultiselect("Which agent definitions would you like to remove?", options, nil, nil, true)
-	if !ok {
-		fmt.Println("Cancelled.")
+	if len(keep) == 0 {
+		fmt.Fprintf(os.Stderr, "%sNo matching agent definitions found.%s\n", ansiText, ansiReset)
 		return nil, false
 	}
-	var selected []string
-	for _, i := range indices {
-		selected = append(selected, lockNames[i])
-	}
-	return selected, true
+	return keep, true
 }
 
 // removeFileFn is removeAgentFromDisk's deletion seam: tests swap it for a

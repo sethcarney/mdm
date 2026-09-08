@@ -758,18 +758,27 @@ func installSkillsForHarnesses(skills []*skill.Skill, harnesses []string, global
 // skill discovered during a git clone. cloneDir is the root of the clone; when
 // empty (local or blob installs) an empty string is returned.
 func skillMdRepoPath(skillPath, cloneDir string) string {
-	if cloneDir == "" || skillPath == "" {
+	rel := repoRelPath(skillPath, cloneDir)
+	switch rel {
+	case "":
 		return ""
-	}
-	rel, err := filepath.Rel(cloneDir, skillPath)
-	if err != nil {
-		return ""
-	}
-	rel = filepath.ToSlash(rel)
-	if rel == "." {
+	case ".":
 		return "SKILL.md"
 	}
 	return rel + "/SKILL.md"
+}
+
+// repoRelPath returns path relative to the clone root, with forward slashes,
+// or "" when there is no clone (a local or blob install) or no path.
+func repoRelPath(path, cloneDir string) string {
+	if cloneDir == "" || path == "" {
+		return ""
+	}
+	rel, err := filepath.Rel(cloneDir, path)
+	if err != nil {
+		return ""
+	}
+	return filepath.ToSlash(rel)
 }
 
 // toRelSourcePath converts an absolute local path to a path relative to cwd,
@@ -1203,15 +1212,7 @@ func printInstallSummary(count int, global bool, harnesses []string, mode Instal
 	}
 	fmt.Printf("%s✓ Installed %d %s (%s scope, %s)%s\n", ansiText, count, noun, scope, modeNote, ansiReset)
 	if len(harnesses) > 0 {
-		var displayNames []string
-		for _, a := range harnesses {
-			if cfg := harness.AllHarnesses[a]; cfg != nil {
-				displayNames = append(displayNames, cfg.DisplayName)
-			} else {
-				displayNames = append(displayNames, a)
-			}
-		}
-		fmt.Printf("%s  Harnesses: %s%s\n", ansiDim, strings.Join(displayNames, ", "), ansiReset)
+		fmt.Printf("%s  Harnesses: %s%s\n", ansiDim, strings.Join(harnessDisplayNames(harnesses), ", "), ansiReset)
 	}
 	fmt.Println()
 	fallbacks.warn()

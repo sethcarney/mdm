@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/sethcarney/mdm/internal/lock"
-	"github.com/sethcarney/mdm/internal/ui"
 )
 
 func buildAgentsInstallCmd() *cobra.Command {
@@ -52,35 +51,16 @@ func restoreAgentsFromLock(opts restoreOptions) {
 		// A project with no agent definitions is a normal outcome.
 		return
 
-	case hasLocal && !hasGlobal:
-		restoreAgentsMap(localAgents, false, opts, cwd)
-
-	case !hasLocal && hasGlobal:
-		if !opts.yes {
-			msg := fmt.Sprintf("Found %d agent definition(s) in the global state file (%s). Install them?", len(globalAgents), lock.GetGlobalStatePath())
-			confirmed, ok := ui.UiConfirm(msg)
-			if !ok || !confirmed {
-				return
-			}
+	default:
+		global, ok := chooseRestoreScope(len(localAgents), len(globalAgents), opts.yes, "agent definition", cwd)
+		if !ok {
+			fmt.Println("Cancelled.")
+			return
 		}
-		restoreAgentsMap(globalAgents, true, opts, cwd)
-
-	default: // both scopes have agent definitions
-		if opts.yes {
-			restoreAgentsMap(localAgents, false, opts, cwd)
+		if global {
+			restoreAgentsMap(globalAgents, true, opts, cwd)
 		} else {
-			idx, ok := ui.UiSelect("Restore agent definitions from which lock file?", []ui.UIOption{
-				{Label: fmt.Sprintf("Local  - %d agent definition(s)", len(localAgents)), Hint: lock.GetProjectLockPath(cwd)},
-				{Label: fmt.Sprintf("Global - %d agent definition(s)", len(globalAgents)), Hint: lock.GetGlobalStatePath()},
-			})
-			if !ok {
-				return
-			}
-			if idx == 1 {
-				restoreAgentsMap(globalAgents, true, opts, cwd)
-			} else {
-				restoreAgentsMap(localAgents, false, opts, cwd)
-			}
+			restoreAgentsMap(localAgents, false, opts, cwd)
 		}
 	}
 }
