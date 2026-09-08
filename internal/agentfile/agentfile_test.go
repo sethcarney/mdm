@@ -163,9 +163,10 @@ func TestParseAgentMdReadError(t *testing.T) {
 
 // isSafeRelDir is the boundary that filters agentsDirs, which arrives from
 // an untrusted marketplace.json. Test it directly, not just through the
-// fixtures, since a fixture's absence would let a broken check pass anyway
-// (see TestDiscover fixtures: nonexistent "../escape" and "/abs" entries
-// fail at os.ReadDir regardless of what isSafeRelDir decided).
+// fixtures. testdata/repo's manifest declares "../escape", which exists
+// (testdata/escape/leaked.md) and is what TestDiscoverRejectsUnsafeManifestDirs
+// proves is never read; its "/abs" entry does not exist on any test host, so
+// that one is checked only here, lexically.
 func TestIsSafeRelDir(t *testing.T) {
 	tests := []struct {
 		name string

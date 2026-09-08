@@ -529,12 +529,13 @@ func TestProjectLockUpgradesV1InPlace(t *testing.T) {
 }
 
 // mdm.lock's v2 format shipped with configuredAgents, so a real lock on disk
-// can carry the old key. The fallback decode must consume it rather than leave
-// it to the unknown-key passthrough, or a round trip emits both spellings.
+// can carry the old key at version 2. The fallback decode must consume it
+// rather than leave it to the unknown-key passthrough, or a round trip emits
+// both spellings.
 func TestProjectLockOldKeyDoesNotRoundTripAlongsideNewKey(t *testing.T) {
 	cwd := t.TempDir()
-	v1 := `{"version":1,"skills":{"s1":{"source":"o/r","sourceType":"github"}},"configuredAgents":["claude-code"]}`
-	if err := os.WriteFile(GetProjectLockPath(cwd), []byte(v1), 0600); err != nil {
+	v2 := `{"version":2,"skills":{"s1":{"source":"o/r","sourceType":"github"}},"configuredAgents":["claude-code"]}`
+	if err := os.WriteFile(GetProjectLockPath(cwd), []byte(v2), 0600); err != nil {
 		t.Fatal(err)
 	}
 

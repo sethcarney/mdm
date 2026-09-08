@@ -633,3 +633,158 @@ func TestAgentsRemoveExitsNonZeroWhenADeletionFails(t *testing.T) {
 		t.Errorf("lock entry dropped despite the failed deletion:\n%s", data)
 	}
 }
+
+// Every agent test above runs in project scope. Global scope resolves every
+// path from the home directory and records in the state file rather than
+// mdm.lock, so a wrong root there would go unnoticed. One definition through
+// add, list and remove, with `-g` on each, against an isolated home.
+func TestAgentsGlobalScopeAddListRemove(t *testing.T) {
+	projectDir := t.TempDir()
+	home := t.TempDir()
+	stateDir := t.TempDir()
+	src := writeAgentSourceWith(t, "critic")
+	env := isolatedEnv(home, stateDir)
+
+	stdout, stderr, code := runMdmInDir(t, projectDir, env,
+		"agents", "add", src, "--harness", "claude-code", "--global", "-y")
+	if code != 0 {
+		t.Fatalf("mdm agents add -g exited %d:\n%s%s", code, stdout, stderr)
+	}
+	harnessFile := filepath.Join(home, ".claude", "agents", "critic.md")
+	if _, err := os.Lstat(harnessFile); err != nil {
+		t.Fatalf("global install missing at %s: %v\n%s%s", harnessFile, err, stdout, stderr)
+	}
+	if _, err := os.Lstat(filepath.Join(projectDir, ".claude", "agents", "critic.md")); !os.IsNotExist(err) {
+		t.Errorf("a global install wrote into the project directory")
+	}
+	statePath := filepath.Join(stateDir, "mdm", "state.json")
+	state, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatalf("global state file not written at %s: %v", statePath, err)
+	}
+	if !strings.Contains(string(state), `"critic"`) {
+		t.Errorf("global state does not record critic:\n%s", state)
+	}
+	if _, err := os.Stat(filepath.Join(projectDir, lockName)); !os.IsNotExist(err) {
+		t.Errorf("a global install wrote a project lock")
+	}
+
+	stdout, stderr, code = runMdmInDir(t, projectDir, env, "agents", "list", "-g")
+	if code != 0 {
+		t.Fatalf("mdm agents list -g exited %d:\n%s%s", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "critic") || !strings.Contains(stdout, "Claude Code") {
+		t.Errorf("list -g should name the definition and its harness, got:\n%s", stdout)
+	}
+
+	stdout, stderr, code = runMdmInDir(t, projectDir, env, "agents", "remove", "critic", "-g", "-y")
+	if code != 0 {
+		t.Fatalf("mdm agents remove -g exited %d:\n%s%s", code, stdout, stderr)
+	}
+	if _, err := os.Lstat(harnessFile); !os.IsNotExist(err) {
+		t.Errorf("global install still present after remove: %v", err)
+	}
+	if state, _ := os.ReadFile(statePath); strings.Contains(string(state), `"critic"`) {
+		t.Errorf("global state still records critic after remove:\n%s", state)
+	}
+}
+
+// A TOML source through the real command: Codex takes the canonical TOML as
+// it stands, and a markdown harness receives a converted real file with the
+// body where developer_instructions was. The package tests cover the
+// conversion; this covers the wiring that chooses it per harness.
+func TestAgentsAddInstallsATOMLSourceToCodexAndConvertsItForClaudeCode(t *testing.T) {
+	projectDir := t.TempDir()
+	stateDir := t.TempDir()
+	srcRoot := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(srcRoot, "agents"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	toml := "name = \"critic\"\ndescription = \"Reviews code\"\ndeveloper_instructions = \"Be critical.\"\nmodel = \"gpt-5\"\n"
+	if err := os.WriteFile(filepath.Join(srcRoot, "agents", "critic.toml"), []byte(toml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := isolatedEnv(projectDir, stateDir)
+
+	stdout, stderr, code := runMdmInDir(t, projectDir, env,
+		"agents", "add", srcRoot, "--harness", "codex", "claude-code", "--project", "-y")
+	if code != 0 {
+		t.Fatalf("mdm agents add exited %d:\n%s%s", code, stdout, stderr)
+	}
+
+	canonical := filepath.Join(projectDir, ".agents", "agents", "critic.toml")
+	if _, err := os.Stat(canonical); err != nil {
+		t.Fatalf("canonical file should mirror the TOML source: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(projectDir, ".agents", "agents", "critic.md")); !os.IsNotExist(err) {
+		t.Errorf("a markdown canonical was written for a TOML source")
+	}
+
+	// Codex: the canonical bytes, as a link or, where links are unavailable,
+	// a copy; never a conversion.
+	codexFile := filepath.Join(projectDir, ".codex", "agents", "critic.toml")
+	got, err := os.ReadFile(codexFile)
+	if err != nil {
+		t.Fatalf("Codex's file missing: %v\n%s%s", err, stdout, stderr)
+	}
+	if string(got) != toml {
+		t.Errorf("Codex's file is not the source bytes:\n%s", got)
+	}
+
+	// Claude Code: a real, converted markdown file.
+	claudeFile := filepath.Join(projectDir, ".claude", "agents", "critic.md")
+	fi, err := os.Lstat(claudeFile)
+	if err != nil {
+		t.Fatalf("Claude Code's file missing: %v", err)
+	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		t.Errorf("Claude Code's file is a symlink; a cross-format install must be a real file")
+	}
+	md, err := os.ReadFile(claudeFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"name: critic", "description: Reviews code", "model: gpt-5", "Be critical."} {
+		if !strings.Contains(string(md), want) {
+			t.Errorf("converted markdown missing %q:\n%s", want, md)
+		}
+	}
+	if strings.Contains(string(md), "developer_instructions") {
+		t.Errorf("developer_instructions should have become the body, not a frontmatter key:\n%s", md)
+	}
+	if !strings.Contains(stdout, "Codex") {
+		t.Errorf("the summary should name Codex among the harnesses, got:\n%s", stdout)
+	}
+}
+
+// After add, `agents list` in project scope names the definition, its
+// source and every harness holding it; a definition whose harness copy has
+// gone is flagged rather than listed as healthy.
+func TestAgentsListShowsHarnessesAndFlagsAMissingCopy(t *testing.T) {
+	projectDir := t.TempDir()
+	stateDir := t.TempDir()
+	src := writeAgentSourceWith(t, "critic")
+	env := isolatedEnv(projectDir, stateDir)
+	if stdout, stderr, code := runMdmInDir(t, projectDir, env,
+		"agents", "add", src, "--harness", "claude-code", "cursor", "--project", "-y"); code != 0 {
+		t.Fatalf("setup install exited %d:\n%s%s", code, stdout, stderr)
+	}
+
+	stdout, stderr, code := runMdmInDir(t, projectDir, env, "agents", "list", "--project")
+	if code != 0 {
+		t.Fatalf("mdm agents list exited %d:\n%s%s", code, stdout, stderr)
+	}
+	for _, want := range []string{"critic", "Claude Code", "Cursor"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("list missing %q:\n%s", want, stdout)
+		}
+	}
+
+	if err := os.RemoveAll(filepath.Join(projectDir, ".agents", "agents")); err != nil {
+		t.Fatal(err)
+	}
+	stdout, _, _ = runMdmInDir(t, projectDir, env, "agents", "list", "--project")
+	if !strings.Contains(strings.ToLower(stdout), "missing") {
+		t.Errorf("list should flag the missing canonical file, got:\n%s", stdout)
+	}
+}
