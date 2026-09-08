@@ -48,6 +48,9 @@ files in this order, and the **first occurrence of a name wins**:
    source say where its agents live instead of relying on convention.
 2. The conventional directories, always searched in this order:
    `agents`, `subagents`, `.claude/agents`, `.github/agents`, `.agents/agents`.
+3. The source directory itself, so `mdm agents add ./my-agents` works on a
+   flat directory of definitions. It comes last: a name one of the directories
+   above already claimed wins.
 
 Only files directly inside one of these directories are scanned (not
 subdirectories), and only files ending in `.md` or `.toml` are considered -

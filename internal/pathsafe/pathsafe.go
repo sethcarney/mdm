@@ -13,12 +13,18 @@ import (
 // escape the search root, judged from the path string alone. It guards the
 // directories a plugin manifest declares, and nothing else. filepath.IsAbs is
 // too weak here: on Windows it reports false for a rooted-but-driveless path
-// like "/Users/victim". "." names the search root, not a subdirectory.
+// like "/Users/victim". "." names the search root, not a subdirectory, and so
+// does anything that cleans to it ("./", "x/..", "agents/../"), which
+// filepath.IsLocal accepts.
 func IsSafeRelDir(d string) bool {
-	if d == "" || d == "." {
+	if d == "" {
 		return false
 	}
-	return filepath.IsLocal(d)
+	c := filepath.Clean(d)
+	if c == "." {
+		return false
+	}
+	return filepath.IsLocal(c)
 }
 
 // ResolvedContains reports whether candidate, once symlinks are resolved, still

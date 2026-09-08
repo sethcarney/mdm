@@ -63,15 +63,25 @@ var tomlLocalZoneNames = map[string]bool{
 // []any a plain array decodes to, and a hand-listed type switch is only ever
 // as complete as whatever the decoder happens to produce today.
 func firstUnsafeTemporalKey(v any, path string) (string, bool) {
-	return walkUnsafeTemporal(reflect.ValueOf(v), path)
+	return walkTemporal(reflect.ValueOf(v), path, func(t time.Time) bool {
+		return tomlLocalZoneNames[t.Location().String()]
+	})
 }
 
-func walkUnsafeTemporal(rv reflect.Value, path string) (string, bool) {
+// firstTemporalKey returns the path to the first time.Time of any kind in v.
+// A markdown source reaches it through yaml.v3, which resolves an unquoted
+// date to a time.Time; neither encoder writes that back as the source spelled
+// it, so the caller refuses by name.
+func firstTemporalKey(v any, path string) (string, bool) {
+	return walkTemporal(reflect.ValueOf(v), path, func(time.Time) bool { return true })
+}
+
+func walkTemporal(rv reflect.Value, path string, unsafe func(time.Time) bool) (string, bool) {
 	if !rv.IsValid() {
 		return "", false
 	}
 	if t, ok := rv.Interface().(time.Time); ok {
-		if tomlLocalZoneNames[t.Location().String()] {
+		if unsafe(t) {
 			return path, true
 		}
 		return "", false
@@ -81,34 +91,34 @@ func walkUnsafeTemporal(rv reflect.Value, path string) (string, bool) {
 		if rv.IsNil() {
 			return "", false
 		}
-		return walkUnsafeTemporal(rv.Elem(), path)
+		return walkTemporal(rv.Elem(), path, unsafe)
 	case reflect.Map:
-		return walkUnsafeTemporalMap(rv, path)
+		return walkTemporalMap(rv, path, unsafe)
 	case reflect.Slice, reflect.Array:
-		return walkUnsafeTemporalSlice(rv, path)
+		return walkTemporalSlice(rv, path, unsafe)
 	default:
 		return "", false
 	}
 }
 
-// walkUnsafeTemporalMap checks every value in a map keyed by its map key, so
+// walkTemporalMap checks every value in a map keyed by its map key, so
 // a hit inside an mcp_servers-style nested table names that key, not just
 // the table's own name.
-func walkUnsafeTemporalMap(rv reflect.Value, path string) (string, bool) {
+func walkTemporalMap(rv reflect.Value, path string, unsafe func(time.Time) bool) (string, bool) {
 	for _, k := range rv.MapKeys() {
-		if got, ok := walkUnsafeTemporal(rv.MapIndex(k), fmt.Sprintf("%s.%v", path, k.Interface())); ok {
+		if got, ok := walkTemporal(rv.MapIndex(k), fmt.Sprintf("%s.%v", path, k.Interface()), unsafe); ok {
 			return got, true
 		}
 	}
 	return "", false
 }
 
-// walkUnsafeTemporalSlice checks every element by index, so a hit inside a
+// walkTemporalSlice checks every element by index, so a hit inside a
 // TOML array of tables names its position (e.g. servers[0].when), not just
 // the array's own key.
-func walkUnsafeTemporalSlice(rv reflect.Value, path string) (string, bool) {
+func walkTemporalSlice(rv reflect.Value, path string, unsafe func(time.Time) bool) (string, bool) {
 	for i := 0; i < rv.Len(); i++ {
-		if got, ok := walkUnsafeTemporal(rv.Index(i), fmt.Sprintf("%s[%d]", path, i)); ok {
+		if got, ok := walkTemporal(rv.Index(i), fmt.Sprintf("%s[%d]", path, i), unsafe); ok {
 			return got, true
 		}
 	}

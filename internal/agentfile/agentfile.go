@@ -42,8 +42,10 @@ type AgentFile struct {
 	Extra        map[string]any
 }
 
-// conventionalDirs are scanned after any manifest-declared agentsDirs.
-var conventionalDirs = []string{"agents", "subagents", ".claude/agents", ".github/agents", ".agents/agents"}
+// ConventionalDirs are scanned after any manifest-declared agentsDirs, and
+// before the search path itself. Exported so a caller can name them when a
+// search finds nothing.
+var ConventionalDirs = []string{"agents", "subagents", ".claude/agents", ".github/agents", ".agents/agents"}
 
 // ParseAgentMd reads and parses one agent .md file. It returns (nil, nil) when
 // the frontmatter has no name or no description: that file is not an agent
@@ -83,9 +85,18 @@ func ParseAgentMd(path string) (*AgentFile, error) {
 // the offending key and carries no package prefix: the installer prints it to
 // the user verbatim, under a line that already names the definition.
 func Encode(a *AgentFile, f Format) ([]byte, error) {
+	fromMarkdown := sourceFormat(a) == FormatMarkdown
 	for k, v := range a.Extra {
 		if key, ok := firstUnsafeTemporalKey(v, k); ok {
 			return nil, fmt.Errorf("cannot encode %q: TOML local date/time values cannot be re-encoded without changing their meaning", key)
+		}
+		// yaml.v3 resolves an unquoted date to a time.Time, which TOML writes
+		// as an offset datetime and YAML as an RFC 3339 timestamp: the same
+		// class of silent change the guard above refuses the other way.
+		if fromMarkdown {
+			if key, ok := firstTemporalKey(v, k); ok {
+				return nil, fmt.Errorf("cannot encode %q: YAML read it as a timestamp, and neither format writes that back as the source spelled it - quote the value in the source", key)
+			}
 		}
 		if key, ok := firstNonStringKey(v, k); ok {
 			return nil, fmt.Errorf("cannot encode %q: the key is not a string, and neither format can keep it as written - quote it in the source", key)
@@ -97,9 +108,31 @@ func Encode(a *AgentFile, f Format) ([]byte, error) {
 	return encodeMarkdown(a)
 }
 
+// sourceFormat is the format a's bytes came in: Format when set, otherwise
+// what the source extension says. A definition assembled in code can leave
+// both empty, which reads as markdown.
+func sourceFormat(a *AgentFile) Format {
+	if a.Format != "" {
+		return a.Format
+	}
+	return FormatForExt(filepath.Ext(a.Path))
+}
+
 // encodeMarkdown renders a as a markdown file: YAML frontmatter holding name,
-// description and every Extra key, followed by the body.
+// description and every Extra key, followed by the body. It refuses an Extra
+// key named name or description: the loop below writes into the same map, so
+// the key would silently replace what the definition itself says.
+// developer_instructions is not reserved here, since in markdown the body is
+// not a frontmatter key and the two sit side by side.
 func encodeMarkdown(a *AgentFile) ([]byte, error) {
+	for _, r := range reservedTOMLKeys {
+		if r.key == "developer_instructions" {
+			continue
+		}
+		if _, ok := a.Extra[r.key]; ok {
+			return nil, fmt.Errorf("cannot encode %q: markdown writes the definition's %s under that frontmatter key, so a key of the same name would replace it - rename or remove the key", r.key, r.holds)
+		}
+	}
 	fm := map[string]any{
 		"name":        a.Name,
 		"description": a.Description,
@@ -305,13 +338,17 @@ var noteSkippedFile = func(path string, err error) {
 }
 
 // DiscoverAgentFiles scans basePath, optionally joined with subpath, for
-// agent-definition files. Manifest-declared directories are scanned first and
-// the first occurrence of a name wins, so a source can say where its agents live.
+// agent-definition files: manifest-declared directories first, then the
+// conventional ones, then searchPath itself. The first occurrence of a name
+// wins, so a source can say where its agents live.
 func DiscoverAgentFiles(basePath, subpath string) ([]*AgentFile, error) {
 	searchPath := basePath
 	if subpath != "" {
+		// The subpath is the user's own #fragment, so an escape is a mistake
+		// to report, as DiscoverSkills does; a manifest entry is third-party
+		// and is dropped in silence.
 		if !isSafeRelDir(subpath) {
-			return nil, nil
+			return nil, fmt.Errorf("invalid subpath: %q escapes the source directory", subpath)
 		}
 		searchPath = filepath.Join(basePath, subpath)
 	}
@@ -328,7 +365,12 @@ func DiscoverAgentFiles(basePath, subpath string) ([]*AgentFile, error) {
 
 	seen := map[string]bool{}
 	var out []*AgentFile
-	for _, dir := range append(manifestAgentDirs(searchPath, resolvedRoot), conventionalDirs...) {
+	// The search path itself comes last: `mdm agents add ./my-agents` names a
+	// directory of definitions, and a name a declared or conventional
+	// directory already claimed still wins.
+	dirs := append(manifestAgentDirs(searchPath, resolvedRoot), ConventionalDirs...)
+	dirs = append(dirs, ".")
+	for _, dir := range dirs {
 		dirPath := filepath.Join(searchPath, dir)
 		if !resolvedContains(resolvedRoot, dirPath) {
 			continue

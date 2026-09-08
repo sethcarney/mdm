@@ -123,6 +123,7 @@ func runAgentAdd(sourceInput string, opts AgentOptions) bool {
 	}
 	if len(agents) == 0 {
 		fmt.Fprintf(os.Stderr, "%sNo agent definitions found in %s%s\n", ansiText, sourceInput, ansiReset)
+		fmt.Fprintf(os.Stderr, "%sLooked in the directory itself, any agentsDirs it declares, and %s.%s\n", ansiDim, strings.Join(agentfile.ConventionalDirs, ", "), ansiReset)
 		os.Exit(1)
 	}
 

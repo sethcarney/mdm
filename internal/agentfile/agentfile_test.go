@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -178,6 +179,13 @@ func TestIsSafeRelDir(t *testing.T) {
 		{"current dir is not a declared subdirectory", ".", false},
 		{"empty", "", false},
 		{"absolute unix path", "/etc/passwd", false},
+		// filepath.IsLocal accepts each of these, and each joins back to the
+		// root the "." case above promises to exclude.
+		{"dot with trailing slash", "./", false},
+		{"child then parent", "x/..", false},
+		{"dot with doubled slash", ".//", false},
+		{"declared dir then parent", "agents/../", false},
+		{"traversal that stays inside", "a/../b", true},
 	}
 	if runtime.GOOS == "windows" {
 		tests = append(tests, struct {
@@ -459,5 +467,67 @@ func TestDiscoverDoesNotReadADirectoryResolvingOutsideTheRoot(t *testing.T) {
 		if a.Name == "reached-through-the-escape" {
 			t.Fatalf("read a directory resolving outside the search root: discovered %q at %s", a.Name, a.Path)
 		}
+	}
+}
+
+// `mdm agents add ./my-agents` is the documented example, and a directory of
+// definitions is the natural shape for one. Discovery scanned only declared
+// and conventional subdirectories under the search path, never the path
+// itself, so that example found nothing. The path is scanned last: a name a
+// declared or conventional directory already claimed still wins.
+func TestDiscoverFindsDefinitionsInTheSearchPathItself(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, name, desc string) {
+		t.Helper()
+		p := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("---\nname: "+name+"\ndescription: "+desc+"\n---\nbody\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("critic.md", "critic", "flat")
+	write("shared.md", "shared", "from the root")
+	write("agents/shared.md", "shared", "from agents/")
+	write("agents/mechanic.md", "mechanic", "nested")
+
+	got, err := DiscoverAgentFiles(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]*AgentFile{}
+	for _, a := range got {
+		byName[a.Name] = a
+	}
+	if byName["critic"] == nil {
+		t.Errorf("critic.md directly inside the search path was not discovered; found %v", discoveredNames(byName))
+	}
+	if byName["mechanic"] == nil {
+		t.Errorf("agents/mechanic.md was not discovered; found %v", discoveredNames(byName))
+	}
+	if s := byName["shared"]; s == nil || s.Description != "from agents/" {
+		t.Errorf("shared: the conventional directory must win over the root, got %+v", s)
+	}
+}
+
+func discoveredNames(m map[string]*AgentFile) []string {
+	var out []string
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
+// The subpath is the user's own `#path` fragment, so an escape there is a
+// mistake to report, as DiscoverSkills does, not a third-party manifest entry
+// to drop in silence.
+func TestDiscoverRejectsAnUnsafeSubpathWithAnError(t *testing.T) {
+	got, err := DiscoverAgentFiles("testdata/repo", "../escape")
+	if err == nil {
+		t.Fatalf("expected an error for an escaping subpath, got %d definitions", len(got))
+	}
+	if !strings.Contains(err.Error(), "subpath") {
+		t.Errorf("error should say it is the subpath that is invalid, got: %v", err)
 	}
 }
