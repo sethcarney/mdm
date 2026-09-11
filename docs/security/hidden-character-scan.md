@@ -1,14 +1,24 @@
 # Hidden character scan
 
-mdm runs a deterministic local scan before installing skill markdown. The goal is to catch prompt text that is invisible or visually misleading in a normal markdown review.
+mdm runs a deterministic local scan before installing third-party markdown into a place a model will read. The goal is to catch prompt text that is invisible or visually misleading in a normal markdown review.
 
 ## Scope
 
-The scan runs on every `.md` file in the selected skill payload:
+The scan runs on every `.md` file in the selected payload:
 
 - `SKILL.md`
 - supporting markdown files in the skill directory
+- agent-definition files installed by `mdm agents`
+- knowledge-bundle and plugin markdown
 - markdown files fetched through the GitHub blob and well-known install paths
+
+Every install path is gated, not just `mdm skills add`. That covers
+`skills add`, `skills install`, `skills sync`, `skills update`,
+`skills cherry-pick`, `agents add`, `agents install`, `agents update`,
+`knowledge add`, `knowledge install`, `knowledge update`, `plugins add`,
+`plugins install` and `plugins update` - each exposes `--allow-hidden-chars`.
+Agent definitions matter most sharply here, because they exist to become a
+persona the model adopts.
 
 The scan is local and does not use an LLM, external service, or non-deterministic heuristic.
 
@@ -56,7 +66,7 @@ The repo includes intentionally unsafe fixtures for regression and manual smoke 
 Verify install blocking from the repo root:
 
 ```bash
-mdm skills add ./tests/testdata/hidden-skill --project --agent claude-code -y
+mdm skills add ./tests/testdata/hidden-skill --project --harness claude-code -y
 ```
 
 Expected output: scan failure with file/line/column/codepoint details, installation blocked.
@@ -64,7 +74,7 @@ Expected output: scan failure with file/line/column/codepoint details, installat
 Verify the bypass flag allows installation to proceed:
 
 ```bash
-mdm skills add ./tests/testdata/hidden-skill --project --agent claude-code -y --allow-hidden-chars
+mdm skills add ./tests/testdata/hidden-skill --project --harness claude-code -y --allow-hidden-chars
 ```
 
 Expected output: yellow warnings printed, installation continues.

@@ -142,7 +142,7 @@ See the [upgrade guide](upgrade.md) for details, and
 
 -   :material-source-branch: __[Link your instruction files](rules.md)__
 
-    Make `AGENTS.md` the single source of truth across every agent.
+    Make `AGENTS.md` the single source of truth across every harness.
 
 -   :material-download-box: __[Add your first skill](skills/add.md)__
 

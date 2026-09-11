@@ -10,7 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/sethcarney/mdm/internal/agent"
+	"github.com/sethcarney/mdm/internal/harness"
 	"github.com/sethcarney/mdm/internal/lock"
 	"github.com/sethcarney/mdm/internal/ui"
 )
@@ -20,17 +20,17 @@ const agentsMDFile = "AGENTS.md"
 func buildRulesCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "rules",
-		Short: "Manage agent instruction files",
-		Long: fmt.Sprintf(`Manage project-level instruction files for AI agents.
+		Short: "Manage harness instruction files",
+		Long: fmt.Sprintf(`Manage project-level instruction files for AI harnesses.
 
 %sAGENTS.md%s is the universal source of truth - read natively by Codex, Gemini CLI,
-OpenCode, and Replit. Use %smdm rules link%s to symlink agent-specific files
+OpenCode, and Replit. Use %smdm rules link%s to symlink harness-specific files
 (CLAUDE.md, .cursorrules, .windsurfrules, etc.) to it so every tool sees the
 same instructions.
 
 %sSubcommands:%s
-  link    Set up AGENTS.md as the source of truth and symlink agent files to it
-  status  Show the current state of all agent instruction files
+  link    Set up AGENTS.md as the source of truth and symlink harness files to it
+  status  Show the current state of all harness instruction files
   unlink  Remove symlinks created by mdm rules link`, ansiBold, ansiReset, ansiBold, ansiReset, ansiBold, ansiReset),
 		Run: func(cmd *cobra.Command, args []string) {
 			fmt.Println()
@@ -50,44 +50,44 @@ same instructions.
 // ─── link ─────────────────────────────────────────────────────────────────────
 
 func buildRulesLinkCmd() *cobra.Command {
-	var agentFilter []string
+	var harnessFilter []string
 	var yes bool
 
 	cmd := &cobra.Command{
 		Use:   "link",
-		Short: "Set up AGENTS.md as the source of truth for all agent rules",
+		Short: "Set up AGENTS.md as the source of truth for all harness rules",
 		Long: fmt.Sprintf(`Interactively set up AGENTS.md as the single source of truth.
 
 You will be prompted to select which AI tools you use. The command then:
 
-  1. Checks whether any of your agent instruction files already have content
+  1. Checks whether any of your harness instruction files already have content
   2. If one does - promotes its content into AGENTS.md
   3. If several do - asks which one to use as the source
-  4. Symlinks all agent-specific files (CLAUDE.md, .cursorrules, etc.) → AGENTS.md
+  4. Symlinks all harness-specific files (CLAUDE.md, .cursorrules, etc.) → AGENTS.md
 
 Existing real files are replaced with symlinks only after confirmation (or with -y).
 
 %sExamples:%s
   mdm rules link
-  mdm rules link --agent claude-code cursor
+  mdm rules link --harness claude-code cursor
   mdm rules link -y`, ansiBold, ansiReset),
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			runRulesLink(agentFilter, yes)
+			runRulesLink(harnessFilter, yes)
 		},
 	}
 
 	f := cmd.Flags()
-	f.StringArrayVarP(&agentFilter, "agent", "a", nil, "Skip prompt and link specific agents (repeatable)")
+	f.StringArrayVar(&harnessFilter, "harness", nil, "Skip prompt and link specific harnesses (repeatable)")
 	f.BoolVarP(&yes, "yes", "y", false, "Replace existing real files without prompting")
 
-	_ = cmd.RegisterFlagCompletionFunc("agent", agentFlagCompletion)
+	_ = cmd.RegisterFlagCompletionFunc("harness", harnessFlagCompletion)
 
 	return cmd
 }
 
-// agentCandidate is an agent that has a non-AGENTS.md instruction file.
-type agentCandidate struct {
+// harnessCandidate is a harness that has a non-AGENTS.md instruction file.
+type harnessCandidate struct {
 	name        string
 	displayName string
 	file        string
@@ -95,18 +95,18 @@ type agentCandidate struct {
 
 // ruleFile holds an existing instruction file with its content and display metadata.
 type ruleFile struct {
-	file        string
-	agentLabels []string
-	preview     string
-	content     []byte
+	file          string
+	harnessLabels []string
+	preview       string
+	content       []byte
 }
 
 func scanForExistingRuleFiles(cwd string) []ruleFile {
 	seen := map[string]bool{}
-	fileAgentLabels := map[string][]string{}
+	fileHarnessLabels := map[string][]string{}
 	fileContent := map[string][]byte{}
 
-	for name, a := range agent.AllAgents {
+	for name, a := range harness.AllHarnesses {
 		if a.NativeInstructions {
 			continue
 		}
@@ -119,7 +119,7 @@ func scanForExistingRuleFiles(cwd string) []ruleFile {
 		if err != nil || len(strings.TrimSpace(string(data))) == 0 {
 			continue
 		}
-		fileAgentLabels[a.InstructionsFile] = append(fileAgentLabels[a.InstructionsFile], agent.AllAgents[name].DisplayName)
+		fileHarnessLabels[a.InstructionsFile] = append(fileHarnessLabels[a.InstructionsFile], harness.AllHarnesses[name].DisplayName)
 		if !seen[a.InstructionsFile] {
 			seen[a.InstructionsFile] = true
 			fileContent[a.InstructionsFile] = data
@@ -136,8 +136,8 @@ func scanForExistingRuleFiles(cwd string) []ruleFile {
 		if len(preview) > 55 {
 			preview = preview[:52] + "..."
 		}
-		sort.Strings(fileAgentLabels[file])
-		found = append(found, ruleFile{file: file, agentLabels: fileAgentLabels[file], preview: preview, content: data})
+		sort.Strings(fileHarnessLabels[file])
+		found = append(found, ruleFile{file: file, harnessLabels: fileHarnessLabels[file], preview: preview, content: data})
 	}
 	sort.Slice(found, func(i, j int) bool { return found[i].file < found[j].file })
 	return found
@@ -147,7 +147,7 @@ func pickAndWriteSourceOfTruth(found []ruleFile, agentsMDPath string) bool {
 	const noneLabel = "None of these - start with an empty AGENTS.md"
 	opts := make([]ui.UIOption, 0, len(found)+1)
 	for _, f := range found {
-		hint := strings.Join(f.agentLabels, ", ")
+		hint := strings.Join(f.harnessLabels, ", ")
 		if f.preview != "" {
 			hint = hint + " · " + f.preview
 		}
@@ -208,10 +208,10 @@ func resolveSourceOfTruth(cwd, agentsMDPath string) bool {
 	return pickAndWriteSourceOfTruth(found, agentsMDPath)
 }
 
-func buildLinkableCandidates() ([]agentCandidate, []ui.UIOption) {
-	var linkable []agentCandidate
+func buildLinkableCandidates() ([]harnessCandidate, []ui.UIOption) {
+	var linkable []harnessCandidate
 	var lockedOptions []ui.UIOption
-	for name, a := range agent.AllAgents {
+	for name, a := range harness.AllHarnesses {
 		if a.InstructionsFile == "" {
 			continue
 		}
@@ -219,36 +219,36 @@ func buildLinkableCandidates() ([]agentCandidate, []ui.UIOption) {
 			lockedOptions = append(lockedOptions, ui.UIOption{Label: a.DisplayName, Value: name, Hint: "reads AGENTS.md natively"})
 			continue
 		}
-		linkable = append(linkable, agentCandidate{name: name, displayName: a.DisplayName, file: a.InstructionsFile})
+		linkable = append(linkable, harnessCandidate{name: name, displayName: a.DisplayName, file: a.InstructionsFile})
 	}
 	sort.Slice(linkable, func(i, j int) bool { return linkable[i].displayName < linkable[j].displayName })
 	sort.Slice(lockedOptions, func(i, j int) bool { return lockedOptions[i].Label < lockedOptions[j].Label })
 	return linkable, lockedOptions
 }
 
-func selectAgentsToLink(agentFilter []string, linkable []agentCandidate, lockedOptions []ui.UIOption, cwd string) ([]agentCandidate, bool) {
-	if len(agentFilter) > 0 {
-		var selected []agentCandidate
+func selectHarnessesToLink(harnessFilter []string, linkable []harnessCandidate, lockedOptions []ui.UIOption, cwd string) ([]harnessCandidate, bool) {
+	if len(harnessFilter) > 0 {
+		var selected []harnessCandidate
 		for _, c := range linkable {
-			if contains(agentFilter, c.name) {
+			if contains(harnessFilter, c.name) {
 				selected = append(selected, c)
 			}
 		}
 		if len(selected) == 0 {
-			fmt.Printf("%sNo matching agents found.%s\n", ansiDim, ansiReset)
+			fmt.Printf("%sNo matching harnesses found.%s\n", ansiDim, ansiReset)
 			return nil, false
 		}
 		return selected, true
 	}
 
-	// Configured agents (project then global) take precedence over auto-detection.
-	// If the user has explicitly configured their agents, pre-select only those;
+	// Configured harnesses (project then global) take precedence over auto-detection.
+	// If the user has explicitly configured their harnesses, pre-select only those;
 	// otherwise fall back to whatever is detected as installed.
 	configuredSet := make(map[string]bool)
-	for _, a := range lock.GetConfiguredAgents(false, cwd) {
+	for _, a := range lock.GetConfiguredHarnesses(false, cwd) {
 		configuredSet[a] = true
 	}
-	for _, a := range lock.GetConfiguredAgents(true, cwd) {
+	for _, a := range lock.GetConfiguredHarnesses(true, cwd) {
 		configuredSet[a] = true
 	}
 
@@ -261,7 +261,7 @@ func selectAgentsToLink(agentFilter []string, linkable []agentCandidate, lockedO
 		}
 	} else {
 		for i, c := range linkable {
-			a := agent.AllAgents[c.name]
+			a := harness.AllHarnesses[c.name]
 			if a.DetectInstalled != nil && a.DetectInstalled() {
 				preSelected = append(preSelected, i)
 			}
@@ -276,14 +276,14 @@ func selectAgentsToLink(agentFilter []string, linkable []agentCandidate, lockedO
 		fmt.Println("Cancelled.")
 		return nil, false
 	}
-	var selected []agentCandidate
+	var selected []harnessCandidate
 	for _, i := range indices {
 		selected = append(selected, linkable[i])
 	}
 	return selected, true
 }
 
-func createAgentSymlinks(selected []agentCandidate, cwd, agentsMDPath string, yes bool) {
+func createHarnessSymlinks(selected []harnessCandidate, cwd, agentsMDPath string, yes bool) {
 	linked := 0
 	skipped := 0
 	vlog(verboseFlag, "linking %d instruction file(s) → %s", len(selected), agentsMDFile)
@@ -350,7 +350,7 @@ func createAgentSymlinks(selected []agentCandidate, cwd, agentsMDPath string, ye
 	fmt.Println()
 }
 
-func runRulesLink(agentFilter []string, yes bool) {
+func runRulesLink(harnessFilter []string, yes bool) {
 	cwd, _ := os.Getwd()
 	agentsMDPath := filepath.Join(cwd, agentsMDFile)
 
@@ -359,64 +359,64 @@ func runRulesLink(agentFilter []string, yes bool) {
 	}
 
 	linkable, lockedOptions := buildLinkableCandidates()
-	selected, ok := selectAgentsToLink(agentFilter, linkable, lockedOptions, cwd)
+	selected, ok := selectHarnessesToLink(harnessFilter, linkable, lockedOptions, cwd)
 	if !ok {
 		return
 	}
 	if len(selected) == 0 {
-		fmt.Printf("%sNo agents selected.%s\n", ansiDim, ansiReset)
+		fmt.Printf("%sNo harnesses selected.%s\n", ansiDim, ansiReset)
 		return
 	}
 
-	// Persist the selection into configuredAgents so skills add and other
+	// Persist the selection into configuredHarnesses so skills add and other
 	// commands default to the same set. Only applies when the user went
-	// through the interactive picker (not --agent flag).
-	if len(agentFilter) == 0 {
+	// through the interactive picker (not --harness flag).
+	if len(harnessFilter) == 0 {
 		var names []string
 		for _, c := range selected {
 			names = append(names, c.name)
 		}
-		if err := lock.AddToConfiguredAgents(names, false, cwd); err != nil {
-			ui.LogWarn(fmt.Sprintf("could not save agent preferences: %v", err))
+		if err := lock.AddToConfiguredHarnesses(names, false, cwd); err != nil {
+			ui.LogWarn(fmt.Sprintf("could not save harness preferences: %v", err))
 		}
 	}
 
 	fmt.Println()
-	createAgentSymlinks(selected, cwd, agentsMDPath, yes)
+	createHarnessSymlinks(selected, cwd, agentsMDPath, yes)
 }
 
 // ─── status ───────────────────────────────────────────────────────────────────
 
 type ruleStatusEntry struct {
-	File   string   `json:"file"`
-	State  string   `json:"state"`
-	Target string   `json:"target,omitempty"`
-	Agents []string `json:"agents"`
+	File      string   `json:"file"`
+	State     string   `json:"state"`
+	Target    string   `json:"target,omitempty"`
+	Harnesses []string `json:"agents"`
 }
 
 func buildRulesStatusCmd() *cobra.Command {
-	var agentFilter []string
+	var harnessFilter []string
 	var jsonOutput bool
 
 	cmd := &cobra.Command{
 		Use:   "status",
-		Short: "Show the state of agent instruction files",
-		Long: fmt.Sprintf(`Show whether each agent's instruction file exists, is a symlink,
+		Short: "Show the state of harness instruction files",
+		Long: fmt.Sprintf(`Show whether each harness's instruction file exists, is a symlink,
 or is missing.
 
 %sExamples:%s
   mdm rules status
-  mdm rules status --agent claude-code cursor
+  mdm rules status --harness claude-code cursor
   mdm rules status --json`, ansiBold, ansiReset),
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			runRulesStatus(agentFilter, jsonOutput)
+			runRulesStatus(harnessFilter, jsonOutput)
 		},
 	}
 
-	cmd.Flags().StringArrayVarP(&agentFilter, "agent", "a", nil, "Limit to specific agents (repeatable)")
+	cmd.Flags().StringArrayVar(&harnessFilter, "harness", nil, "Limit to specific harnesses (repeatable)")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output status as a JSON array")
-	_ = cmd.RegisterFlagCompletionFunc("agent", agentFlagCompletion)
+	_ = cmd.RegisterFlagCompletionFunc("harness", harnessFlagCompletion)
 
 	return cmd
 }
@@ -440,26 +440,26 @@ func resolveFileState(path, file string) (state, target string) {
 	return "standalone", ""
 }
 
-func printRulesStatusJSON(cwd string, files []string, fileAgentKeys map[string][]string) {
+func printRulesStatusJSON(cwd string, files []string, fileHarnessKeys map[string][]string) {
 	entries := make([]ruleStatusEntry, 0, len(files))
 	for _, file := range files {
-		keys := fileAgentKeys[file]
+		keys := fileHarnessKeys[file]
 		sort.Strings(keys)
 		state, target := resolveFileState(filepath.Join(cwd, file), file)
-		entries = append(entries, ruleStatusEntry{File: file, State: state, Target: target, Agents: keys})
+		entries = append(entries, ruleStatusEntry{File: file, State: state, Target: target, Harnesses: keys})
 	}
 	out, _ := json.MarshalIndent(entries, "", "  ")
 	fmt.Println(string(out))
 }
 
-func printRulesStatusTable(cwd string, files []string, fileDisplayAgents map[string][]string) {
+func printRulesStatusTable(cwd string, files []string, fileDisplayHarnesses map[string][]string) {
 	fmt.Println()
 	fmt.Printf("  %s%-38s %-12s %s%s\n", ansiBold, "File", "State", "Details", ansiReset)
 	fmt.Printf("  %s%s%s\n", ansiDim, strings.Repeat("─", 72), ansiReset)
 
 	for _, file := range files {
-		agents := fileDisplayAgents[file]
-		sort.Strings(agents)
+		harnesses := fileDisplayHarnesses[file]
+		sort.Strings(harnesses)
 		state, target := resolveFileState(filepath.Join(cwd, file), file)
 
 		var stateLabel, hint string
@@ -476,84 +476,84 @@ func printRulesStatusTable(cwd string, files []string, fileDisplayAgents map[str
 			stateLabel = fmt.Sprintf("%sreal file%s", ansiYellow, ansiReset)
 		}
 
-		agentList := strings.Join(agents, ", ")
-		if len(agentList) > 30 {
-			agentList = agentList[:27] + "..."
+		harnessList := strings.Join(harnesses, ", ")
+		if len(harnessList) > 30 {
+			harnessList = harnessList[:27] + "..."
 		}
 
 		fmt.Printf("  %-38s %-22s %s\n", file, stateLabel, hint)
-		fmt.Printf("  %sagents: %s%s\n\n", ansiDim, agentList, ansiReset)
+		fmt.Printf("  %sharnesses: %s%s\n\n", ansiDim, harnessList, ansiReset)
 	}
 }
 
-func runRulesStatus(agentFilter []string, jsonOutput bool) {
+func runRulesStatus(harnessFilter []string, jsonOutput bool) {
 	cwd, _ := os.Getwd()
 
 	// Group by instruction file so shared entries (e.g. AGENTS.md) appear once.
-	// fileDisplayAgents: display names for ANSI table
-	// fileAgentKeys: agent keys for JSON output
-	fileDisplayAgents := map[string][]string{}
-	fileAgentKeys := map[string][]string{}
-	for name, a := range agent.AllAgents {
+	// fileDisplayHarnesses: display names for ANSI table
+	// fileHarnessKeys: harness keys for JSON output
+	fileDisplayHarnesses := map[string][]string{}
+	fileHarnessKeys := map[string][]string{}
+	for name, a := range harness.AllHarnesses {
 		if a.InstructionsFile == "" {
 			continue
 		}
-		if len(agentFilter) > 0 && !contains(agentFilter, name) {
+		if len(harnessFilter) > 0 && !contains(harnessFilter, name) {
 			continue
 		}
-		fileDisplayAgents[a.InstructionsFile] = append(fileDisplayAgents[a.InstructionsFile], a.DisplayName)
-		fileAgentKeys[a.InstructionsFile] = append(fileAgentKeys[a.InstructionsFile], name)
+		fileDisplayHarnesses[a.InstructionsFile] = append(fileDisplayHarnesses[a.InstructionsFile], a.DisplayName)
+		fileHarnessKeys[a.InstructionsFile] = append(fileHarnessKeys[a.InstructionsFile], name)
 	}
 
-	if len(fileDisplayAgents) == 0 {
+	if len(fileDisplayHarnesses) == 0 {
 		if jsonOutput {
 			fmt.Println("[]")
 		} else {
-			fmt.Printf("%sNo agents with known instruction files.%s\n", ansiDim, ansiReset)
+			fmt.Printf("%sNo harnesses with known instruction files.%s\n", ansiDim, ansiReset)
 		}
 		return
 	}
 
-	files := make([]string, 0, len(fileDisplayAgents))
-	for f := range fileDisplayAgents {
+	files := make([]string, 0, len(fileDisplayHarnesses))
+	for f := range fileDisplayHarnesses {
 		files = append(files, f)
 	}
 	sort.Strings(files)
 
 	if jsonOutput {
-		printRulesStatusJSON(cwd, files, fileAgentKeys)
+		printRulesStatusJSON(cwd, files, fileHarnessKeys)
 		return
 	}
-	printRulesStatusTable(cwd, files, fileDisplayAgents)
+	printRulesStatusTable(cwd, files, fileDisplayHarnesses)
 }
 
 // ─── unlink ───────────────────────────────────────────────────────────────────
 
 func buildRulesUnlinkCmd() *cobra.Command {
-	var agentFilter []string
+	var harnessFilter []string
 	var yes bool
 
 	cmd := &cobra.Command{
 		Use:   "unlink",
-		Short: "Remove symlinks from agent instruction files",
+		Short: "Remove symlinks from harness instruction files",
 		Long: fmt.Sprintf(`Remove symlinks that were created by %smdm rules link%s.
 Only symlinks are removed - real files are never touched.
 
 %sExamples:%s
   mdm rules unlink
-  mdm rules unlink --agent cursor windsurf
+  mdm rules unlink --harness cursor windsurf
   mdm rules unlink -y`, ansiBold, ansiReset, ansiBold, ansiReset),
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			runRulesUnlink(agentFilter, yes)
+			runRulesUnlink(harnessFilter, yes)
 		},
 	}
 
 	f := cmd.Flags()
-	f.StringArrayVarP(&agentFilter, "agent", "a", nil, "Limit to specific agents (repeatable)")
+	f.StringArrayVar(&harnessFilter, "harness", nil, "Limit to specific harnesses (repeatable)")
 	f.BoolVarP(&yes, "yes", "y", false, "Skip confirmation prompt")
 
-	_ = cmd.RegisterFlagCompletionFunc("agent", agentFlagCompletion)
+	_ = cmd.RegisterFlagCompletionFunc("harness", harnessFlagCompletion)
 
 	return cmd
 }
@@ -563,14 +563,14 @@ type symlinkedFile struct {
 	dest string
 }
 
-func collectSymlinkedFiles(cwd string, agentFilter []string) []symlinkedFile {
+func collectSymlinkedFiles(cwd string, harnessFilter []string) []symlinkedFile {
 	var result []symlinkedFile
 	seen := map[string]bool{}
-	for name, a := range agent.AllAgents {
+	for name, a := range harness.AllHarnesses {
 		if a.InstructionsFile == "" {
 			continue
 		}
-		if len(agentFilter) > 0 && !contains(agentFilter, name) {
+		if len(harnessFilter) > 0 && !contains(harnessFilter, name) {
 			continue
 		}
 		targetPath := filepath.Join(cwd, a.InstructionsFile)
@@ -588,10 +588,10 @@ func collectSymlinkedFiles(cwd string, agentFilter []string) []symlinkedFile {
 	return result
 }
 
-func runRulesUnlink(agentFilter []string, yes bool) {
+func runRulesUnlink(harnessFilter []string, yes bool) {
 	cwd, _ := os.Getwd()
-	found := collectSymlinkedFiles(cwd, agentFilter)
-	vlog(verboseFlag, "unlink: found %d symlinked instruction file(s) (filter=%v)", len(found), agentFilter)
+	found := collectSymlinkedFiles(cwd, harnessFilter)
+	vlog(verboseFlag, "unlink: found %d symlinked instruction file(s) (filter=%v)", len(found), harnessFilter)
 
 	if len(found) == 0 {
 		fmt.Printf("%sNo symlinked instruction files found.%s\n", ansiDim, ansiReset)
@@ -600,9 +600,9 @@ func runRulesUnlink(agentFilter []string, yes bool) {
 
 	sort.Slice(found, func(i, j int) bool { return found[i].file < found[j].file })
 
-	// When no --agent filter and not --yes, let the user pick which symlinks to remove.
+	// When no --harness filter and not --yes, let the user pick which symlinks to remove.
 	var toRemove []symlinkedFile
-	if len(agentFilter) == 0 && !yes {
+	if len(harnessFilter) == 0 && !yes {
 		options := make([]ui.UIOption, len(found))
 		for i, r := range found {
 			options[i] = ui.UIOption{Label: r.file, Value: r.file, Hint: "→ " + r.dest}

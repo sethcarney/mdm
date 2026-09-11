@@ -9,13 +9,13 @@ import (
 
 func TestBuildBugURLFields(t *testing.T) {
 	report := bugReport{
-		Version: "1.93.0",
-		OS:      "linux/amd64",
-		Shell:   "/bin/zsh",
-		Go:      "go1.26.6",
-		Agents:  "claude-code, cursor",
-		Command: "mdm skills add o/r",
-		Logs:    "panic: boom",
+		Version:   "1.93.0",
+		OS:        "linux/amd64",
+		Shell:     "/bin/zsh",
+		Go:        "go1.26.6",
+		Harnesses: "claude-code, cursor",
+		Command:   "mdm skills add o/r",
+		Logs:      "panic: boom",
 	}
 	u, err := url.Parse(buildBugURL(report))
 	if err != nil {

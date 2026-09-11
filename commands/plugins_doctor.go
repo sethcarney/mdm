@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/sethcarney/mdm/internal/agent"
+	"github.com/sethcarney/mdm/internal/harness"
 	"github.com/sethcarney/mdm/internal/lock"
 	"github.com/sethcarney/mdm/internal/mcpwire"
 	"github.com/sethcarney/mdm/internal/plugin"
@@ -93,12 +93,12 @@ func diagnosePluginSkillLinks(name string, entry lock.PluginLockEntry, cwd strin
 	return issues
 }
 
-// diagnosePluginMCP flags recorded server ids missing from an agent's MCP
+// diagnosePluginMCP flags recorded server ids missing from a harness's MCP
 // config, and mdm-managed ids present in config but absent from the lock.
 func diagnosePluginMCP(name string, entry lock.PluginLockEntry, cwd string) []doctorIssue {
 	var issues []doctorIssue
-	for _, agentName := range sortedStringKeys(entry.MCP) {
-		target, ok := mcpwire.Targets[agentName]
+	for _, harnessName := range sortedStringKeys(entry.MCP) {
+		target, ok := mcpwire.Targets[harnessName]
 		if !ok {
 			continue
 		}
@@ -115,7 +115,7 @@ func diagnosePluginMCP(name string, entry lock.PluginLockEntry, cwd string) []do
 			managedSet[id] = true
 		}
 		recorded := map[string]bool{}
-		for _, id := range entry.MCP[agentName] {
+		for _, id := range entry.MCP[harnessName] {
 			recorded[id] = true
 			if !managedSet[id] {
 				issues = append(issues, doctorIssue{
@@ -151,7 +151,7 @@ func pluginsGitignoreHint(cwd string) *doctorIssue {
 	if err == nil && strings.Contains(string(ignore), pluginsDataSubdir) {
 		return nil
 	}
-	rel := filepath.ToSlash(filepath.Join(agent.AgentsDir, pluginsDataSubdir))
+	rel := filepath.ToSlash(filepath.Join(harness.SharedRootDir, pluginsDataSubdir))
 	return &doctorIssue{
 		Level:   "warn",
 		Message: fmt.Sprintf("plugin data is machine-local state - add %s/ to .gitignore", rel),

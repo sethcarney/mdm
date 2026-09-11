@@ -24,7 +24,7 @@ func buildSyncCmd(ver string) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "sync",
-		Short: "Sync skills from node_modules into agent directories",
+		Short: "Sync skills from node_modules into harness directories",
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			showLogo(ver)
@@ -61,25 +61,25 @@ func selectSkillsToSync(skills []*skill.Skill, yes bool) ([]*skill.Skill, bool) 
 	return selected, true
 }
 
-func syncAndLockSkill(s *skill.Skill, agents []string, global bool, mode InstallMode, cwd string, fallbacks *symlinkFallbacks) {
+func syncAndLockSkill(s *skill.Skill, harnesses []string, global bool, mode InstallMode, cwd string, fallbacks *symlinkFallbacks) {
 	sName := sanitizeName(s.Name)
 	fmt.Printf("%sSyncing %s%s%s...\n", ansiDim, ansiText, s.Name, ansiReset)
 
-	vlog(verboseFlag, "syncing %s from %s → agents=%v (global=%v, mode=%v)", s.Name, s.Path, agents, global, mode)
-	var failedAgents []string
-	for _, agentName := range agents {
-		result := installSkillForAgent(s, agentName, global, mode)
-		fallbacks.note(agentName, result)
+	vlog(verboseFlag, "syncing %s from %s → harnesses=%v (global=%v, mode=%v)", s.Name, s.Path, harnesses, global, mode)
+	var failedHarnesses []string
+	for _, harnessName := range harnesses {
+		result := installSkillForHarness(s, harnessName, global, mode)
+		fallbacks.note(harnessName, result)
 		if !result.Success {
-			vlog(verboseFlag, "install failed for %s → agent %q", s.Name, agentName)
-			failedAgents = append(failedAgents, agentName)
+			vlog(verboseFlag, "install failed for %s → harness %q", s.Name, harnessName)
+			failedHarnesses = append(failedHarnesses, harnessName)
 		}
 	}
 
-	if len(failedAgents) == 0 {
+	if len(failedHarnesses) == 0 {
 		ui.LogSuccess(s.Name)
 	} else {
-		ui.LogWarn(fmt.Sprintf("%s (failed for: %s)", s.Name, strings.Join(failedAgents, ", ")))
+		ui.LogWarn(fmt.Sprintf("%s (failed for: %s)", s.Name, strings.Join(failedHarnesses, ", ")))
 	}
 
 	relPath, err := filepath.Rel(cwd, s.Path)
@@ -147,7 +147,7 @@ func runSync(opts SyncOptions) {
 	}
 
 	addOpts := AddOptions{Yes: opts.Yes}
-	global, agents, ok := promptScopeAndAgents(addOpts, cwd)
+	global, harnesses, ok := promptScopeAndHarnesses(addOpts, cwd)
 	if !ok {
 		return
 	}
@@ -160,9 +160,9 @@ func runSync(opts SyncOptions) {
 	fmt.Println()
 	var fallbacks symlinkFallbacks
 	for _, s := range selectedSkills {
-		syncAndLockSkill(s, agents, global, mode, cwd, &fallbacks)
+		syncAndLockSkill(s, harnesses, global, mode, cwd, &fallbacks)
 	}
 
 	fmt.Println()
-	printInstallSummary(len(selectedSkills), global, agents, mode, &fallbacks)
+	printInstallSummary(len(selectedSkills), global, harnesses, mode, &fallbacks)
 }

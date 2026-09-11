@@ -7,14 +7,9 @@ import (
 	"time"
 )
 
-// ──────────────────────────────────────────────────────────
-// Agent Plugins lock - the plugins section of mdm.lock
-//
-// v1 kept plugin entries in their own plugins-lock.json so a stable binary
-// rewriting the skills lock could not drop them. In v2 the unified
-// mdm.lock preserves unknown top-level keys on every write (see
-// project.go), so the sections share one file safely.
-// ──────────────────────────────────────────────────────────
+// Agent Plugins lock: the plugins section of mdm.lock. v1 kept plugin entries
+// in their own plugins-lock.json. In v2 mdm.lock preserves unknown top-level
+// keys on every write (see project.go), so the sections share one file safely.
 
 const pluginsLockVersion = 1
 
@@ -29,12 +24,12 @@ type PluginLockEntry struct {
 	SpecVersion string `json:"specVersion"`
 	Version     string `json:"version,omitempty"` // the manifest's version field
 	ContentHash string `json:"contentHash,omitempty"`
-	// Skills lists the sanitized names installed into agent skill
-	// directories; SkillAgents lists the agents they were installed for.
+	// Skills lists the sanitized names installed into harness skill
+	// directories; SkillAgents lists the harnesses they were installed for.
 	Skills      []string `json:"skills,omitempty"`
 	SkillAgents []string `json:"skillAgents,omitempty"`
-	// MCP maps an agent name to the namespaced server ids written into
-	// that agent's MCP config file.
+	// MCP maps a harness name to the namespaced server ids written into
+	// that harness's MCP config file.
 	MCP         map[string][]string `json:"mcp,omitempty"`
 	InstalledAt string              `json:"installedAt"`
 	UpdatedAt   string              `json:"updatedAt"`

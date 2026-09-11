@@ -6,22 +6,14 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/sethcarney/mdm/internal/agent"
+	"github.com/sethcarney/mdm/internal/harness"
 )
 
-// ──────────────────────────────────────────────────────────
-// Global state (~/.agents/mdm-state.json)
-//
-// Per-user, per-machine state: globally installed skills, dismissed
-// prompts, the global configured-agent list, and experimental opt-ins.
-// v1 called this file skills-lock.json, but unlike the project lock it is
-// never committed or shared - v2 names it what it is. Unknown top-level
-// keys survive a read/write round trip, same as the project lock.
-//
-// Reads fall back to the v1 skills-lock.json when mdm-state.json does not
-// exist; writes always go to mdm-state.json. `mdm migrate` retires the
-// v1 file.
-// ──────────────────────────────────────────────────────────
+// Global state (~/.agents/mdm-state.json): per-user, per-machine state. It
+// holds globally installed skills, dismissed prompts, the global
+// configured-harness list, and experimental opt-ins. It is never committed.
+// Unknown top-level keys survive a round trip. Reads fall back to the v1
+// skills-lock.json when it is absent; writes always go to mdm-state.json.
 
 const globalStateVersion = 2
 
@@ -44,18 +36,20 @@ type DismissedPrompts struct {
 	FindSkillsPrompt bool `json:"findSkillsPrompt,omitempty"`
 }
 
-// GlobalState is the in-memory form of mdm-state.json. Unknown top-level
-// keys are captured on read and re-emitted on write, and so are unknown
-// keys inside each skill entry (see ProjectLockFile).
+// GlobalState is the in-memory form of mdm-state.json. Unknown top-level keys
+// are captured on read and re-emitted on write, and so are unknown keys inside
+// each skill entry (see ProjectLockFile).
 type GlobalState struct {
-	Version          int
-	InstallMode      string
-	Skills           map[string]SkillLockEntry
-	Dismissed        DismissedPrompts
-	ConfiguredAgents []string
-	Experimental     []string
-	extra            map[string]json.RawMessage
-	rawSkills        map[string]json.RawMessage
+	Version             int
+	InstallMode         string
+	Skills              map[string]SkillLockEntry
+	Agents              map[string]AgentLockEntry
+	Dismissed           DismissedPrompts
+	ConfiguredHarnesses []string
+	Experimental        []string
+	extra               map[string]json.RawMessage
+	rawSkills           map[string]json.RawMessage
+	rawAgents           map[string]json.RawMessage
 }
 
 // MarshalJSON emits known keys in a fixed order, then unknown keys sorted.
@@ -64,15 +58,22 @@ func (s GlobalState) MarshalJSON() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	mergedAgents, err := marshalSection(s.Agents, s.rawAgents, knownAgentEntryKeys)
+	if err != nil {
+		return nil, err
+	}
 	o := newOrderedObject()
 	o.write("version", s.Version)
 	if s.InstallMode != "" {
 		o.write("installMode", s.InstallMode)
 	}
-	if len(s.ConfiguredAgents) > 0 {
-		o.write("configuredAgents", s.ConfiguredAgents)
+	if len(s.ConfiguredHarnesses) > 0 {
+		o.write("configuredHarnesses", s.ConfiguredHarnesses)
 	}
 	o.write("skills", mergedSkills)
+	if len(mergedAgents) > 0 {
+		o.write("agents", mergedAgents)
+	}
 	if s.Dismissed != (DismissedPrompts{}) {
 		o.write("dismissed", s.Dismissed)
 	}
@@ -105,11 +106,25 @@ func (s *GlobalState) UnmarshalJSON(data []byte) error {
 	if err := decode("installMode", &s.InstallMode); err != nil {
 		return err
 	}
-	if err := decode("configuredAgents", &s.ConfiguredAgents); err != nil {
-		return err
+	if _, ok := raw["configuredHarnesses"]; ok {
+		if err := decode("configuredHarnesses", &s.ConfiguredHarnesses); err != nil {
+			return err
+		}
+	} else if _, ok := raw["configuredAgents"]; ok {
+		// mdm-state.json's v2 format shipped this key spelled
+		// configuredAgents. Real files exist with that spelling, so decode
+		// falls back to it and deletes it from raw, which recovers the
+		// harness list and leaves one spelling behind.
+		if err := decode("configuredAgents", &s.ConfiguredHarnesses); err != nil {
+			return err
+		}
 	}
 	s.rawSkills = captureRawEntries(raw["skills"])
+	s.rawAgents = captureRawEntries(raw["agents"])
 	if err := decode("skills", &s.Skills); err != nil {
+		return err
+	}
+	if err := decode("agents", &s.Agents); err != nil {
 		return err
 	}
 	if err := decode("dismissed", &s.Dismissed); err != nil {
@@ -130,7 +145,7 @@ func GetGlobalStatePath() string {
 		return filepath.Join(xdgState, "mdm", "state.json")
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, agent.AgentsDir, "mdm-state.json")
+	return filepath.Join(home, harness.SharedRootDir, "mdm-state.json")
 }
 
 // legacyGlobalLockPath returns where v1 kept the global skills-lock.json.
@@ -139,13 +154,12 @@ func legacyGlobalLockPath() string {
 		return filepath.Join(xdgState, "skills", "skills-lock.json")
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, agent.AgentsDir, "skills-lock.json")
+	return filepath.Join(home, harness.SharedRootDir, "skills-lock.json")
 }
 
 // ReadGlobalState reads mdm-state.json, falling back to the legacy v1
-// skills-lock.json when it does not exist. Missing state reads as empty;
-// state this binary cannot understand aborts the process (see Forward
-// compatibility in project.go).
+// skills-lock.json when it does not exist. Missing state reads as empty; state
+// this binary cannot understand aborts the process.
 func ReadGlobalState() GlobalState {
 	s, err := readGlobalStateE()
 	if err != nil {
@@ -173,9 +187,8 @@ func readGlobalStateE() (GlobalState, error) {
 		return EmptyGlobalState(), errNewerLock(path, s.Version, globalStateVersion)
 	}
 	// A version 1 state file predates the install-mode switch: upgrade it in
-	// memory and let the next write persist the version. The mode stays
-	// empty; `mdm migrate` infers it from disk. A range, not `== 1`, so the
-	// next bump does not reintroduce the read-as-empty bug.
+	// memory and let the next write persist the version. `mdm migrate` infers
+	// the mode from disk. A range, not `== 1`, so the next bump keeps this path.
 	if s.Version >= 1 && s.Version < globalStateVersion {
 		s.Version = globalStateVersion
 	}
@@ -185,25 +198,26 @@ func readGlobalStateE() (GlobalState, error) {
 	if s.Skills == nil {
 		s.Skills = map[string]SkillLockEntry{}
 	}
+	if s.Agents == nil {
+		s.Agents = map[string]AgentLockEntry{}
+	}
 	return s, nil
 }
 
-// readLegacyGlobalLock keeps v1's deliberate read-as-empty tolerance for
-// the global lock (version resets there were how old global locks were
-// discarded on upgrade). Everyday reads may fall back through it, but
-// `mdm migrate` strict-parses the file before retiring it - see
-// PlanGlobalMigration.
+// readLegacyGlobalLock keeps v1's read-as-empty tolerance for the global lock.
+// Everyday reads fall back through it, but `mdm migrate` strict-parses the file
+// before retiring it; see PlanGlobalMigration.
 func readLegacyGlobalLock() GlobalState {
 	data, err := os.ReadFile(legacyGlobalLockPath())
 	if err != nil {
 		return EmptyGlobalState()
 	}
 	var legacy struct {
-		Version          int                       `json:"version"`
-		Skills           map[string]SkillLockEntry `json:"skills"`
-		Dismissed        DismissedPrompts          `json:"dismissed"`
-		ConfiguredAgents []string                  `json:"configuredAgents"`
-		Experimental     []string                  `json:"experimental"`
+		Version             int                       `json:"version"`
+		Skills              map[string]SkillLockEntry `json:"skills"`
+		Dismissed           DismissedPrompts          `json:"dismissed"`
+		ConfiguredHarnesses []string                  `json:"configuredAgents"`
+		Experimental        []string                  `json:"experimental"`
 	}
 	if err := json.Unmarshal(data, &legacy); err != nil {
 		return EmptyGlobalState()
@@ -212,11 +226,12 @@ func readLegacyGlobalLock() GlobalState {
 		return EmptyGlobalState()
 	}
 	return GlobalState{
-		Version:          globalStateVersion,
-		Skills:           legacy.Skills,
-		Dismissed:        legacy.Dismissed,
-		ConfiguredAgents: legacy.ConfiguredAgents,
-		Experimental:     legacy.Experimental,
+		Version:             globalStateVersion,
+		Skills:              legacy.Skills,
+		Agents:              map[string]AgentLockEntry{},
+		Dismissed:           legacy.Dismissed,
+		ConfiguredHarnesses: legacy.ConfiguredHarnesses,
+		Experimental:        legacy.Experimental,
 	}
 }
 
@@ -237,7 +252,28 @@ func EmptyGlobalState() GlobalState {
 	return GlobalState{
 		Version: globalStateVersion,
 		Skills:  map[string]SkillLockEntry{},
+		Agents:  map[string]AgentLockEntry{},
 	}
+}
+
+// AddAgentToGlobalState records one installed agent definition in
+// mdm-state.json, mirroring AddSkillToGlobalState. An agent entry carries no
+// timestamps: AgentLockEntry has none, matching the project lock's entry shape.
+func AddAgentToGlobalState(name string, entry AgentLockEntry) error {
+	state := ReadGlobalState()
+	state.Agents[name] = entry
+	return WriteGlobalState(state)
+}
+
+// RemoveAgentFromGlobalState removes one agent definition's entry from
+// mdm-state.json, mirroring RemoveSkillFromGlobalState.
+func RemoveAgentFromGlobalState(name string) error {
+	state := ReadGlobalState()
+	if _, ok := state.Agents[name]; !ok {
+		return nil
+	}
+	delete(state.Agents, name)
+	return WriteGlobalState(state)
 }
 
 func AddSkillToGlobalState(skillName string, entry SkillLockEntry) error {

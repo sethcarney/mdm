@@ -250,7 +250,7 @@ func enrichResult(r *auditSkillResult, globalLock lock.GlobalState, tags *remote
 	// Sync status: compare installed tag against latest remote tag
 	if r.Scope == "global" {
 		if e, ok := globalLock.Skills[r.Name]; ok {
-			upToDate, _, err := checkRemoteTagUpToDate(source.ParseSource(e.Source).URL, e.Ref, tags)
+			upToDate, _, err := checkRemoteTagUpToDate(source.ParseSource(e.Source).URL, e.Ref, "skills", tags)
 			if err != nil {
 				r.SyncStatus = "unknown"
 			} else if upToDate {

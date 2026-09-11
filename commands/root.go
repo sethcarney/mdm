@@ -36,17 +36,36 @@ func showLogo(ver string) {
 	fmt.Printf("\n%s%s%s%s %s%s%s\n\n", ansiBold, ansiText, appName, ansiReset, ansiDim, ver, ansiReset)
 }
 
-// multiValueFlags are flags that accept multiple space-separated values after a
-// single flag instance (-a claude cursor) in addition to the repeated-flag form
-// (-a claude -a cursor). Both styles are supported.
+// multiValueFlags are flags that accept several space-separated values after a
+// single flag instance (--harness claude cursor) as well as the repeated-flag
+// form. --harness has no shorthand, since -a is left free for --agent in the
+// agent-definition command, so only its long form is listed here; --agent and
+// -a are listed because that command's help promises the same for them.
 var multiValueFlags = map[string]bool{
+	"harness": true,
+	"skill":   true, "s": true,
 	"agent": true, "a": true,
-	"skill": true, "s": true,
+}
+
+// RenamedFlagHint returns a one-line hint when err is cobra's complaint about
+// the flag this release renamed: --agent and its -a shorthand became
+// --harness on every command but `mdm agents`, where -a now means --agent.
+// An alias would have kept the old spelling working while its meaning
+// changed under the user, so the flag fails, and this says why.
+func RenamedFlagHint(err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "unknown flag: --agent") || strings.Contains(msg, "unknown shorthand flag: 'a' in -a") {
+		return "--agent became --harness in this release; harness management moved to `mdm harnesses`."
+	}
+	return ""
 }
 
 // normalizeMultiFlags rewrites space-separated multi-value flags into the
 // repeated-flag form that cobra/pflag expects.
-// e.g. ["-a", "claude", "cursor"] → ["-a", "claude", "-a", "cursor"]
+// e.g. ["--harness", "claude", "cursor"] → ["--harness", "claude", "--harness", "cursor"]
 func normalizeMultiFlags(args []string) []string {
 	result := make([]string, 0, len(args))
 	i := 0
@@ -117,9 +136,10 @@ func BuildRootCmd(ver string) *cobra.Command {
 
 	root.AddCommand(
 		buildSkillsCmd(ver),
+		buildAgentArtifactsCmd(),
 		buildKnowledgeCmd(),
 		buildPluginsCmd(),
-		buildAgentsCmd(),
+		buildHarnessesCmd(),
 		buildRulesCmd(),
 		buildDoctorCmd(),
 		buildMigrateCmd(),

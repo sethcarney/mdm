@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/sethcarney/mdm/internal/agent"
+	"github.com/sethcarney/mdm/internal/harness"
 )
 
 func writeLegacyProjectLocks(t *testing.T, cwd string) {
@@ -72,8 +72,8 @@ func assertMigratedProject(t *testing.T, cwd string) {
 	if _, ok := lk.Plugins["p1"]; !ok {
 		t.Error("plugin entry not migrated")
 	}
-	if len(lk.ConfiguredAgents) != 1 {
-		t.Errorf("configuredAgents not migrated: %v", lk.ConfiguredAgents)
+	if len(lk.ConfiguredHarnesses) != 1 {
+		t.Errorf("configuredAgents not migrated: %v", lk.ConfiguredHarnesses)
 	}
 
 	// knowledge/plugins locks are deleted; skills-lock.json is a tombstone.
@@ -258,13 +258,13 @@ func TestProjectMigrationPreservesEntryFields(t *testing.T) {
 }
 
 // legacySkillsLock writes a v1 skills-lock.json naming skill s1 and the
-// agents the project had configured, if any. Inference reads the per-agent
-// install paths, so the agent list is part of the fixture.
-func legacySkillsLock(t *testing.T, cwd string, agents ...string) {
+// harnesses the project had configured, if any. Inference reads the per-harness
+// install paths, so the harness list is part of the fixture.
+func legacySkillsLock(t *testing.T, cwd string, harnesses ...string) {
 	t.Helper()
 	legacy := `{"version":1,"skills":{"s1":{"source":"o/r","sourceType":"github"}}`
-	if len(agents) > 0 {
-		legacy += `,"configuredAgents":["` + strings.Join(agents, `","`) + `"]`
+	if len(harnesses) > 0 {
+		legacy += `,"configuredAgents":["` + strings.Join(harnesses, `","`) + `"]`
 	}
 	legacy += "}"
 	if err := os.WriteFile(filepath.Join(cwd, "skills-lock.json"), []byte(legacy), 0600); err != nil {
@@ -306,7 +306,7 @@ func migratedMode(t *testing.T, cwd string) string {
 	return ReadProjectLock(cwd).InstallMode
 }
 
-// A real directory at the agent's own install path, and no canonical
+// A real directory at the harness's own install path, and no canonical
 // directory, is the shape --copy leaves.
 func TestMigrationInfersCopyModeFromRealDirectories(t *testing.T) {
 	cwd := t.TempDir()
@@ -340,7 +340,7 @@ func TestMigrationLeavesModeEmptyWithoutEvidence(t *testing.T) {
 
 // A symlink install creates the canonical directory as a REAL directory, so
 // reading it as evidence would flip every symlink project to copy. Only the
-// per-agent paths count.
+// per-harness paths count.
 func TestMigrationLeavesModeEmptyForSymlinkedSkills(t *testing.T) {
 	cwd := t.TempDir()
 	legacySkillsLock(t, cwd, "claude-code")
@@ -352,7 +352,7 @@ func TestMigrationLeavesModeEmptyForSymlinkedSkills(t *testing.T) {
 	}
 }
 
-// A canonical directory with no per-agent path beside it is not evidence.
+// A canonical directory with no per-harness path beside it is not evidence.
 func TestMigrationIgnoresCanonicalDirectoryAlone(t *testing.T) {
 	cwd := t.TempDir()
 	legacySkillsLock(t, cwd, "claude-code")
@@ -366,18 +366,18 @@ func TestMigrationIgnoresCanonicalDirectoryAlone(t *testing.T) {
 	}
 }
 
-// An agent that reads the shared directory has the canonical directory as
+// A harness that reads the shared directory has the canonical directory as
 // its install path, real in both modes, so it is never evidence.
-func TestMigrationIgnoresSharedSkillsDirAgents(t *testing.T) {
-	if !agent.UsesSharedSkillsDir("amp") {
-		t.Skip("fixture agent no longer uses the shared skills directory")
+func TestMigrationIgnoresSharedSkillsDirHarnesses(t *testing.T) {
+	if !harness.UsesSharedSkillsDir("amp") {
+		t.Skip("fixture harness no longer uses the shared skills directory")
 	}
 	cwd := t.TempDir()
 	legacySkillsLock(t, cwd, "amp")
 	writeSkillDir(t, filepath.Join(cwd, ".agents", "skills", "s1"))
 
 	if got := migratedMode(t, cwd); got != "" {
-		t.Errorf("InstallMode = %q, want empty for a shared-skills-dir agent", got)
+		t.Errorf("InstallMode = %q, want empty for a shared-skills-dir harness", got)
 	}
 }
 
@@ -385,7 +385,7 @@ func TestMigrationIgnoresSharedSkillsDirAgents(t *testing.T) {
 // files left, but its lock still has no mode and its skills may be copies.
 func TestMigrationBackfillsInstallModeOnExistingLock(t *testing.T) {
 	cwd := t.TempDir()
-	if err := SetConfiguredAgents([]string{"claude-code"}, false, cwd); err != nil {
+	if err := SetConfiguredHarnesses([]string{"claude-code"}, false, cwd); err != nil {
 		t.Fatal(err)
 	}
 	if err := AddSkillToLocalLock("s1", LocalSkillLockEntry{Source: "o/r", SourceType: "github"}, cwd); err != nil {
@@ -421,42 +421,42 @@ func TestMigrationBackfillsInstallModeOnExistingLock(t *testing.T) {
 	}
 }
 
-// injectedTestAgents holds the agents registerTestAgent has put into the
+// injectedTestHarnesses holds the harnesses registerTestHarness has put into the
 // registry, so isolateGlobal can fail loudly if a reload would drop one.
 // Shared mutable state: not parallel-safe.
-var injectedTestAgents = map[string]*agent.AgentConfig{}
+var injectedTestHarnesses = map[string]*harness.HarnessConfig{}
 
-// injectedTestAgentNames lists them sorted, so the failure message is stable.
-func injectedTestAgentNames() []string {
-	names := make([]string, 0, len(injectedTestAgents))
-	for name := range injectedTestAgents {
+// injectedTestHarnessNames lists them sorted, so the failure message is stable.
+func injectedTestHarnessNames() []string {
+	names := make([]string, 0, len(injectedTestHarnesses))
+	for name := range injectedTestHarnesses {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 	return names
 }
 
-// registerTestAgent injects a throwaway agent whose install directories sit
+// registerTestHarness injects a throwaway harness whose install directories sit
 // under temp dirs, so global-scope inference never touches real ones. Call
-// isolateGlobal BEFORE this: agent.Reload rebuilds the registry and would
-// silently drop the injected agent. The cleanup fails the test if that
+// isolateGlobal BEFORE this: harness.Reload rebuilds the registry and would
+// silently drop the injected harness. The cleanup fails the test if that
 // happened. Not parallel-safe.
-func registerTestAgent(t *testing.T, name, projectDir, globalDir string) {
+func registerTestHarness(t *testing.T, name, projectDir, globalDir string) {
 	t.Helper()
-	cfg := &agent.AgentConfig{
+	cfg := &harness.HarnessConfig{
 		Name:            name,
 		DisplayName:     name,
 		SkillsDir:       projectDir,
 		GlobalSkillsDir: globalDir,
 	}
-	agent.AllAgents[name] = cfg
-	injectedTestAgents[name] = cfg
+	harness.AllHarnesses[name] = cfg
+	injectedTestHarnesses[name] = cfg
 	t.Cleanup(func() {
-		if agent.AllAgents[name] != cfg {
-			t.Errorf("test agent %q was dropped from the registry mid-test (agent.Reload after registerTestAgent?), so the test asserted against the real registry", name)
+		if harness.AllHarnesses[name] != cfg {
+			t.Errorf("test harness %q was dropped from the registry mid-test (harness.Reload after registerTestHarness?), so the test asserted against the real registry", name)
 		}
-		delete(injectedTestAgents, name)
-		delete(agent.AllAgents, name)
+		delete(injectedTestHarnesses, name)
+		delete(harness.AllHarnesses, name)
 	})
 }
 
@@ -464,11 +464,11 @@ func registerTestAgent(t *testing.T, name, projectDir, globalDir string) {
 func TestGlobalMigrationBackfillsInstallMode(t *testing.T) {
 	isolateGlobal(t)
 	globalSkills := t.TempDir()
-	registerTestAgent(t, "mdm-test-agent", ".mdm-test/skills", globalSkills)
+	registerTestHarness(t, "mdm-test-harness", ".mdm-test/skills", globalSkills)
 
 	state := EmptyGlobalState()
 	state.Skills = map[string]SkillLockEntry{"s1": {Source: "o/r", SourceType: "github"}}
-	state.ConfiguredAgents = []string{"mdm-test-agent"}
+	state.ConfiguredHarnesses = []string{"mdm-test-harness"}
 	if err := WriteGlobalState(state); err != nil {
 		t.Fatal(err)
 	}
@@ -502,20 +502,20 @@ func TestGlobalMigrationBackfillsInstallMode(t *testing.T) {
 	}
 }
 
-// With no agents recorded the global sweep walks every agent's directory
+// With no harnesses recorded the global sweep walks every harness's directory
 // under the home, so this asserts the redirect reached the registry.
-func TestGlobalMigrationInfersCopyWithoutConfiguredAgents(t *testing.T) {
+func TestGlobalMigrationInfersCopyWithoutConfiguredHarnesses(t *testing.T) {
 	isolateGlobal(t)
 	home, err := os.UserHomeDir()
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := agent.AllAgents["claude-code"]
+	cfg := harness.AllHarnesses["claude-code"]
 	if cfg == nil || cfg.GlobalSkillsDir == "" {
-		t.Skip("fixture agent no longer supports global installs")
+		t.Skip("fixture harness no longer supports global installs")
 	}
 	if !strings.HasPrefix(cfg.GlobalSkillsDir, home) {
-		t.Fatalf("agent registry not isolated: global skills dir %q is outside the test home %q", cfg.GlobalSkillsDir, home)
+		t.Fatalf("harness registry not isolated: global skills dir %q is outside the test home %q", cfg.GlobalSkillsDir, home)
 	}
 	writeSkillDir(t, filepath.Join(cfg.GlobalSkillsDir, "s1"))
 
@@ -539,7 +539,7 @@ func TestGlobalMigrationInfersCopyWithoutConfiguredAgents(t *testing.T) {
 func TestGlobalMigrationLeavesModeEmptyForSymlinks(t *testing.T) {
 	isolateGlobal(t)
 	globalSkills := t.TempDir()
-	registerTestAgent(t, "mdm-test-agent", ".mdm-test/skills", globalSkills)
+	registerTestHarness(t, "mdm-test-harness", ".mdm-test/skills", globalSkills)
 
 	canonical := filepath.Join(t.TempDir(), "s1")
 	writeSkillDir(t, canonical)
@@ -549,7 +549,7 @@ func TestGlobalMigrationLeavesModeEmptyForSymlinks(t *testing.T) {
 
 	state := EmptyGlobalState()
 	state.Skills = map[string]SkillLockEntry{"s1": {Source: "o/r", SourceType: "github"}}
-	state.ConfiguredAgents = []string{"mdm-test-agent"}
+	state.ConfiguredHarnesses = []string{"mdm-test-harness"}
 	if err := WriteGlobalState(state); err != nil {
 		t.Fatal(err)
 	}
@@ -566,9 +566,9 @@ func TestGlobalMigrationLeavesModeEmptyForSymlinks(t *testing.T) {
 	}
 }
 
-// `mdm skills add <src> -a claude-code -y` leaves configuredAgents empty,
-// so inference has to sweep every agent to find that install.
-func TestMigrationInfersCopyWithoutConfiguredAgents(t *testing.T) {
+// `mdm skills add <src> --harness claude-code -y` leaves configuredHarnesses empty,
+// so inference has to sweep every harness to find that install.
+func TestMigrationInfersCopyWithoutConfiguredHarnesses(t *testing.T) {
 	cwd := t.TempDir()
 	legacySkillsLock(t, cwd)
 	writeSkillDir(t, filepath.Join(cwd, ".claude", "skills", "s1"))
@@ -578,8 +578,8 @@ func TestMigrationInfersCopyWithoutConfiguredAgents(t *testing.T) {
 	}
 }
 
-// The all-agents sweep would otherwise read any unrelated directory at
-// <agent skills dir>/<locked name> as a copy install; requiring a SKILL.md
+// The all-harnesses sweep would otherwise read any unrelated directory at
+// <harness skills dir>/<locked name> as a copy install; requiring a SKILL.md
 // removes that false positive.
 func TestMigrationIgnoresDirectoriesWithoutSkillMd(t *testing.T) {
 	cwd := t.TempDir()
@@ -598,7 +598,7 @@ func TestMigrationIgnoresDirectoriesWithoutSkillMd(t *testing.T) {
 }
 
 // The wider sweep still only reports a mode for a real directory.
-func TestMigrationWithoutConfiguredAgentsStillHonorsSymlinks(t *testing.T) {
+func TestMigrationWithoutConfiguredHarnessesStillHonorsSymlinks(t *testing.T) {
 	cwd := t.TempDir()
 	legacySkillsLock(t, cwd)
 	linkSkill(t, cwd)
@@ -608,5 +608,36 @@ func TestMigrationWithoutConfiguredAgentsStillHonorsSymlinks(t *testing.T) {
 	}
 	if got := ReadProjectLock(cwd).InstallMode; got != "" {
 		t.Errorf("InstallMode = %q, want empty", got)
+	}
+}
+
+// The v1 format is frozen and in the wild, so its key stays configuredAgents.
+// v2 is unreleased, so its key is free to say what it means. Migration is
+// where the two formats meet, and it must carry the list across.
+func TestMigrationMapsConfiguredAgentsOntoHarnesses(t *testing.T) {
+	cwd := t.TempDir()
+	legacy := `{"version":1,"skills":{"s1":{"source":"o/r","sourceType":"github"}},` +
+		`"configuredAgents":["claude-code","codex"]}`
+	if err := os.WriteFile(filepath.Join(cwd, "skills-lock.json"), []byte(legacy), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := PlanProjectMigration(cwd); err != nil {
+		t.Fatal(err)
+	}
+	if err := ExecuteProjectMigration(cwd, true); err != nil {
+		t.Fatal(err)
+	}
+
+	got := ReadLocalLock(cwd).ConfiguredHarnesses
+	if len(got) != 2 || got[0] != "claude-code" || got[1] != "codex" {
+		t.Errorf("ConfiguredHarnesses = %v, want [claude-code codex]", got)
+	}
+	raw, err := os.ReadFile(filepath.Join(cwd, "mdm.lock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"configuredHarnesses"`) {
+		t.Errorf("mdm.lock does not use the v2 key:\n%s", raw)
 	}
 }

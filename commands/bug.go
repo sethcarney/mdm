@@ -11,17 +11,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/sethcarney/mdm/internal/agent"
+	"github.com/sethcarney/mdm/internal/harness"
 )
 
-// ──────────────────────────────────────────────────────────
-// mdm bug - prefilled issue reporting
-//
-// The command constructs a GitHub issue-form prefill URL and hands it
-// over. It does no network I/O, no authentication, and no telemetry -
-// nothing leaves the machine until the user submits the form themselves.
-// Prior art: `npm bugs`, rustc's ICE handler, `brew gist-logs`.
-// ──────────────────────────────────────────────────────────
+// mdm bug: prefilled issue reporting. The command constructs a GitHub
+// issue-form prefill URL and hands it over. It does no network I/O, no
+// authentication, and no telemetry. Nothing leaves the machine until the user
+// submits the form.
 
 const bugRepoURL = "https://github.com/sethcarney/mdm"
 
@@ -39,13 +35,13 @@ var BugFieldIDs = []string{"version", "os", "shell", "go", "agents", "command", 
 const bugLogsLimit = 1500
 
 type bugReport struct {
-	Version string
-	OS      string
-	Shell   string
-	Go      string
-	Agents  string
-	Command string
-	Logs    string
+	Version   string
+	OS        string
+	Shell     string
+	Go        string
+	Harnesses string
+	Command   string
+	Logs      string
 }
 
 func buildBugCmd(ver string) *cobra.Command {
@@ -58,7 +54,7 @@ func buildBugCmd(ver string) *cobra.Command {
 		Long: fmt.Sprintf(`Open a prefilled GitHub issue form for reporting an mdm bug.
 
 Collects the mdm version, OS and architecture, shell, Go runtime, and
-the agent tools detected on this machine, then builds an issue-form URL
+the AI harnesses detected on this machine, then builds an issue-form URL
 with those fields already filled in. Nothing is sent anywhere - the
 command only constructs a URL and (when a browser is available) opens
 it; you review and submit the form yourself.
@@ -86,17 +82,17 @@ func collectBugReport(ver, failedCommand string) bugReport {
 	if shell == "" && runtime.GOOS == "windows" {
 		shell = os.Getenv("ComSpec")
 	}
-	detected := agent.DetectInstalledAgents()
+	detected := harness.DetectInstalledHarnesses()
 	if len(detected) > 8 {
 		detected = append(detected[:8], fmt.Sprintf("(+%d more)", len(detected)-8))
 	}
 	return bugReport{
-		Version: ver,
-		OS:      runtime.GOOS + "/" + runtime.GOARCH,
-		Shell:   scrubHome(shell),
-		Go:      runtime.Version(),
-		Agents:  strings.Join(detected, ", "),
-		Command: scrubHome(failedCommand),
+		Version:   ver,
+		OS:        runtime.GOOS + "/" + runtime.GOARCH,
+		Shell:     scrubHome(shell),
+		Go:        runtime.Version(),
+		Harnesses: strings.Join(detected, ", "),
+		Command:   scrubHome(failedCommand),
 	}
 }
 
@@ -131,7 +127,7 @@ func buildBugURL(report bugReport) string {
 	set("os", report.OS)
 	set("shell", report.Shell)
 	set("go", report.Go)
-	set("agents", report.Agents)
+	set("agents", report.Harnesses)
 	set("command", report.Command)
 	set("logs", truncateForURL(report.Logs))
 	return bugRepoURL + "/issues/new?" + values.Encode()
@@ -149,7 +145,7 @@ func renderBugBody(report bugReport) string {
 	write("os", report.OS)
 	write("shell", report.Shell)
 	write("go", report.Go)
-	write("agents", report.Agents)
+	write("agents", report.Harnesses)
 	write("command", report.Command)
 	write("logs", report.Logs)
 	return b.String()
@@ -197,11 +193,9 @@ func openInBrowser(target string) {
 // Panic hook
 // ──────────────────────────────────────────────────────────
 
-// HandlePanic is deferred from main. On a panic it writes the full panic
-// output to a temp file (bulky data stays out of the URL), prints a
-// prefilled bug URL carrying the failing command and the panic's first
-// line, and exits non-zero. This catches people at the moment they are
-// annoyed enough to report but not enough to fill out a form by hand.
+// HandlePanic is deferred from main. On a panic it writes the full panic output
+// to a temp file, prints a prefilled bug URL carrying the failing command and
+// the panic's first line, and exits non-zero.
 func HandlePanic(ver string) {
 	r := recover()
 	if r == nil {

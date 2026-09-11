@@ -1,0 +1,5 @@
+name = "codex-local-time"
+description = "A definition carrying TOML local date/time values"
+developer_instructions = "Do the thing.\n"
+release_date = 2024-01-15
+daily_check_in = 10:30:00

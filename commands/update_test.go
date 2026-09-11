@@ -3,6 +3,7 @@ package commands
 import (
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/sethcarney/mdm/internal/source"
@@ -218,7 +219,7 @@ func TestCheckRemoteTagUpToDateUsesCache(t *testing.T) {
 		tags: []string{"v1.0.0", "v1.2.0", "v1.3.0-rc.1"},
 	}
 
-	upToDate, newRef, err := checkRemoteTagUpToDate("https://github.com/acme/skills", "v1.0.0", c)
+	upToDate, newRef, err := checkRemoteTagUpToDate("https://github.com/acme/skills", "v1.0.0", "skills", c)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -230,7 +231,7 @@ func TestCheckRemoteTagUpToDateUsesCache(t *testing.T) {
 		t.Errorf("newRef = %q, want %q", newRef, "v1.2.0")
 	}
 
-	upToDate, _, err = checkRemoteTagUpToDate("https://github.com/acme/skills", "v1.2.0", c)
+	upToDate, _, err = checkRemoteTagUpToDate("https://github.com/acme/skills", "v1.2.0", "skills", c)
 	if err != nil || !upToDate {
 		t.Errorf("upToDate = %v, err = %v; want true, nil", upToDate, err)
 	}
@@ -238,7 +239,7 @@ func TestCheckRemoteTagUpToDateUsesCache(t *testing.T) {
 
 func TestCheckRemoteTagUpToDateRejectsUnpinnedRef(t *testing.T) {
 	c := newRemoteTagCache()
-	if _, _, err := checkRemoteTagUpToDate("https://github.com/acme/skills", "main", c); err == nil {
+	if _, _, err := checkRemoteTagUpToDate("https://github.com/acme/skills", "main", "skills", c); err == nil {
 		t.Error("expected an error for a non-semver ref, got nil")
 	}
 	if len(c.entries) != 0 {
@@ -266,5 +267,23 @@ func TestPlanUpdatesDeduplicatesSkillNamesWithinGroup(t *testing.T) {
 	}
 	if !reflect.DeepEqual(groups[0].names, []string{"alpha", "alpha-copy"}) {
 		t.Errorf("names = %v, want both lock names", groups[0].names)
+	}
+}
+
+// Every definition added without #tag sits on the default branch, and
+// planUpdates skips anything not on a semver tag with a hint. That hint named
+// `mdm skills add` for an agent definition. The check returns before any
+// remote call when the ref is not a tag, so this needs no network.
+func TestUnpinnedHintNamesTheCandidatesCommandGroup(t *testing.T) {
+	for _, tc := range []struct{ command, want string }{
+		{"agents", "mdm agents add <source>#<tag>"},
+		{"skills", "mdm skills add <source>#<tag>"},
+		{"", "mdm skills add <source>#<tag>"},
+	} {
+		c := updateCandidate{lockName: "x", source: "o/r", sourceType: "github", ref: "main", command: tc.command}
+		_, _, err := checkCandidateUpToDate(c, newRemoteTagCache())
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("command %q: want the hint to contain %q, got: %v", tc.command, tc.want, err)
+		}
 	}
 }

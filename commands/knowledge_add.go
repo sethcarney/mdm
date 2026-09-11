@@ -209,7 +209,7 @@ func selectKnowledgeCandidates(candidates []knowledgeCandidate, opts KnowledgeAd
 }
 
 // scanKnowledgeCandidates runs the hidden-character scan over every selected
-// bundle. Bundles are agent-bound markdown, so this gate is mandatory.
+// bundle. Bundles are harness-bound markdown, so this gate is mandatory.
 func scanKnowledgeCandidates(selected []knowledgeCandidate, allow bool) bool {
 	ok := true
 	for _, c := range selected {

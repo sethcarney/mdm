@@ -8,12 +8,11 @@ import (
 	"github.com/sethcarney/mdm/internal/plugin"
 )
 
-// RenderServer converts a validated plugin server into the agent-native
-// JSON object for this target. mdm is a config writer, not the launcher -
-// the agent is - so everything the spec asks the launcher to do is baked
-// in here: ${PLUGIN_ROOT}/${PLUGIN_DATA} become absolute paths, both
-// variables are injected into the subprocess env, ./-prefixed commands
-// resolve inside the plugin root, and an omitted cwd defaults to it.
+// RenderServer converts a validated plugin server into the harness-native JSON
+// object for this target. mdm writes the config and the harness launches, so
+// everything the spec asks the launcher to do is baked in here:
+// ${PLUGIN_ROOT}/${PLUGIN_DATA} become absolute paths and are injected into the
+// subprocess env, ./-prefixed commands and an omitted cwd resolve to the root.
 func (t MCPTarget) RenderServer(s plugin.Server, rootAbs, dataAbs string) (map[string]any, error) {
 	switch s.Type {
 	case plugin.ServerStdio:

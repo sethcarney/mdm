@@ -171,6 +171,96 @@ func TestProjectLockSectionsAreIsolated(t *testing.T) {
 	}
 }
 
+// Mutation this test catches: writing agent entries under any top-level key
+// other than "agents" (e.g. a typo'd "agent", or reusing "skills"), and
+// dropping AgentPath from the write path. Both would leave a definition mdm
+// installed with no way to find it again on the next read.
+func TestAgentLockEntryWrittenUnderAgentsKey(t *testing.T) {
+	cwd := t.TempDir()
+	if err := AddAgentToLocalLock("critic", AgentLockEntry{
+		Source: "o/r", SourceType: "github", Ref: "main", AgentPath: "agents/critic.md",
+	}, cwd); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(GetProjectLockPath(cwd))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatal(err)
+	}
+	agentsRaw, ok := raw["agents"]
+	if !ok {
+		t.Fatalf("no top-level \"agents\" key in mdm.lock:\n%s", data)
+	}
+	var agents map[string]map[string]json.RawMessage
+	if err := json.Unmarshal(agentsRaw, &agents); err != nil {
+		t.Fatal(err)
+	}
+	if string(agents["critic"]["agentPath"]) != `"agents/critic.md"` {
+		t.Errorf("agentPath not written under the agents key: %s", agents["critic"]["agentPath"])
+	}
+
+	lk := ReadProjectLock(cwd)
+	entry, ok := lk.Agents["critic"]
+	if !ok {
+		t.Fatal("agent entry did not round-trip back through ReadProjectLock")
+	}
+	if entry.AgentPath != "agents/critic.md" || entry.Source != "o/r" || entry.Ref != "main" {
+		t.Errorf("agent entry round-tripped wrong: %+v", entry)
+	}
+}
+
+// A skills write must never touch the agents section, and vice versa -
+// mirrors TestProjectLockSectionsAreIsolated for the new section.
+func TestProjectLockAgentsSectionIsolatedFromSkills(t *testing.T) {
+	cwd := t.TempDir()
+	if err := AddAgentToLocalLock("critic", AgentLockEntry{Source: "o/r", SourceType: "github", AgentPath: "a.md"}, cwd); err != nil {
+		t.Fatal(err)
+	}
+	agentBefore := ReadProjectLock(cwd).Agents["critic"]
+
+	if err := AddSkillToLocalLock("my-skill", LocalSkillLockEntry{Source: "o/r", SourceType: "github"}, cwd); err != nil {
+		t.Fatal(err)
+	}
+	lk := ReadProjectLock(cwd)
+	if lk.Agents["critic"] != agentBefore {
+		t.Errorf("agent entry changed by a skills write: %+v", lk.Agents["critic"])
+	}
+
+	if err := RemoveAgentFromLocalLock("critic", cwd); err != nil {
+		t.Fatal(err)
+	}
+	lk = ReadProjectLock(cwd)
+	if _, ok := lk.Agents["critic"]; ok {
+		t.Error("RemoveAgentFromLocalLock left the entry behind")
+	}
+	if _, ok := lk.Skills["my-skill"]; !ok {
+		t.Error("removing an agent entry must not touch the skills section")
+	}
+}
+
+// AgentLockEntry round-trips through GlobalState the same way it does
+// through the project lock.
+func TestGlobalStateAgentsRoundTrip(t *testing.T) {
+	isolateGlobal(t)
+	if err := AddAgentToGlobalState("critic", AgentLockEntry{Source: "o/r", SourceType: "github", AgentPath: "a.md"}); err != nil {
+		t.Fatal(err)
+	}
+	entry, ok := ReadGlobalState().Agents["critic"]
+	if !ok || entry.AgentPath != "a.md" {
+		t.Fatalf("agent entry did not round-trip through global state: %+v ok=%v", entry, ok)
+	}
+	if err := RemoveAgentFromGlobalState("critic"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := ReadGlobalState().Agents["critic"]; ok {
+		t.Error("RemoveAgentFromGlobalState left the entry behind")
+	}
+}
+
 func TestProjectLockLegacyFallback(t *testing.T) {
 	cwd := t.TempDir()
 	writeJSON := func(name, content string) {
@@ -193,8 +283,8 @@ func TestProjectLockLegacyFallback(t *testing.T) {
 	if _, ok := lk.Plugins["p1"]; !ok {
 		t.Error("legacy plugins-lock.json not read")
 	}
-	if len(lk.ConfiguredAgents) != 1 || lk.ConfiguredAgents[0] != "claude-code" {
-		t.Errorf("legacy configuredAgents not read: %v", lk.ConfiguredAgents)
+	if len(lk.ConfiguredHarnesses) != 1 || lk.ConfiguredHarnesses[0] != "claude-code" {
+		t.Errorf("legacy configuredAgents not read: %v", lk.ConfiguredHarnesses)
 	}
 
 	// Once mdm.lock exists it wins; the legacy files are ignored but
@@ -220,7 +310,7 @@ func TestProjectLockLegacyFallback(t *testing.T) {
 func TestProjectLockKeyOrderAndDeterminism(t *testing.T) {
 	cwd := t.TempDir()
 	lk := EmptyProjectLock()
-	lk.ConfiguredAgents = []string{"claude-code"}
+	lk.ConfiguredHarnesses = []string{"claude-code"}
 	lk.Skills["b"] = LocalSkillLockEntry{Source: "o/r", SourceType: "github"}
 	lk.Skills["a"] = LocalSkillLockEntry{Source: "o/r", SourceType: "github"}
 	lk.Knowledge["k"] = KnowledgeLockEntry{Source: "x", SourceType: "local", InstallDir: "knowledge/k", SpecVersion: "0.1"}
@@ -233,8 +323,8 @@ func TestProjectLockKeyOrderAndDeterminism(t *testing.T) {
 	}
 	content := string(first)
 	for _, ordered := range [][2]string{
-		{`"version"`, `"configuredAgents"`},
-		{`"configuredAgents"`, `"skills"`},
+		{`"version"`, `"configuredHarnesses"`},
+		{`"configuredHarnesses"`, `"skills"`},
 		{`"skills"`, `"knowledge"`},
 	} {
 		if strings.Index(content, ordered[0]) > strings.Index(content, ordered[1]) {
@@ -422,8 +512,8 @@ func TestProjectLockUpgradesV1InPlace(t *testing.T) {
 	if _, ok := lk.Skills["s1"]; !ok {
 		t.Fatal("a version 1 lock must not read as empty after the bump")
 	}
-	if len(lk.ConfiguredAgents) != 1 {
-		t.Errorf("configuredAgents lost on upgrade: %v", lk.ConfiguredAgents)
+	if len(lk.ConfiguredHarnesses) != 1 {
+		t.Errorf("configuredAgents lost on upgrade: %v", lk.ConfiguredHarnesses)
 	}
 	if lk.InstallMode != "" {
 		t.Errorf("upgrade must not infer a mode on read, got %q", lk.InstallMode)
@@ -435,6 +525,34 @@ func TestProjectLockUpgradesV1InPlace(t *testing.T) {
 	}
 	if got := ReadProjectLock(cwd).Version; got != projectLockVersion {
 		t.Errorf("Version = %d, want %d", got, projectLockVersion)
+	}
+}
+
+// mdm.lock's v2 format shipped with configuredAgents, so a real lock on disk
+// can carry the old key at version 2. The fallback decode must consume it
+// rather than leave it to the unknown-key passthrough, or a round trip emits
+// both spellings.
+func TestProjectLockOldKeyDoesNotRoundTripAlongsideNewKey(t *testing.T) {
+	cwd := t.TempDir()
+	v2 := `{"version":2,"skills":{"s1":{"source":"o/r","sourceType":"github"}},"configuredAgents":["claude-code"]}`
+	if err := os.WriteFile(GetProjectLockPath(cwd), []byte(v2), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	lk := ReadProjectLock(cwd)
+	if err := WriteProjectLock(lk, cwd); err != nil {
+		t.Fatal(err)
+	}
+
+	raw, err := os.ReadFile(GetProjectLockPath(cwd))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"configuredHarnesses"`) {
+		t.Errorf("written lock does not use the v2 key:\n%s", raw)
+	}
+	if strings.Contains(string(raw), `"configuredAgents"`) {
+		t.Errorf("written lock still carries the old key alongside the new one:\n%s", raw)
 	}
 }
 
@@ -460,5 +578,61 @@ func TestGlobalStateUpgradesV1InPlace(t *testing.T) {
 	}
 	if _, ok := ReadGlobalState().Skills["g1"]; !ok {
 		t.Fatal("a version 1 global state must not read as empty after the bump")
+	}
+}
+
+// The global equivalent of TestProjectLockOldKeyDoesNotRoundTripAlongsideNewKey:
+// PR 161 shipped mdm-state.json's v2 format with configuredAgents too, so the
+// same fallback-then-consume behavior is required here.
+func TestGlobalStateOldKeyDoesNotRoundTripAlongsideNewKey(t *testing.T) {
+	isolateGlobal(t)
+	path := GetGlobalStatePath()
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatal(err)
+	}
+	v2WithOldKey := `{"version":2,"skills":{"g1":{"source":"o/r","sourceType":"github","sourceUrl":"u","installedAt":"t","updatedAt":"t"}},"configuredAgents":["claude-code"]}`
+	if err := os.WriteFile(path, []byte(v2WithOldKey), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	s := ReadGlobalState()
+	if err := WriteGlobalState(s); err != nil {
+		t.Fatal(err)
+	}
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"configuredHarnesses"`) {
+		t.Errorf("written state does not use the v2 key:\n%s", raw)
+	}
+	if strings.Contains(string(raw), `"configuredAgents"`) {
+		t.Errorf("written state still carries the old key alongside the new one:\n%s", raw)
+	}
+}
+
+// A lock that somehow carries both spellings (a hand merge, or a v2 build
+// writing over an older one) keeps configuredHarnesses. The old key used to
+// survive in the unknown-key passthrough and be written back on every save.
+func TestProjectLockWithBothHarnessKeysDropsTheOldOne(t *testing.T) {
+	cwd := t.TempDir()
+	both := `{"version":2,"skills":{},"configuredHarnesses":["cursor"],"configuredAgents":["claude-code"]}`
+	if err := os.WriteFile(GetProjectLockPath(cwd), []byte(both), 0600); err != nil {
+		t.Fatal(err)
+	}
+	lk := ReadProjectLock(cwd)
+	if len(lk.ConfiguredHarnesses) != 1 || lk.ConfiguredHarnesses[0] != "cursor" {
+		t.Errorf("ConfiguredHarnesses = %v, want the new key's value", lk.ConfiguredHarnesses)
+	}
+	if err := WriteProjectLock(lk, cwd); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(GetProjectLockPath(cwd))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), `"configuredAgents"`) {
+		t.Errorf("the old key survived a round trip beside the new one:\n%s", raw)
 	}
 }

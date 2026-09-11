@@ -171,7 +171,7 @@ func TestPluginsAddListRemoveRoundTrip(t *testing.T) {
 	env := freshEnv(t)
 	src := writePluginSource(t, dir, "toolkit", "alpha", "beta")
 
-	mustRunPlugins(t, dir, env, "plugins", "add", "./"+filepath.Base(src), "-a", "claude-code", "-y")
+	mustRunPlugins(t, dir, env, "plugins", "add", "./"+filepath.Base(src), "--harness", "claude-code", "-y")
 
 	// The plugin directory is the PLUGIN_ROOT; skills link into canonical
 	// and agent dirs; the data dir exists; the lock records it all.
@@ -217,7 +217,7 @@ func TestPluginsRemovePurgeData(t *testing.T) {
 	env := freshEnv(t)
 	src := writePluginSource(t, dir, "toolkit", "alpha")
 
-	if _, stderr, code := runMdmInDir(t, dir, env, "plugins", "add", "./"+filepath.Base(src), "-a", "claude-code", "-y"); code != 0 {
+	if _, stderr, code := runMdmInDir(t, dir, env, "plugins", "add", "./"+filepath.Base(src), "--harness", "claude-code", "-y"); code != 0 {
 		t.Fatalf("plugins add exited %d: %s", code, stderr)
 	}
 	if _, stderr, code := runMdmInDir(t, dir, env, "plugins", "remove", "toolkit", "-y", "--purge-data"); code != 0 {
@@ -233,7 +233,7 @@ func TestPluginsAddDryRunWritesNothing(t *testing.T) {
 	env := freshEnv(t)
 	src := writePluginSource(t, dir, "toolkit", "alpha")
 
-	stdout, stderr, code := runMdmInDir(t, dir, env, "plugins", "add", "./"+filepath.Base(src), "-a", "claude-code", "-y", "--dry-run")
+	stdout, stderr, code := runMdmInDir(t, dir, env, "plugins", "add", "./"+filepath.Base(src), "--harness", "claude-code", "-y", "--dry-run")
 	if code != 0 {
 		t.Fatalf("plugins add --dry-run exited %d: %s", code, stderr)
 	}
@@ -256,7 +256,7 @@ func TestPluginsAddBlocksHiddenChars(t *testing.T) {
 	}
 	fixture := filepath.Join(root, "tests", "testdata", "hidden-plugin")
 
-	stdout, stderr, code := runMdmInDir(t, dir, env, "plugins", "add", fixture, "-a", "claude-code", "-y")
+	stdout, stderr, code := runMdmInDir(t, dir, env, "plugins", "add", fixture, "--harness", "claude-code", "-y")
 	combined := stdout + stderr
 	if code == 0 {
 		t.Fatalf("expected hidden character scan to block install:\n%s", combined)
@@ -268,7 +268,7 @@ func TestPluginsAddBlocksHiddenChars(t *testing.T) {
 		t.Error("blocked install must not write the lock")
 	}
 
-	if _, stderr, code := runMdmInDir(t, dir, env, "plugins", "add", fixture, "-a", "claude-code", "-y", "--allow-hidden-chars"); code != 0 {
+	if _, stderr, code := runMdmInDir(t, dir, env, "plugins", "add", fixture, "--harness", "claude-code", "-y", "--allow-hidden-chars"); code != 0 {
 		t.Fatalf("--allow-hidden-chars should permit the install, exited %d: %s", code, stderr)
 	}
 }
@@ -284,7 +284,7 @@ func TestPluginsAddRejectsInvalidManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	stdout, stderr, code := runMdmInDir(t, dir, env, "plugins", "add", "./broken-src", "-a", "claude-code", "-y")
+	stdout, stderr, code := runMdmInDir(t, dir, env, "plugins", "add", "./broken-src", "--harness", "claude-code", "-y")
 	if code == 0 {
 		t.Fatal("expected non-zero exit for a rejected plugin")
 	}
@@ -298,7 +298,7 @@ func TestSkillsRemoveRefusesPluginOwnedSkill(t *testing.T) {
 	env := freshEnv(t)
 	src := writePluginSource(t, dir, "toolkit", "alpha")
 
-	if _, stderr, code := runMdmInDir(t, dir, env, "plugins", "add", "./"+filepath.Base(src), "-a", "claude-code", "-y"); code != 0 {
+	if _, stderr, code := runMdmInDir(t, dir, env, "plugins", "add", "./"+filepath.Base(src), "--harness", "claude-code", "-y"); code != 0 {
 		t.Fatalf("plugins add exited %d: %s", code, stderr)
 	}
 
@@ -329,7 +329,7 @@ func TestPluginsAddSkipsCollidingStandaloneSkill(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	stdout, stderr, code := runMdmInDir(t, dir, env, "plugins", "add", "./"+filepath.Base(src), "-a", "claude-code", "-y")
+	stdout, stderr, code := runMdmInDir(t, dir, env, "plugins", "add", "./"+filepath.Base(src), "--harness", "claude-code", "-y")
 	if code != 0 {
 		t.Fatalf("plugins add exited %d: %s", code, stderr)
 	}
@@ -394,7 +394,7 @@ func assertWiredStdioServer(t *testing.T, servers map[string]json.RawMessage) {
 	}
 }
 
-// assertWiredLockMCP checks the lock records the wired ids per agent.
+// assertWiredLockMCP checks the lock records the wired ids per harness.
 func assertWiredLockMCP(t *testing.T, dir string) {
 	t.Helper()
 	var lockData struct {
@@ -428,7 +428,7 @@ func TestPluginsAddWiresMCPConfigs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mustRunPlugins(t, dir, env, "plugins", "add", "./"+filepath.Base(src), "-a", "claude-code", "-a", "cursor", "-y")
+	mustRunPlugins(t, dir, env, "plugins", "add", "./"+filepath.Base(src), "--harness", "claude-code", "--harness", "cursor", "-y")
 
 	top, servers := readServers(t, filepath.Join(dir, ".mcp.json"), "mcpServers")
 	if _, ok := top["custom"]; !ok {
@@ -474,7 +474,7 @@ func TestPluginsAddSkipMCP(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, stderr, code := runMdmInDir(t, dir, env, "plugins", "add", "./"+filepath.Base(src), "-a", "claude-code", "-y", "--skip-mcp"); code != 0 {
+	if _, stderr, code := runMdmInDir(t, dir, env, "plugins", "add", "./"+filepath.Base(src), "--harness", "claude-code", "-y", "--skip-mcp"); code != 0 {
 		t.Fatalf("plugins add exited %d: %s", code, stderr)
 	}
 	if _, err := os.Stat(filepath.Join(dir, ".mcp.json")); !os.IsNotExist(err) {
@@ -491,7 +491,7 @@ func TestPluginsAddBrokenMCPStillInstallsSkills(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	stdout, stderr, code := runMdmInDir(t, dir, env, "plugins", "add", "./"+filepath.Base(src), "-a", "claude-code", "-y")
+	stdout, stderr, code := runMdmInDir(t, dir, env, "plugins", "add", "./"+filepath.Base(src), "--harness", "claude-code", "-y")
 	if code != 0 {
 		t.Fatalf("a broken mcp.json must not fail the install, exited %d: %s", code, stderr)
 	}
@@ -511,7 +511,7 @@ func TestPluginsUpdateRefetchesSourceAndPreservesData(t *testing.T) {
 	env := freshEnv(t)
 	src := writePluginSource(t, dir, "toolkit", "alpha")
 
-	if _, stderr, code := runMdmInDir(t, dir, env, "plugins", "add", "./"+filepath.Base(src), "-a", "claude-code", "-y"); code != 0 {
+	if _, stderr, code := runMdmInDir(t, dir, env, "plugins", "add", "./"+filepath.Base(src), "--harness", "claude-code", "-y"); code != 0 {
 		t.Fatalf("plugins add exited %d: %s", code, stderr)
 	}
 
@@ -547,7 +547,7 @@ func TestPluginsInstallRestoresFromLock(t *testing.T) {
 	env := freshEnv(t)
 	src := writePluginSource(t, dir, "toolkit", "alpha")
 
-	if _, stderr, code := runMdmInDir(t, dir, env, "plugins", "add", "./"+filepath.Base(src), "-a", "claude-code", "-y"); code != 0 {
+	if _, stderr, code := runMdmInDir(t, dir, env, "plugins", "add", "./"+filepath.Base(src), "--harness", "claude-code", "-y"); code != 0 {
 		t.Fatalf("plugins add exited %d: %s", code, stderr)
 	}
 	// A fresh checkout has the lock but no installed state.
@@ -576,7 +576,7 @@ func TestDoctorReportsPluginIssues(t *testing.T) {
 	env := freshEnv(t)
 	src := writePluginSource(t, dir, "toolkit", "alpha")
 
-	if _, stderr, code := runMdmInDir(t, dir, env, "plugins", "add", "./"+filepath.Base(src), "-a", "claude-code", "-y"); code != 0 {
+	if _, stderr, code := runMdmInDir(t, dir, env, "plugins", "add", "./"+filepath.Base(src), "--harness", "claude-code", "-y"); code != 0 {
 		t.Fatalf("plugins add exited %d: %s", code, stderr)
 	}
 	// Break the install so doctor has something to report.
@@ -595,7 +595,7 @@ func TestSkillsInstallHintsAtPluginsLock(t *testing.T) {
 	env := freshEnv(t)
 	src := writePluginSource(t, dir, "toolkit", "alpha")
 
-	if _, stderr, code := runMdmInDir(t, dir, env, "plugins", "add", "./"+filepath.Base(src), "-a", "claude-code", "-y"); code != 0 {
+	if _, stderr, code := runMdmInDir(t, dir, env, "plugins", "add", "./"+filepath.Base(src), "--harness", "claude-code", "-y"); code != 0 {
 		t.Fatalf("plugins add exited %d: %s", code, stderr)
 	}
 
@@ -623,7 +623,7 @@ func TestPluginsAddSkipsEscapingSymlinks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out := mustRunPlugins(t, dir, env, "plugins", "add", "./"+filepath.Base(src), "-a", "claude-code", "-y")
+	out := mustRunPlugins(t, dir, env, "plugins", "add", "./"+filepath.Base(src), "--harness", "claude-code", "-y")
 	if !strings.Contains(out, "outside the plugin root") {
 		t.Errorf("expected a skipped-symlink warning, got: %q", out)
 	}
@@ -637,7 +637,7 @@ func TestSkillsUpdateHintsAtPluginOwnedSkill(t *testing.T) {
 	dir := t.TempDir()
 	env := freshEnv(t)
 	src := writePluginSource(t, dir, "toolkit", "alpha")
-	mustRunPlugins(t, dir, env, "plugins", "add", "./"+filepath.Base(src), "-a", "claude-code", "-y")
+	mustRunPlugins(t, dir, env, "plugins", "add", "./"+filepath.Base(src), "--harness", "claude-code", "-y")
 
 	out := mustRunPlugins(t, dir, env, "skills", "update", "alpha", "--project", "-y")
 	if !strings.Contains(out, "mdm plugins update toolkit") {

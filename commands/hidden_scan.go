@@ -2,8 +2,10 @@ package commands
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 
+	"github.com/sethcarney/mdm/internal/agentfile"
 	"github.com/sethcarney/mdm/internal/blob"
 	"github.com/sethcarney/mdm/internal/registry"
 	"github.com/sethcarney/mdm/internal/security/markdownscan"
@@ -49,6 +51,29 @@ func checkBlobSkillsMarkdownForHiddenChars(skills []*blob.BlobSkill, allow bool)
 	ok := true
 	for _, sk := range skills {
 		if !checkBlobSkillMarkdownForHiddenChars(sk, allow) {
+			ok = false
+		}
+	}
+	return ok
+}
+
+// checkAgentFileMarkdownForHiddenChars is the disk scan for a single agent
+// definition. A definition is one markdown file, so this uses ScanMarkdownText
+// instead of ScanMarkdownFiles' walk. The scan matters most here: a definition
+// is third-party markdown installed to become a persona the model adopts.
+func checkAgentFileMarkdownForHiddenChars(a *agentfile.AgentFile, allow bool) bool {
+	raw, err := os.ReadFile(a.Path)
+	if err != nil {
+		fmt.Printf("%sHidden character scan failed for %s: %s%s\n", ansiRed, a.Name, err, ansiReset)
+		return false
+	}
+	return checkSkillMarkdownForHiddenChars(a.Name, markdownscan.ScanMarkdownText(filepath.ToSlash(filepath.Base(a.Path)), string(raw)), allow)
+}
+
+func checkAgentFilesMarkdownForHiddenChars(agents []*agentfile.AgentFile, allow bool) bool {
+	ok := true
+	for _, a := range agents {
+		if !checkAgentFileMarkdownForHiddenChars(a, allow) {
 			ok = false
 		}
 	}

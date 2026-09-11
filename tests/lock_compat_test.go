@@ -37,7 +37,7 @@ func TestNewerLockVersionAborts(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: my-skill\ndescription: d\n---\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	_, _, code = runMdmInDir(t, dir, env, "skills", "add", "./my-skill", "-p", "-y", "-a", "claude-code")
+	_, _, code = runMdmInDir(t, dir, env, "skills", "add", "./my-skill", "-p", "-y", "--harness", "claude-code")
 	if code == 0 {
 		t.Fatal("expected skills add to abort instead of overwriting a newer lock")
 	}
@@ -124,5 +124,39 @@ func TestVersion1LockUpgradesOnInstall(t *testing.T) {
 	}
 	if _, ok := parsed.Skills["my-skill"]; !ok {
 		t.Errorf("skill entry lost by the upgrade:\n%s", after)
+	}
+}
+
+// The v2 lock format was unreleased when configuredAgents became
+// configuredHarnesses, but v2 locks written by intermediate builds exist in
+// working trees. One with the old key at version 2 restores as before and is
+// rewritten under the new key alone.
+func TestV2LockWithOldHarnessKeyRestoresAndIsRewritten(t *testing.T) {
+	dir := t.TempDir()
+	skillDir := filepath.Join(dir, "my-skill")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: my-skill\ndescription: d\n---\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	old := `{"version":2,"skills":{"my-skill":{"source":"./my-skill","sourceType":"local"}},"configuredAgents":["claude-code"]}`
+	if err := os.WriteFile(filepath.Join(dir, lockName), []byte(old), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, stderr, code := runMdmInDir(t, dir, freshEnv(t), "skills", "install", "-y")
+	if code != 0 {
+		t.Fatalf("skills install against a v2 lock with the old key exited %d:\n%s%s", code, stdout, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".claude", "skills", "my-skill", "SKILL.md")); err != nil {
+		t.Errorf("skill not restored to the harness the old key named: %v\n%s", err, stdout)
+	}
+	after, err := os.ReadFile(filepath.Join(dir, lockName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(after), `"configuredHarnesses"`) || strings.Contains(string(after), `"configuredAgents"`) {
+		t.Errorf("lock should be rewritten under configuredHarnesses alone:\n%s", after)
 	}
 }

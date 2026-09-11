@@ -1,12 +1,8 @@
-// Package fork owns the provenance bookkeeping for cherry-picked skills -
+// Package fork owns the provenance bookkeeping for cherry-picked skills:
 // third-party skills copied into a project so the project can edit and ship
-// them as its own.
-//
-// A fork deliberately keeps no link to a lock file. Everything needed to say
-// where the material came from, and whether it has been changed since, lives
-// inside the forked directory itself: a machine-readable origin file and a
-// human-readable attribution notice. That is what makes a fork survive being
-// committed, moved, renamed, or published in someone else's repository.
+// them as its own. A fork keeps no link to a lock file. The origin file and the
+// attribution notice inside the forked directory carry everything, so a fork
+// survives being committed, moved, renamed, or published elsewhere.
 package fork
 
 import (
@@ -24,7 +20,7 @@ import (
 
 const (
 	// OriginFileName holds the machine-readable provenance record. The leading
-	// dot keeps it out of copyDirectory's install path, so agent-facing copies
+	// dot keeps it out of copyDirectory's install path, so harness-facing copies
 	// of the skill carry the notice but not the bookkeeping.
 	OriginFileName = ".mdm-origin.json"
 
@@ -128,9 +124,8 @@ var skipDirs = map[string]bool{
 }
 
 // HashDir returns a deterministic sha256 over every file's relative path and
-// contents, skipping the origin file itself so that recording the hash inside
-// the directory does not change it. WalkDir visits in lexical order, which
-// makes the digest stable across runs and platforms.
+// contents, skipping the origin file itself. WalkDir visits in lexical order,
+// which makes the digest stable across runs and platforms.
 func HashDir(root string) (string, error) {
 	h := sha256.New()
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {

@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/sethcarney/mdm/internal/pathsafe"
 )
 
 type Skill struct {
@@ -25,6 +27,10 @@ type Skill struct {
 func ParseFrontmatter(raw string) (data map[string]interface{}, content string) {
 	// Match ---\n...\n---\n
 	const delim = "---"
+	// A UTF-8 byte order mark, which some Windows editors write, is not part
+	// of the file's text; left in place it made the file silently not a
+	// definition.
+	raw = strings.TrimPrefix(raw, "\ufeff")
 	if !strings.HasPrefix(raw, delim) {
 		return map[string]interface{}{}, raw
 	}
@@ -189,13 +195,44 @@ type DiscoverOptions struct {
 	FullDepth       bool
 }
 
+// The containment checks this package applies to manifest-declared directories
+// live in internal/pathsafe. They cover manifest-declared paths only: the
+// conventional directories DiscoverSkills always scans (priorityDirs, and the
+// FindSkillDirs walk) are opened by name, so a symlinked "skills" directory
+// inside a source is still a way out of the source tree. That is deliberate.
+var (
+	isSafeRelDir     = pathsafe.IsSafeRelDir
+	resolvedContains = pathsafe.ResolvedContains
+)
+
+// readPluginManifest returns the raw .claude-plugin/marketplace.json bytes for
+// searchPath together with the resolved search root its declared directories
+// must stay inside. The manifest path gets the same containment check:
+// .claude-plugin or marketplace.json itself can be a symlink out of the source.
+func readPluginManifest(searchPath string) (data []byte, resolvedRoot string, ok bool) {
+	resolvedRoot, err := filepath.EvalSymlinks(searchPath)
+	if err != nil {
+		// The search root itself cannot be resolved (missing, or a broken
+		// symlink). There is nothing safe to scan relative to it.
+		return nil, "", false
+	}
+	manifestPath := filepath.Join(searchPath, ".claude-plugin", "marketplace.json")
+	if !resolvedContains(resolvedRoot, manifestPath) {
+		return nil, "", false
+	}
+	data, err = os.ReadFile(manifestPath)
+	if err != nil {
+		return nil, "", false
+	}
+	return data, resolvedRoot, true
+}
+
 // GetPluginGroupings returns a map of skill dir path -> plugin name, based on
 // plugin-manifest files (.claude-plugin/marketplace.json) in the search path.
 func GetPluginGroupings(searchPath string) map[string]string {
 	result := map[string]string{}
-	manifestPath := filepath.Join(searchPath, ".claude-plugin", "marketplace.json")
-	data, err := os.ReadFile(manifestPath)
-	if err != nil {
+	data, resolvedRoot, ok := readPluginManifest(searchPath)
+	if !ok {
 		return result
 	}
 	var manifest struct {
@@ -215,14 +252,22 @@ func GetPluginGroupings(searchPath string) map[string]string {
 	// If plugins list provided, each plugin's skillDir maps to its own name or parent
 	if len(manifest.Plugins) > 0 {
 		for _, p := range manifest.Plugins {
-			if p.SkillDir != "" {
-				abs, _ := filepath.Abs(filepath.Join(searchPath, p.SkillDir))
-				name := p.Name
-				if name == "" {
-					name = pluginName
-				}
-				result[abs] = name
+			// An unsafe skillDir is dropped silently, the same treatment an
+			// unparsable SKILL.md gets: this is untrusted input to filter,
+			// not a fault of the user running mdm.
+			if !isSafeRelDir(p.SkillDir) {
+				continue
 			}
+			dir := filepath.Join(searchPath, p.SkillDir)
+			if !resolvedContains(resolvedRoot, dir) {
+				continue
+			}
+			abs, _ := filepath.Abs(dir)
+			name := p.Name
+			if name == "" {
+				name = pluginName
+			}
+			result[abs] = name
 		}
 	}
 	return result
@@ -231,9 +276,8 @@ func GetPluginGroupings(searchPath string) map[string]string {
 // GetPluginSkillPaths returns extra skill search dirs from plugin manifests.
 func GetPluginSkillPaths(searchPath string) []string {
 	var result []string
-	manifestPath := filepath.Join(searchPath, ".claude-plugin", "marketplace.json")
-	data, err := os.ReadFile(manifestPath)
-	if err != nil {
+	data, resolvedRoot, ok := readPluginManifest(searchPath)
+	if !ok {
 		return result
 	}
 	var manifest struct {
@@ -243,7 +287,16 @@ func GetPluginSkillPaths(searchPath string) []string {
 		return result
 	}
 	for _, d := range manifest.SkillDirs {
-		result = append(result, filepath.Join(searchPath, d))
+		// Silently dropped rather than reported, for the same reason as an
+		// unsafe skillDir in GetPluginGroupings.
+		if !isSafeRelDir(d) {
+			continue
+		}
+		dir := filepath.Join(searchPath, d)
+		if !resolvedContains(resolvedRoot, dir) {
+			continue
+		}
+		result = append(result, dir)
 	}
 	return result
 }
@@ -452,11 +505,9 @@ func DiscoverNodeModuleSkills(cwd string) []NodeModuleSkill {
 var _ fs.DirEntry // suppress unused import warning
 
 // SetFrontmatterName rewrites the top-level `name:` value in a SKILL.md's YAML
-// frontmatter and returns the new document. Only that one line is touched - the
-// rest of the file, including comments, key order, and line endings, is
-// preserved byte for byte, because re-marshalling the YAML would silently
-// rewrite skills that are about to become someone's own source of truth.
-// Reports false when there is no frontmatter or no top-level name key.
+// frontmatter and returns the new document. Only that line changes; comments,
+// key order, and line endings are preserved byte for byte. It reports false
+// when there is no frontmatter or no top-level name key.
 func SetFrontmatterName(raw, name string) (string, bool) {
 	const delim = "---"
 	if !strings.HasPrefix(raw, delim) {

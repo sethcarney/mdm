@@ -61,7 +61,7 @@ func runPluginsList() {
 		fmt.Printf("      %s%s  spec v%s%s\n", ansiDim, source.FormatSourceInput(entry.Source, entry.Ref), entry.SpecVersion, ansiReset)
 		fmt.Printf("      %s./%s%s\n", ansiDim, entry.InstallDir, ansiReset)
 		if len(entry.SkillAgents) > 0 && len(entry.Skills) > 0 {
-			fmt.Printf("      %sagents: %s%s\n", ansiDim, strings.Join(entry.SkillAgents, ", "), ansiReset)
+			fmt.Printf("      %sharnesses: %s%s\n", ansiDim, strings.Join(entry.SkillAgents, ", "), ansiReset)
 		}
 	}
 	fmt.Println()

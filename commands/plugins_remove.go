@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/sethcarney/mdm/internal/agent"
+	"github.com/sethcarney/mdm/internal/harness"
 	"github.com/sethcarney/mdm/internal/lock"
 	"github.com/sethcarney/mdm/internal/ui"
 )
@@ -130,7 +130,7 @@ func removeInstalledPlugin(name string, entry lock.PluginLockEntry, purgeData bo
 	return true
 }
 
-// removePluginSkillLinks deletes the canonical and per-agent links for
+// removePluginSkillLinks deletes the canonical and per-harness links for
 // every skill the lock records for this plugin, but only when the link (or
 // its copy fallback) is actually owned by it: another plugin's symlink or
 // a skills-lock-tracked standalone install that took over the name is
@@ -152,13 +152,13 @@ func removePluginSkillLinks(pluginName string, entry lock.PluginLockEntry, cwd s
 				continue
 			}
 		}
-		for _, agentName := range entry.SkillAgents {
-			if agent.UsesSharedSkillsDir(agentName) {
+		for _, harnessName := range entry.SkillAgents {
+			if harness.UsesSharedSkillsDir(harnessName) {
 				continue
 			}
-			agentBase := getAgentBaseDir(agentName, false, cwd)
-			if agentBase != "" {
-				removeAgentSkillDir(agentBase, skillName, "")
+			harnessBase := getHarnessBaseDir(harnessName, false, cwd)
+			if harnessBase != "" {
+				_ = removeHarnessSkillDir(harnessBase, skillName, "")
 			}
 		}
 		removeCanonicalSkillDir(canonicalDir)

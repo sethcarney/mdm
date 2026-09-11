@@ -240,7 +240,7 @@ func TestKnowledgeLockSurvivesSkillsOperations(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillMd), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if stdout, stderr, code := runMdmInDir(t, project, env, "skills", "add", "./my-skill", "-p", "-y", "-a", "claude-code"); code != 0 {
+	if stdout, stderr, code := runMdmInDir(t, project, env, "skills", "add", "./my-skill", "-p", "-y", "--harness", "claude-code"); code != 0 {
 		t.Fatalf("skills add exited %d:\n%s%s", code, stdout, stderr)
 	}
 	after := readLockSection(t, lockPath, "skills")

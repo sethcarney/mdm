@@ -20,13 +20,31 @@ type LocalSkillLockEntry struct {
 	SkillPath  string `json:"skillPath,omitempty"`
 }
 
+// AgentLockEntry records one installed agent-definition file. It mirrors
+// LocalSkillLockEntry, plus AgentPath, where the file sat inside the source
+// tree. AgentPath has no omitempty: a definition is a single file with no
+// well-known name like SKILL.md, so losing the path makes the entry impossible
+// to refresh. Format is the shape of the canonical file, which mirrors the
+// source, so the canonical file's extension need never be guessed. It is
+// omitempty, and absent means markdown: every canonical file written before
+// this field existed is a .md.
+type AgentLockEntry struct {
+	Source     string `json:"source"`
+	SourceType string `json:"sourceType"`
+	Ref        string `json:"ref,omitempty"`
+	AgentPath  string `json:"agentPath"`
+	Format     string `json:"format,omitempty"`
+}
+
 // LocalSkillLockFile is a view of the skills section of the project lock.
-// Reading and writing it goes through mdm.lock (with legacy
-// skills-lock.json fallback on read); the other sections are preserved.
+// json.Unmarshal into this struct is also how readLegacySkillsLockE reads a real
+// v1 skills-lock.json, so ConfiguredHarnesses keeps the v1 tag configuredAgents.
+// v1 is frozen and in the wild. Writes go through ProjectLockFile, which owns
+// the v2 configuredHarnesses key, so the v1 tag costs nothing on write.
 type LocalSkillLockFile struct {
-	Version          int                            `json:"version"`
-	Skills           map[string]LocalSkillLockEntry `json:"skills"`
-	ConfiguredAgents []string                       `json:"configuredAgents,omitempty"`
+	Version             int                            `json:"version"`
+	Skills              map[string]LocalSkillLockEntry `json:"skills"`
+	ConfiguredHarnesses []string                       `json:"configuredAgents,omitempty"`
 }
 
 // legacyTombstone reports whether a legacy file is v2's own migration
@@ -38,11 +56,9 @@ func legacyTombstone(data []byte) bool {
 	return json.Unmarshal(data, &t) == nil && t.Moved != ""
 }
 
-// readLegacySkillsLockE reads the v1 skills-lock.json directly. It is only
-// consulted when mdm.lock does not exist. It fails the same way the
-// final v1 patch releases did - corrupt or newer-versioned files are an
-// error, not an empty lock - except for v2's own tombstone, which reads as
-// empty by design.
+// readLegacySkillsLockE reads the v1 skills-lock.json directly, only when
+// mdm.lock does not exist. Corrupt or newer-versioned files are an error, as in
+// the final v1 patch releases, except v2's own tombstone, which reads as empty.
 func readLegacySkillsLockE(cwd string) (LocalSkillLockFile, error) {
 	if cwd == "" {
 		cwd, _ = os.Getwd()
@@ -74,16 +90,16 @@ func readLegacySkillsLockE(cwd string) (LocalSkillLockFile, error) {
 func ReadLocalLock(cwd string) LocalSkillLockFile {
 	pl := ReadProjectLock(cwd)
 	return LocalSkillLockFile{
-		Version:          localLockVersion,
-		Skills:           pl.Skills,
-		ConfiguredAgents: pl.ConfiguredAgents,
+		Version:             localLockVersion,
+		Skills:              pl.Skills,
+		ConfiguredHarnesses: pl.ConfiguredHarnesses,
 	}
 }
 
 func WriteLocalLock(lock LocalSkillLockFile, cwd string) error {
 	pl := ReadProjectLock(cwd)
 	pl.Skills = lock.Skills
-	pl.ConfiguredAgents = lock.ConfiguredAgents
+	pl.ConfiguredHarnesses = lock.ConfiguredHarnesses
 	return WriteProjectLock(pl, cwd)
 }
 
@@ -104,6 +120,29 @@ func RemoveSkillFromLocalLock(skillName string, cwd string) error {
 	}
 	delete(lock.Skills, skillName)
 	return WriteLocalLock(lock, cwd)
+}
+
+// AddAgentToLocalLock records one installed agent definition in mdm.lock. It
+// goes through ProjectLockFile directly: the LocalSkillLockFile view carries
+// only the skills and configuredHarnesses sections across a round trip.
+func AddAgentToLocalLock(name string, entry AgentLockEntry, cwd string) error {
+	pl := ReadProjectLock(cwd)
+	if pl.Agents == nil {
+		pl.Agents = map[string]AgentLockEntry{}
+	}
+	pl.Agents[name] = entry
+	return WriteProjectLock(pl, cwd)
+}
+
+// RemoveAgentFromLocalLock removes one agent definition's entry from
+// mdm.lock, mirroring RemoveSkillFromLocalLock.
+func RemoveAgentFromLocalLock(name string, cwd string) error {
+	pl := ReadProjectLock(cwd)
+	if _, ok := pl.Agents[name]; !ok {
+		return nil
+	}
+	delete(pl.Agents, name)
+	return WriteProjectLock(pl, cwd)
 }
 
 func HasProjectSkills(cwd string) bool {
@@ -132,29 +171,28 @@ func HasProjectSkills(cwd string) bool {
 	return false
 }
 
-// GetConfiguredAgents returns the configured agent list for the given scope.
-func GetConfiguredAgents(global bool, cwd string) []string {
+// GetConfiguredHarnesses returns the configured harness list for the given scope.
+func GetConfiguredHarnesses(global bool, cwd string) []string {
 	if global {
-		return ReadGlobalState().ConfiguredAgents
+		return ReadGlobalState().ConfiguredHarnesses
 	}
-	return ReadLocalLock(cwd).ConfiguredAgents
+	return ReadLocalLock(cwd).ConfiguredHarnesses
 }
 
-// SetConfiguredAgents replaces the configured agent list for the given scope.
-func SetConfiguredAgents(agents []string, global bool, cwd string) error {
+// SetConfiguredHarnesses replaces the configured harness list for the given scope.
+func SetConfiguredHarnesses(harnesses []string, global bool, cwd string) error {
 	if global {
 		lk := ReadGlobalState()
-		lk.ConfiguredAgents = agents
+		lk.ConfiguredHarnesses = harnesses
 		return WriteGlobalState(lk)
 	}
 	lk := ReadLocalLock(cwd)
-	lk.ConfiguredAgents = agents
+	lk.ConfiguredHarnesses = harnesses
 	return WriteLocalLock(lk, cwd)
 }
 
-// GetInstallMode returns the scope's recorded install mode. An empty
-// string means symlink, which is the default for a scope that has never
-// had the switch set.
+// GetInstallMode returns the scope's recorded install mode. An empty string
+// means symlink, the default for a scope that never set the switch.
 func GetInstallMode(global bool, cwd string) string {
 	if global {
 		return ReadGlobalState().InstallMode
@@ -162,9 +200,8 @@ func GetInstallMode(global bool, cwd string) string {
 	return ReadProjectLock(cwd).InstallMode
 }
 
-// SetInstallMode records the scope's install mode. It goes through the
-// project lock directly rather than the LocalSkillLockFile view, which
-// carries only the skills and configuredAgents sections across a write.
+// SetInstallMode records the scope's install mode. It goes through the project
+// lock directly, since the LocalSkillLockFile view drops other sections.
 func SetInstallMode(mode string, global bool, cwd string) error {
 	if global {
 		s := ReadGlobalState()
@@ -176,9 +213,9 @@ func SetInstallMode(mode string, global bool, cwd string) error {
 	return WriteProjectLock(lk, cwd)
 }
 
-// AddToConfiguredAgents appends agents that aren't already in the list.
-func AddToConfiguredAgents(toAdd []string, global bool, cwd string) error {
-	current := GetConfiguredAgents(global, cwd)
+// AddToConfiguredHarnesses appends harnesses that aren't already in the list.
+func AddToConfiguredHarnesses(toAdd []string, global bool, cwd string) error {
+	current := GetConfiguredHarnesses(global, cwd)
 	existing := map[string]bool{}
 	for _, a := range current {
 		existing[a] = true
@@ -190,12 +227,12 @@ func AddToConfiguredAgents(toAdd []string, global bool, cwd string) error {
 		}
 	}
 	sort.Strings(current)
-	return SetConfiguredAgents(current, global, cwd)
+	return SetConfiguredHarnesses(current, global, cwd)
 }
 
-// RemoveFromConfiguredAgents removes the given agents from the configured list.
-func RemoveFromConfiguredAgents(toRemove []string, global bool, cwd string) error {
-	current := GetConfiguredAgents(global, cwd)
+// RemoveFromConfiguredHarnesses removes the given harnesses from the configured list.
+func RemoveFromConfiguredHarnesses(toRemove []string, global bool, cwd string) error {
+	current := GetConfiguredHarnesses(global, cwd)
 	removeSet := map[string]bool{}
 	for _, a := range toRemove {
 		removeSet[a] = true
@@ -206,5 +243,5 @@ func RemoveFromConfiguredAgents(toRemove []string, global bool, cwd string) erro
 			result = append(result, a)
 		}
 	}
-	return SetConfiguredAgents(result, global, cwd)
+	return SetConfiguredHarnesses(result, global, cwd)
 }

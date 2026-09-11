@@ -129,9 +129,9 @@ func (c *remoteTagCache) fetch(gitURL string) ([]string, error) {
 
 // checkRemoteTagUpToDate compares the current semver tag against the latest
 // stable release on the remote. Returns (upToDate, latestTag, err).
-func checkRemoteTagUpToDate(gitURL, currentRef string, tags *remoteTagCache) (bool, string, error) {
+func checkRemoteTagUpToDate(gitURL, currentRef, command string, tags *remoteTagCache) (bool, string, error) {
 	if !git.IsSemverTag(currentRef) {
-		return false, "", fmt.Errorf("not pinned to a version tag; use `mdm skills add <source>#<tag>` to pin")
+		return false, "", fmt.Errorf("not pinned to a version tag; use `mdm %s add <source>#<tag>` to pin", command)
 	}
 	allTags, err := tags.fetch(gitURL)
 	if err != nil {
@@ -158,6 +158,16 @@ type updateCandidate struct {
 	source     string
 	sourceType string
 	ref        string
+	command    string // the command group that re-adds it: "skills" or "agents"
+}
+
+// commandGroup is the command group a candidate's hint should name; an unset
+// value means skills, which is what every candidate was before agents had one.
+func (c updateCandidate) commandGroup() string {
+	if c.command == "" {
+		return "skills"
+	}
+	return c.command
 }
 
 // updateGroup is the set of skills that resolve to the same source at the same
@@ -243,7 +253,7 @@ func checkCandidateUpToDate(c updateCandidate, tags *remoteTagCache) (bool, stri
 		return true, "", nil
 	}
 	parsed := source.ParseSource(c.source)
-	return checkRemoteTagUpToDate(parsed.URL, c.ref, tags)
+	return checkRemoteTagUpToDate(parsed.URL, c.ref, c.commandGroup(), tags)
 }
 
 // upToDateCheck reports whether a candidate is already current, and if not, the

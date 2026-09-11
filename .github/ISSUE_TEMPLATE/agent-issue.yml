@@ -31,8 +31,8 @@ body:
   - type: input
     id: agents
     attributes:
-      label: Agent tools detected
-      description: Agents mdm found on this machine
+      label: Harnesses detected
+      description: AI harnesses mdm found on this machine
   - type: input
     id: command
     attributes:

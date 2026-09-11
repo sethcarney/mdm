@@ -13,9 +13,8 @@ import (
 )
 
 // restoreOptions carries what `mdm skills install` was asked for. The mode
-// flags belong here and not only on `skills add`: install is the command
-// that restores a scope which already exists, so it is where a user changes
-// the mode of one, and `skills add` needs a source to name.
+// flags belong here too: install is the command that restores a scope which
+// already exists, so it is where a user changes the mode of one.
 type restoreOptions struct {
 	yes              bool
 	allowHiddenChars bool
@@ -28,8 +27,12 @@ func buildInstallFromLockCmd(ver string) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "install",
-		Short: "Restore skills from " + lockName,
-		Args:  cobra.NoArgs,
+		Short: "Restore skills, then agent definitions, from " + lockName,
+		Long: `Restore every skill recorded in ` + lockName + `, then every agent
+definition recorded there too, each re-fetched from its original source
+and ref. Intended for CI and onboarding - run it after cloning a repo to
+get everything back without remembering each package source.`,
+		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			showLogo(ver)
 			runInstallFromLock(opts)
@@ -55,60 +58,89 @@ func hintPluginsInstall(cwd string) {
 	fmt.Printf("%sThis project also has plugins - restore them with 'mdm plugins install'.%s\n", ansiDim, ansiReset)
 }
 
+// restoreSkillsHook and restoreAgentsHook are runInstallFromLock's two restore
+// steps, as swappable vars. Neither step leaves an on-disk trace a unit test
+// can assert on, so tests swap these for recorders to pin down the order.
+var (
+	restoreSkillsHook = restoreSkillsFromCurrentLock
+	restoreAgentsHook = restoreAgentsFromLock
+)
+
 func runInstallFromLock(opts restoreOptions) {
 	cwd, _ := os.Getwd()
 	hintPluginsInstall(cwd)
 
+	restoreSkillsHook(opts, cwd)
+	restoreAgentsHook(opts)
+}
+
+// restoreSkillsFromCurrentLock is `mdm install`'s skill-restore step:
+// local-vs-global resolution, and the "which lock file" prompt when both are
+// populated.
+func restoreSkillsFromCurrentLock(opts restoreOptions, cwd string) {
 	localL := lock.ReadLocalLock(cwd)
 	globalL := lock.ReadGlobalState()
 
 	hasLocal := len(localL.Skills) > 0
 	hasGlobal := len(globalL.Skills) > 0
+	hasAgents := len(lock.ReadProjectLock(cwd).Agents) > 0 || len(globalL.Agents) > 0
 	vlog(verboseFlag, "install from lock: local=%d skill(s) global=%d skill(s)", len(localL.Skills), len(globalL.Skills))
 
 	switch {
 	case !hasLocal && !hasGlobal:
+		// A lock holding only agent definitions is still a lock. The agent
+		// restore step reports those, so announcing there is none here - and
+		// pointing at `mdm skills add` - would be wrong.
+		if hasAgents {
+			return
+		}
 		fmt.Printf("\n%sNo %s found.%s\n\n", ansiDim, lockName, ansiReset)
 		fmt.Printf("Add skills with %smdm skills add <package>%s\n\n", ansiText, ansiReset)
 
-	case hasLocal && !hasGlobal:
-		// Only local lock has skills - restore silently
-		restoreFromLocalLock(localL, opts)
-
-	case !hasLocal && hasGlobal:
-		// Only global lock has skills - explain and ask
-		fmt.Printf("\n%sNo skills found in the local %s.%s\n", ansiDim, lockName, ansiReset)
-		fmt.Printf("%sFound %d skill(s) in the global state file (%s).%s\n\n",
-			ansiDim, len(globalL.Skills), lock.GetGlobalStatePath(), ansiReset)
-		if !opts.yes {
-			confirmed, ok := ui.UiConfirm("Install from the globally recorded skills?")
-			if !ok || !confirmed {
-				fmt.Println("Cancelled.")
-				return
-			}
+	default:
+		global, ok := chooseRestoreScope(len(localL.Skills), len(globalL.Skills), opts.yes, "skill", cwd)
+		if !ok {
+			fmt.Println("Cancelled.")
+			return
 		}
-		restoreFromGlobalLock(globalL, opts)
-
-	default: // both have skills
-		if opts.yes {
-			// Default to local when -y flag is used
-			restoreFromLocalLock(localL, opts)
+		if global {
+			restoreFromGlobalLock(globalL, opts)
 		} else {
-			idx, ok := ui.UiSelect("Install from which lock file?", []ui.UIOption{
-				{Label: fmt.Sprintf("Local  - %d skill(s)", len(localL.Skills)), Hint: lock.GetProjectLockPath(cwd)},
-				{Label: fmt.Sprintf("Global - %d skill(s)", len(globalL.Skills)), Hint: lock.GetGlobalStatePath()},
-			})
-			if !ok {
-				fmt.Println("Cancelled.")
-				return
-			}
-			if idx == 1 {
-				restoreFromGlobalLock(globalL, opts)
-			} else {
-				restoreFromLocalLock(localL, opts)
-			}
+			restoreFromLocalLock(localL, opts)
 		}
 	}
+}
+
+// chooseRestoreScope decides which lock a restore reads when at least one of
+// the two records something: the only populated one, with a confirmation
+// when that is the global state file (which a project checkout does not
+// imply); under --yes the local lock when both are populated; otherwise the
+// user's choice. noun is the singular of what is being restored.
+func chooseRestoreScope(localCount, globalCount int, yes bool, noun, cwd string) (global bool, ok bool) {
+	switch {
+	case localCount > 0 && globalCount == 0:
+		return false, true
+	case localCount == 0 && globalCount > 0:
+		fmt.Printf("\n%sNo %ss found in the local %s.%s\n", ansiDim, noun, lockName, ansiReset)
+		fmt.Printf("%sFound %d %s(s) in the global state file (%s).%s\n\n",
+			ansiDim, globalCount, noun, lock.GetGlobalStatePath(), ansiReset)
+		if yes {
+			return true, true
+		}
+		confirmed, ok := ui.UiConfirm(fmt.Sprintf("Install from the globally recorded %ss?", noun))
+		return true, ok && confirmed
+	}
+	if yes {
+		return false, true
+	}
+	idx, ok := ui.UiSelect("Install from which lock file?", []ui.UIOption{
+		{Label: fmt.Sprintf("Local  - %d %s(s)", localCount, noun), Hint: lock.GetProjectLockPath(cwd)},
+		{Label: fmt.Sprintf("Global - %d %s(s)", globalCount, noun), Hint: lock.GetGlobalStatePath()},
+	})
+	if !ok {
+		return false, false
+	}
+	return idx == 1, true
 }
 
 // restoreFromLocalLock installs all skills recorded in the project-level lock file.
@@ -140,13 +172,19 @@ type sourceRef struct {
 	ref    string
 }
 
-// restoreSkills groups lock entries by source and calls runAdd for each group.
-func restoreSkills(entries map[string]sourceRef, baseOpts AddOptions) {
-	type sourceGroup struct {
-		source string
-		ref    string
-		skills []string
-	}
+// sourceGroup is a set of lock entries (names only - skill names, agent
+// definition names, whatever the caller is restoring) that resolve to the
+// same source at the same target ref. Every group costs exactly one fetch.
+type sourceGroup struct {
+	source string
+	ref    string
+	names  []string
+}
+
+// groupBySourceRef buckets entries by normalized source+ref, so restoring or
+// updating several names that share a repository fetches it once. Shared by
+// restoreSkills and the agent-restore path in agent_artifacts.go.
+func groupBySourceRef(entries map[string]sourceRef) []sourceGroup {
 	sourceMap := map[string]*sourceGroup{}
 	for name, e := range entries {
 		// Normalize: strip a trailing #fragment from the source when it duplicates
@@ -162,38 +200,49 @@ func restoreSkills(entries map[string]sourceRef, baseOpts AddOptions) {
 		}
 		key := normalizedSource + "|" + e.ref
 		if g, ok := sourceMap[key]; ok {
-			g.skills = append(g.skills, name)
+			g.names = append(g.names, name)
 		} else {
-			sourceMap[key] = &sourceGroup{source: normalizedSource, ref: e.ref, skills: []string{name}}
+			sourceMap[key] = &sourceGroup{source: normalizedSource, ref: e.ref, names: []string{name}}
 		}
 	}
 
-	// Resolve agents once so the user is not prompted for each source group.
-	if len(baseOpts.Agents) == 0 {
-		cwd, _ := os.Getwd()
-		agents, ok := promptAgents(baseOpts, baseOpts.Global, cwd)
-		if !ok {
-			fmt.Println("Cancelled.")
-			return
-		}
-		baseOpts.Agents = agents
-	}
-
-	vlog(verboseFlag, "grouped %d skill(s) into %d source group(s)", len(entries), len(sourceMap))
-	// Iterate groups (and each group's skills) in sorted order so restores are
+	// Iterate groups (and each group's names) in sorted order so restores are
 	// deterministic rather than following map iteration order.
 	keys := make([]string, 0, len(sourceMap))
 	for key := range sourceMap {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
+	groups := make([]sourceGroup, 0, len(keys))
 	for _, key := range keys {
-		group := sourceMap[key]
-		sort.Strings(group.skills)
-		vlog(verboseFlag, "restoring from %q (ref=%q): %v", group.source, group.ref, group.skills)
+		g := sourceMap[key]
+		sort.Strings(g.names)
+		groups = append(groups, *g)
+	}
+	return groups
+}
+
+// restoreSkills groups lock entries by source and calls runAdd for each group.
+func restoreSkills(entries map[string]sourceRef, baseOpts AddOptions) {
+	groups := groupBySourceRef(entries)
+
+	// Resolve harnesses once so the user is not prompted for each source group.
+	if len(baseOpts.Harnesses) == 0 {
+		cwd, _ := os.Getwd()
+		harnesses, ok := promptHarnesses(baseOpts, baseOpts.Global, cwd)
+		if !ok {
+			fmt.Println("Cancelled.")
+			return
+		}
+		baseOpts.Harnesses = harnesses
+	}
+
+	vlog(verboseFlag, "grouped %d skill(s) into %d source group(s)", len(entries), len(groups))
+	for _, group := range groups {
+		vlog(verboseFlag, "restoring from %q (ref=%q): %v", group.source, group.ref, group.names)
 		fmt.Printf("%sInstalling from %s...%s\n", ansiDim, group.source, ansiReset)
 		opts := baseOpts
-		opts.Skills = group.skills
+		opts.Skills = group.names
 		src := group.source
 		if group.ref != "" && !strings.Contains(src, "#") {
 			src = src + "#" + group.ref

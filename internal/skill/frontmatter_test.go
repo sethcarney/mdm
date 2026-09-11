@@ -89,3 +89,16 @@ func TestSetFrontmatterNameStaysParseable(t *testing.T) {
 		t.Errorf("body = %q, want it preserved", body)
 	}
 }
+
+// A UTF-8 byte order mark ahead of the opening delimiter used to make the
+// whole file read as body with no frontmatter, so a definition saved by an
+// editor that writes one was silently not a definition.
+func TestParseFrontmatterIgnoresAByteOrderMark(t *testing.T) {
+	data, body := ParseFrontmatter("\ufeff---\nname: x\ndescription: d\n---\nbody\n")
+	if data["name"] != "x" || data["description"] != "d" {
+		t.Errorf("frontmatter not parsed past the BOM: %#v", data)
+	}
+	if body != "body\n" {
+		t.Errorf("body = %q, want the text after the frontmatter", body)
+	}
+}

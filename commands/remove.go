@@ -4,22 +4,24 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/sethcarney/mdm/internal/fork"
+	"github.com/sethcarney/mdm/internal/harness"
 	"github.com/sethcarney/mdm/internal/lock"
 	"github.com/sethcarney/mdm/internal/source"
 	"github.com/sethcarney/mdm/internal/ui"
 )
 
 type RemoveOptions struct {
-	Global bool
-	Agents []string
-	Skills []string
-	Yes    bool
-	All    bool
+	Global    bool
+	Harnesses []string
+	Skills    []string
+	Yes       bool
+	All       bool
 }
 
 func buildRemoveCmd() *cobra.Command {
@@ -29,15 +31,15 @@ func buildRemoveCmd() *cobra.Command {
 		Use:     "remove [skills...]",
 		Short:   "Remove installed skills",
 		Aliases: []string{"rm", "r"},
-		Long: fmt.Sprintf(`Remove installed skills from agents.
+		Long: fmt.Sprintf(`Remove installed skills from harnesses.
 
 If no skill names are provided an interactive selection menu is shown.
 
-The --agent (-a) and --skill (-s) flags accept multiple values - space-
+The --harness and --skill (-s) flags accept multiple values - space-
 separated after the flag or repeated:
 
-  mdm skills remove -a claude-code cursor
-  mdm skills remove -a claude-code -a cursor
+  mdm skills remove --harness claude-code cursor
+  mdm skills remove --harness claude-code --harness cursor
 
 %sExamples:%s
   mdm skills remove
@@ -48,8 +50,11 @@ separated after the flag or repeated:
 		Args: cobra.ArbitraryArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			if opts.All {
+				// Only the skill filter takes "*". A "*" harness filter matched
+				// nothing, so every harness looked like it still held the skill
+				// and the command removed nothing. Leaving Harnesses alone runs
+				// the unfiltered path, and still honors an explicit --harness.
 				opts.Skills = []string{"*"}
-				opts.Agents = []string{"*"}
 				opts.Yes = true
 			}
 			runRemove(args, opts)
@@ -58,12 +63,12 @@ separated after the flag or repeated:
 
 	f := cmd.Flags()
 	f.BoolVarP(&opts.Global, "global", "g", false, "Remove from global scope")
-	f.StringArrayVarP(&opts.Agents, "agent", "a", nil, "Remove from specific agents (repeatable)")
+	f.StringArrayVar(&opts.Harnesses, "harness", nil, "Remove from specific harnesses (repeatable)")
 	f.StringArrayVarP(&opts.Skills, "skill", "s", nil, "Skill names to remove (repeatable)")
 	f.BoolVarP(&opts.Yes, "yes", "y", false, "Skip confirmation prompts")
-	f.BoolVar(&opts.All, "all", false, "Shorthand for --skill '*' --agent '*' -y")
+	f.BoolVar(&opts.All, "all", false, "Remove every skill without prompting (shorthand for --skill '*' -y)")
 
-	_ = cmd.RegisterFlagCompletionFunc("agent", agentFlagCompletion)
+	_ = cmd.RegisterFlagCompletionFunc("harness", harnessFlagCompletion)
 
 	return cmd
 }
@@ -86,31 +91,43 @@ func filterInstalledByName(installed []*InstalledSkill, names []string) ([]*Inst
 }
 
 func selectSkillsToRemove(installed []*InstalledSkill, skillFilter []string, opts RemoveOptions) ([]*InstalledSkill, bool) {
-	if len(skillFilter) == 1 && skillFilter[0] == "*" {
-		return installed, true
+	return pickForRemoval(installed, skillFilter, opts.Yes, "Which skills would you like to remove?", filterInstalledByName,
+		func(s *InstalledSkill) ui.UIOption {
+			hint := s.Description
+			if len(s.Harnesses) > 0 {
+				hint = strings.Join(s.Harnesses, ", ")
+			}
+			return ui.UIOption{Label: s.Name, Value: sanitizeName(s.Name), Hint: hint}
+		})
+}
+
+// pickForRemoval narrows items to the ones a removal targets: all of them for
+// "*", what byName keeps for an explicit filter, all of them under --yes or
+// when there is only one, and otherwise the user's choice from prompt. It is
+// the shape both `skills remove` and `agents remove` select with.
+func pickForRemoval[T any](items []T, filter []string, yes bool, prompt string,
+	byName func([]T, []string) ([]T, bool), option func(T) ui.UIOption) ([]T, bool) {
+	if len(filter) == 1 && filter[0] == "*" {
+		return items, true
 	}
-	if len(skillFilter) > 0 {
-		return filterInstalledByName(installed, skillFilter)
+	if len(filter) > 0 {
+		return byName(items, filter)
 	}
-	if opts.Yes || len(installed) == 1 {
-		return installed, true
+	if yes || len(items) == 1 {
+		return items, true
 	}
-	options := make([]ui.UIOption, len(installed))
-	for i, s := range installed {
-		hint := s.Description
-		if len(s.Agents) > 0 {
-			hint = strings.Join(s.Agents, ", ")
-		}
-		options[i] = ui.UIOption{Label: s.Name, Value: sanitizeName(s.Name), Hint: hint}
+	options := make([]ui.UIOption, len(items))
+	for i, it := range items {
+		options[i] = option(it)
 	}
-	indices, ok := ui.UiSearchMultiselect("Which skills would you like to remove?", options, nil, nil, true)
+	indices, ok := ui.UiSearchMultiselect(prompt, options, nil, nil, true)
 	if !ok {
 		fmt.Println("Cancelled.")
 		return nil, false
 	}
-	var selected []*InstalledSkill
+	var selected []T
 	for _, i := range indices {
-		selected = append(selected, installed[i])
+		selected = append(selected, items[i])
 	}
 	return selected, true
 }
@@ -136,34 +153,38 @@ func resolveLocalSourceAbs(sName string, global bool, cwd string) string {
 	return src
 }
 
-// removeAgentSkillDir deletes the skill directory for one candidate name under
-// an agent base, skipping paths that live inside the local source tree.
-func removeAgentSkillDir(agentBase, name, localSourceAbs string) {
-	agentSkillDir := filepath.Join(agentBase, name)
-	agentSkillAbs, _ := filepath.Abs(agentSkillDir)
-	if localSourceAbs != "" && isInsideOrEqual(agentSkillAbs, localSourceAbs) {
-		return
+// removeAllFn is the directory-deletion seam for removals: tests swap it for a
+// failing version. Shared mutable state, so those tests must not run in
+// parallel.
+var removeAllFn = os.RemoveAll
+
+// removeHarnessSkillDir deletes the skill directory for one candidate name
+// under a harness base. A path it declines to touch is not an error. It reports
+// a failed deletion, so the caller can keep the lock describing the disk.
+func removeHarnessSkillDir(harnessBase, name, localSourceAbs string) error {
+	harnessSkillDir := filepath.Join(harnessBase, name)
+	harnessSkillAbs, _ := filepath.Abs(harnessSkillDir)
+	if localSourceAbs != "" && isInsideOrEqual(harnessSkillAbs, localSourceAbs) {
+		return nil
 	}
-	if !isPathSafe(agentBase, agentSkillDir) {
-		return
+	if !isPathSafe(harnessBase, harnessSkillDir) {
+		return nil
 	}
-	info, err := os.Lstat(agentSkillDir)
+	info, err := os.Lstat(harnessSkillDir)
 	if err != nil {
-		return
+		return nil
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
-		_ = os.Remove(agentSkillDir)
-		return
+		return os.Remove(harnessSkillDir)
 	}
-	if isCherryPickedSource(agentSkillDir) {
-		return
+	if isCherryPickedSource(harnessSkillDir) {
+		return nil
 	}
-	_ = os.RemoveAll(agentSkillDir)
+	return removeAllFn(harnessSkillDir)
 }
 
-// isCherryPickedSource reports whether a directory is a cherry-picked fork -
-// the project's own source, carrying edits that exist nowhere else. Uninstalling
-// a skill must never delete one. This is reachable because an agent's skills
+// isCherryPickedSource reports whether a directory is a cherry-picked fork: the
+// project's own source, carrying edits that exist nowhere else. A harness skills
 // directory can be the forks directory itself (OpenClaw reads ./skills), which
 // makes a fork look like an installed skill to every scan.
 func isCherryPickedSource(dir string) bool {
@@ -173,48 +194,163 @@ func isCherryPickedSource(dir string) bool {
 	return fork.IsFork(dir)
 }
 
-func removeSkillFromDisk(sk *InstalledSkill, agentsToRemove []string, global bool, cwd string) error {
-	sName := sanitizeName(sk.Name)
-	localSourceAbs := resolveLocalSourceAbs(sName, global, cwd)
-	vlog(verboseFlag, "removing %q from agents=%v (localSource=%q)", sk.Name, agentsToRemove, localSourceAbs)
+// harnessesRetainingSkill reports which harnesses outside a scoped removal
+// still hold sk. A disk probe cannot answer this: most harnesses read the
+// shared .agents/skills directory, so probing them reads the very directory
+// whose fate is being decided. A harness with its own skills directory proves
+// itself; a shared-directory one counts only when configured or installed here.
+func harnessesRetainingSkill(sk *InstalledSkill, removing []string, global bool, cwd string) []string {
+	inUse := map[string]bool{}
+	for _, name := range lock.GetConfiguredHarnesses(global, cwd) {
+		inUse[name] = true
+	}
+	for _, name := range harness.DetectInstalledHarnesses() {
+		inUse[name] = true
+	}
 
-	for _, agentName := range agentsToRemove {
-		agentBase := getAgentBaseDir(agentName, global, cwd)
-		if agentBase == "" {
-			vlog(verboseFlag, "skip agent %q: no base dir resolved", agentName)
+	sName := sanitizeName(sk.Name)
+	dirName := filepath.Base(sk.Path)
+
+	var retained []string
+	for name := range harness.AllHarnesses {
+		if contains(removing, name) {
+			continue
+		}
+		if harness.UsesSharedSkillsDir(name) && !inUse[name] {
+			continue
+		}
+		harnessBase := getHarnessBaseDir(name, global, cwd)
+		if harnessBase == "" {
+			continue
+		}
+		if harnessHasSkill(harnessBase, dirName, sName, sk.Name) {
+			retained = append(retained, name)
+		}
+	}
+	sort.Strings(retained)
+	return retained
+}
+
+// removeSkillInstalls deletes the skill's install under each harness in
+// harnessesToRemove and returns a description of every deletion that failed.
+// retained lists harnesses outside the filter that still hold the skill. While
+// it is non-empty, a harness reading the canonical directory is skipped, since
+// "its" copy is the copy those harnesses still use.
+func removeSkillInstalls(sk *InstalledSkill, harnessesToRemove, retained []string, sName, localSourceAbs string, global bool, cwd string) []string {
+	var failed []string
+	for _, harnessName := range harnessesToRemove {
+		if len(retained) > 0 && harness.UsesSharedSkillsDir(harnessName) {
+			vlog(verboseFlag, "skip harness %q: shares the canonical dir, still needed by %v", harnessName, retained)
+			continue
+		}
+		harnessBase := getHarnessBaseDir(harnessName, global, cwd)
+		if harnessBase == "" {
+			vlog(verboseFlag, "skip harness %q: no base dir resolved", harnessName)
 			continue
 		}
 		for _, name := range []string{sName, filepath.Base(sk.Path)} {
-			removeAgentSkillDir(agentBase, name, localSourceAbs)
+			if rmErr := removeHarnessSkillDir(harnessBase, name, localSourceAbs); rmErr != nil {
+				failed = append(failed, fmt.Sprintf("%s (%v)", harnessName, rmErr))
+			}
 		}
 	}
+	return failed
+}
 
+// removeCanonicalSkillCopy deletes mdm's own copy of the skill. It refuses when
+// the canonical directory sits inside a local source, is a cherry-picked fork,
+// or resolves outside the canonical skills tree. A refusal is not an error.
+func removeCanonicalSkillCopy(sk *InstalledSkill, localSourceAbs string, global bool, cwd string) error {
 	canonicalDir := getCanonicalPath(sk.Name, global)
 	canonicalAbs, _ := filepath.Abs(canonicalDir)
 	skipCanonical := localSourceAbs != "" && isInsideOrEqual(canonicalAbs, localSourceAbs)
 	if !skipCanonical && canonicalDir != "" && !isCherryPickedSource(canonicalDir) &&
 		isPathSafe(getCanonicalSkillsDir(global, cwd), canonicalDir) {
-		_ = os.RemoveAll(canonicalDir)
+		if rmErr := removeAllFn(canonicalDir); rmErr != nil {
+			return fmt.Errorf("could not remove %s: %w", canonicalDir, rmErr)
+		}
 	}
+	return nil
+}
 
-	ui.LogSuccess("Removed " + sk.Name)
-
+// removeSkillLockEntry drops the skill's record from whichever lock the scope
+// keeps. It runs last, after the disk is already clear, so the lock never
+// claims a skill is gone while its files are still there.
+func removeSkillLockEntry(sName string, global bool, cwd string) error {
+	var lockErr error
 	if global {
-		return lock.RemoveSkillFromGlobalState(sName)
+		lockErr = lock.RemoveSkillFromGlobalState(sName)
+	} else {
+		lockErr = lock.RemoveSkillFromLocalLock(sName, cwd)
 	}
-	return lock.RemoveSkillFromLocalLock(sName, cwd)
+	if lockErr != nil {
+		return fmt.Errorf("could not update the lock file: %w", lockErr)
+	}
+	return nil
+}
+
+// removeSkillFromDisk deletes the installs for the harnesses in harnessFilter
+// and, when nothing outside that filter still holds the skill, the canonical
+// directory and the lock entry too. It returns the harnesses that still hold
+// the skill; a non-empty list means the canonical copy and the lock entry were
+// kept. On error the lock entry stays, so the failure stays visible.
+func removeSkillFromDisk(sk *InstalledSkill, harnessFilter []string, global bool, cwd string) (retained []string, err error) {
+	sName := sanitizeName(sk.Name)
+	localSourceAbs := resolveLocalSourceAbs(sName, global, cwd)
+
+	harnessesToRemove := harnessFilter
+	if len(harnessFilter) == 0 {
+		// No filter removes the skill outright, so every harness is in scope.
+		// Sweeping all of them, not only the ones the skill was detected in,
+		// matters: detection needs the harness's tool installed, and a directory
+		// an earlier `--harness X` install wrote would keep a link to the
+		// canonical directory this call deletes.
+		for name := range harness.AllHarnesses {
+			harnessesToRemove = append(harnessesToRemove, name)
+		}
+	} else {
+		// Computed before any deletion: for a shared-directory harness in the
+		// filter, the deletion below would destroy the evidence this reads.
+		retained = harnessesRetainingSkill(sk, harnessFilter, global, cwd)
+	}
+	vlog(verboseFlag, "removing %q from harnesses=%v (localSource=%q, retained=%v)", sk.Name, harnessesToRemove, localSourceAbs, retained)
+
+	failed := removeSkillInstalls(sk, harnessesToRemove, retained, sName, localSourceAbs, global, cwd)
+	if len(failed) > 0 {
+		return retained, fmt.Errorf("could not remove from %s", strings.Join(failed, ", "))
+	}
+
+	if len(retained) > 0 {
+		return retained, nil
+	}
+
+	if rmErr := removeCanonicalSkillCopy(sk, localSourceAbs, global, cwd); rmErr != nil {
+		return nil, rmErr
+	}
+
+	if lockErr := removeSkillLockEntry(sName, global, cwd); lockErr != nil {
+		return nil, lockErr
+	}
+	return nil, nil
 }
 
 func resolveRemoveScope(opts RemoveOptions) (global bool, ok bool) {
-	if opts.Global {
+	return resolveScope(opts.Global, false, opts.Yes, "remove from")
+}
+
+// resolveScope settles the scope a command acts on: an explicit flag wins,
+// --yes means project, and otherwise the user is asked. verb is what the
+// prompt's hints say the scope is for ("remove from", "install for").
+func resolveScope(global, project, yes bool, verb string) (bool, bool) {
+	if global {
 		return true, true
 	}
-	if opts.Yes {
+	if project || yes {
 		return false, true
 	}
 	idx, ok := ui.UiSelect("Which scope?", []ui.UIOption{
-		{Label: "Project", Hint: "remove from this project"},
-		{Label: "Global", Hint: "remove from your user account"},
+		{Label: "Project", Hint: verb + " this project"},
+		{Label: "Global", Hint: verb + " your user account"},
 	})
 	if !ok {
 		return false, false
@@ -242,23 +378,34 @@ func handleNoInstalled(global bool, cwd string) {
 	fmt.Printf("%sNo skills installed.%s\n", ansiDim, ansiReset)
 }
 
-func executeRemovals(toRemove []*InstalledSkill, agentFilter []string, global bool, cwd string) error {
-	var lockErr error
+// executeRemovals removes each selected skill and reports what happened to it.
+// The returned error covers only the orphan sweep at the end.
+func executeRemovals(toRemove []*InstalledSkill, harnessFilter []string, global bool, cwd string) error {
+	failures := 0
 	for _, sk := range toRemove {
-		agentsToRemove := sk.Agents
-		if len(agentFilter) > 0 {
-			agentsToRemove = agentFilter
-		}
-		if err := removeSkillFromDisk(sk, agentsToRemove, global, cwd); err != nil && lockErr == nil {
-			lockErr = err
+		retained, err := removeSkillFromDisk(sk, harnessFilter, global, cwd)
+		switch {
+		case err != nil:
+			failures++
+			ui.LogError(fmt.Sprintf("%s: %v", sk.Name, err))
+		case len(retained) > 0:
+			ui.LogWarn(fmt.Sprintf("%s: removed from %s, but %s still %s it - keeping the skill and its lock entry",
+				sk.Name,
+				strings.Join(harnessDisplayNames(harnessFilter), ", "),
+				strings.Join(harnessDisplayNames(retained), ", "),
+				map[bool]string{true: "have", false: "has"}[len(retained) != 1]))
+		default:
+			ui.LogSuccess("Removed " + sk.Name)
 		}
 	}
-	if !global && lockErr == nil {
+	// The sweep drops lock entries whose canonical SKILL.md is gone. Skip it
+	// after a failure: the skill is still on disk, and its entry has to stay.
+	if !global && failures == 0 {
 		if _, err := cleanOrphanedLocalLockEntries(cwd); err != nil {
-			lockErr = err
+			return err
 		}
 	}
-	return lockErr
+	return nil
 }
 
 func runRemove(positional []string, opts RemoveOptions) {
@@ -270,10 +417,10 @@ func runRemove(positional []string, opts RemoveOptions) {
 	if !ok {
 		return
 	}
-	vlog(verboseFlag, "remove: global=%v filter=%v agents=%v", global, skillFilter, opts.Agents)
+	vlog(verboseFlag, "remove: global=%v filter=%v harnesses=%v", global, skillFilter, opts.Harnesses)
 
 	scopeGlobal := &global
-	installed, err := listInstalledSkills(scopeGlobal, opts.Agents)
+	installed, err := listInstalledSkills(scopeGlobal, opts.Harnesses)
 	if err != nil {
 		vlog(verboseFlag, "listing installed skills failed: %v", err)
 	}
@@ -297,7 +444,7 @@ func runRemove(positional []string, opts RemoveOptions) {
 	}
 
 	fmt.Println()
-	lockErr := executeRemovals(toRemove, opts.Agents, global, cwd)
+	lockErr := executeRemovals(toRemove, opts.Harnesses, global, cwd)
 	fmt.Println()
 	if lockErr != nil {
 		ui.LogWarn(fmt.Sprintf("the lock file could not be updated: %v", lockErr))
@@ -305,9 +452,8 @@ func runRemove(positional []string, opts RemoveOptions) {
 	}
 }
 
-// excludePluginOwnedSkills drops skills that an installed plugin owns -
-// those are managed by the plugins lock section, so `mdm plugins remove` is
-// the right tool. Only project scope can be plugin-owned.
+// excludePluginOwnedSkills drops skills an installed plugin owns; `mdm plugins
+// remove` handles those. Only project scope can be plugin-owned.
 func excludePluginOwnedSkills(toRemove []*InstalledSkill, global bool, cwd string) []*InstalledSkill {
 	if global {
 		return toRemove

@@ -1,0 +1,7 @@
+name = "codex-array-of-tables"
+description = "A definition whose array of tables carries a local time"
+developer_instructions = "Poll each server on schedule.\n"
+
+[[servers]]
+name = "primary"
+when = 10:30:00

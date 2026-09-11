@@ -1,0 +1,18 @@
+name = "codex-style"
+description = "A definition authored for Codex"
+developer_instructions = "Review the diff and report defects.\n"
+model = "gpt-5"
+rating = 3.0
+
+[mcp_servers.example]
+command = "example-server"
+
+[[servers]]
+name = "primary"
+port = 22
+enabled = true
+
+[[servers]]
+name = "backup"
+port = 23
+enabled = false

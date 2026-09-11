@@ -6,13 +6,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/sethcarney/mdm/internal/agent"
+	"github.com/sethcarney/mdm/internal/harness"
 )
 
-// agentFlagCompletion provides shell completion for --agent flags.
-func agentFlagCompletion(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
-	names := make([]string, 0, len(agent.AllAgents))
-	for name, cfg := range agent.AllAgents {
+// harnessFlagCompletion provides shell completion for --harness flags.
+func harnessFlagCompletion(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+	names := make([]string, 0, len(harness.AllHarnesses))
+	for name, cfg := range harness.AllHarnesses {
 		if cfg != nil {
 			names = append(names, name+"\t"+cfg.DisplayName)
 		}
@@ -24,8 +24,8 @@ func agentFlagCompletion(_ *cobra.Command, _ []string, _ string) ([]string, cobr
 func buildSkillsCmd(ver string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "skills",
-		Short: "Manage skills for AI agents",
-		Long: fmt.Sprintf(`Manage skills - reusable markdown-based prompt libraries for AI agents.
+		Short: "Manage skills for AI harnesses",
+		Long: fmt.Sprintf(`Manage skills - reusable markdown-based prompt libraries for AI harnesses.
 
 %sExamples:%s
   mdm skills add vercel-labs/agent-skills
