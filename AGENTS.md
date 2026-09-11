@@ -510,7 +510,7 @@ mdm
     ├── lock/            # mdm.lock read/write (skills, agents, knowledge, plugins sections; reads legacy v1 lock files as a fallback); tracks hashes, versions, timestamps, the per-scope installMode, and configuredHarnesses (still written under the `configuredAgents` JSON key for v1 readers)
     ├── git/             # Shallow git clone; branch/ref handling
     ├── blob/            # GitHub API tree/blob queries for skill discovery
-    ├── security/        # markdownscan: hidden-character / prompt-smuggling detection
+    ├── security/        # markdownscan: hidden-character / prompt-smuggling detection; embeds Unicode emoji-variation-sequences.txt
     ├── update/          # Shared helpers for self-update and skill update flows
     ├── ui/              # ANSI color constants; Bubbletea spinner
     └── version/         # App name + dev fallback version (release tags override via ldflags)
