@@ -404,7 +404,7 @@ func TestSkillsAddWarnsButInstallsEmojiVariationSequences(t *testing.T) {
 
 	env := isolatedEnv(projectDir, stateDir)
 	stdout, stderr, code := runMdmInDir(t, projectDir, env,
-		"skills", "add", skillDir, "--agent", "claude-code", "--project", "-y")
+		"skills", "add", skillDir, "--harness", "claude-code", "--project", "-y")
 	combined := stdout + stderr
 	if code != 0 {
 		t.Fatalf("expected picker emoji to install without --allow-hidden-chars, got code %d:\n%s", code, combined)
