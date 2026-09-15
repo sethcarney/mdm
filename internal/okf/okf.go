@@ -3,7 +3,7 @@
 // one concept and documents cross-link with ordinary markdown links.
 //
 // This implementation tracks OKF spec v0.1:
-// https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf
+// https://github.com/GoogleCloudPlatform/open-knowledge-format
 package okf
 
 import (
