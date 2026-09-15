@@ -205,9 +205,12 @@ func walkYAMLEncodable(rv reflect.Value) any {
 // wholeFloatNode returns f unchanged when it has a fractional part, which
 // yaml.v3 already renders with a decimal point; a whole value instead gets
 // an explicit *yaml.Node tagged !!float, so the emitted scalar (e.g. "3.0")
-// reparses as a float rather than an int.
+// reparses as a float rather than an int. An infinity is not whole for this
+// purpose: math.Trunc(±Inf) is ±Inf, and the node this would build for it
+// ("+Inf.0") is not YAML yaml.v3 can read back, so the installed markdown
+// parsed as having no frontmatter at all. Left alone, yaml.v3 writes ".inf".
 func wholeFloatNode(f float64) any {
-	if f != math.Trunc(f) {
+	if math.IsInf(f, 0) || f != math.Trunc(f) {
 		return f
 	}
 	return &yaml.Node{
