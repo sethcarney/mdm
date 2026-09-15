@@ -641,3 +641,59 @@ func TestMigrationMapsConfiguredAgentsOntoHarnesses(t *testing.T) {
 		t.Errorf("mdm.lock does not use the v2 key:\n%s", raw)
 	}
 }
+
+// TestGlobalMigrationNamesUnsupportedEntries covers a global lock in a v1
+// layout older than the last one: v1 ignored its entries, and migration still
+// drops the file, but the plan has to say which names go with it.
+func TestGlobalMigrationNamesUnsupportedEntries(t *testing.T) {
+	legacy := writeLegacyGlobalLock(t, `{"version":2,"skills":{"old":{"source":"o/r","sourceType":"github"},"older":{"source":"o/r2","sourceType":"github"}}}`)
+
+	plan, err := PlanGlobalMigration()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plan.Needed() || plan.LegacyPath != legacy {
+		t.Fatalf("unexpected plan: %+v", plan)
+	}
+	if strings.Join(plan.Unsupported, ",") != "old,older" {
+		t.Fatalf("Unsupported = %v, want [old older]", plan.Unsupported)
+	}
+	if err := ExecuteGlobalMigration(); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(ReadGlobalState().Skills); n != 0 {
+		t.Fatalf("unsupported entries must not migrate, got %d", n)
+	}
+}
+
+// TestPlanAcceptsTombstoneRewrittenByOldV1 covers migrating a project a
+// pre-v1.93.0 binary touched after an earlier migration: skills-lock.json
+// carries the tombstone's version, real entries, and no _moved marker.
+func TestPlanAcceptsTombstoneRewrittenByOldV1(t *testing.T) {
+	cwd := t.TempDir()
+	rewritten := `{"version":2,"skills":{"s2":{"source":"./s2","sourceType":"local"}}}`
+	if err := os.WriteFile(filepath.Join(cwd, "skills-lock.json"), []byte(rewritten), 0600); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := PlanProjectMigration(cwd)
+	if err != nil {
+		t.Fatalf("rewritten tombstone must plan as v1 data: %v", err)
+	}
+	if plan.Legacy["skills-lock.json"] != 1 {
+		t.Fatalf("expected one migratable skill, plan %+v", plan)
+	}
+	if err := ExecuteProjectMigration(cwd, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := ReadProjectLock(cwd).Skills["s2"]; !ok {
+		t.Fatal("s2 was not carried into mdm.lock")
+	}
+	// The same version on another legacy file is still unknown.
+	other := t.TempDir()
+	if err := os.WriteFile(filepath.Join(other, "plugins-lock.json"), []byte(`{"version":2,"plugins":{}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := PlanProjectMigration(other); err == nil {
+		t.Fatal("version 2 plugins-lock.json must still be refused")
+	}
+}

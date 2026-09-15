@@ -176,20 +176,35 @@ func printGlobalMigrationPlan(gplan lock.GlobalMigration, force bool) error {
 		fmt.Printf("  %sinstall mode %q, inferred from what's on disk, will be recorded in %s%s\n",
 			ansiDim, gplan.InstallModeBackfill, lock.GetGlobalStatePath(), ansiReset)
 	}
+	if err := printDiscardWarning(gplan.Unsupported,
+		fmt.Sprintf("%s is in a v1 layout older than mdm reads; these entries in it would be discarded:", gplan.LegacyPath),
+		"v1 already ignored them, so nothing installed depends on them, but the file has no copy in version control - re-run with --force to drop them, or move it aside first",
+		force); err != nil {
+		return err
+	}
 	return printOrphanWarning(gplan.Orphaned, "mdm-state.json", force)
 }
 
 func printOrphanWarning(orphaned []string, target string, force bool) error {
-	if len(orphaned) == 0 {
+	return printDiscardWarning(orphaned,
+		fmt.Sprintf("These legacy entries are NOT in %s and would be discarded:", target),
+		"if you removed them on purpose (a remove run on v2 before migrating leaves the v1 file untouched), re-run with --force to drop them; otherwise re-add them with 'mdm skills add' (or knowledge/plugins add)",
+		force)
+}
+
+// printDiscardWarning lists entries a migration would drop and, without
+// --force, refuses so the loss is a decision rather than a side effect.
+func printDiscardWarning(entries []string, header, remedy string, force bool) error {
+	if len(entries) == 0 {
 		return nil
 	}
-	fmt.Printf("\n%sThese legacy entries are NOT in %s and would be discarded:%s\n", ansiYellow, target, ansiReset)
-	for _, o := range orphaned {
-		fmt.Printf("  %s\n", o)
+	fmt.Printf("\n%s%s%s\n", ansiYellow, header, ansiReset)
+	for _, e := range entries {
+		fmt.Printf("  %s\n", e)
 	}
 	if !force {
 		fmt.Println()
-		return fmt.Errorf("refusing to discard entries - if you removed them on purpose, re-run with --force to drop them; otherwise re-add them with 'mdm skills add' (or knowledge/plugins add)")
+		return fmt.Errorf("refusing to discard entries - %s", remedy)
 	}
 	return nil
 }

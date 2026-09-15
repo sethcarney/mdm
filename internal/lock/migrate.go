@@ -96,7 +96,11 @@ func strictReadLegacy(path string) (legacyFileData, error) {
 	if raw.Version < 1 {
 		return d, fmt.Errorf("%s has no recognizable version field", filepath.Base(path))
 	}
-	if raw.Version > 1 {
+	// A v1 release before v1.93.0 reads the tombstone as an empty lock and, on
+	// its next `skills add`, rewrites the file at the tombstone's version with
+	// real entries and no _moved marker. That is v1 data, not a newer format.
+	rewrittenTombstone := filepath.Base(path) == "skills-lock.json" && raw.Version == tombstoneLockVersion
+	if raw.Version > 1 && !rewrittenTombstone {
 		return d, fmt.Errorf("%s has lock version %d, which no v1 release wrote", filepath.Base(path), raw.Version)
 	}
 	d.skills = raw.Skills
@@ -351,8 +355,14 @@ type GlobalMigration struct {
 	// global scope, empty when there is nothing to record. It mirrors the
 	// project-scope backfill.
 	InstallModeBackfill string
-	needed              bool
-	merged              GlobalState
+	// Unsupported lists skill names held by a legacy global lock in a layout
+	// older than the last v1 one. v1 itself ignored those entries on read, so
+	// nothing installed depends on them, but the file is per-machine state with
+	// no copy anywhere else: retiring it drops them for good, so the plan names
+	// them and `mdm migrate` asks for --force.
+	Unsupported []string
+	needed      bool
+	merged      GlobalState
 }
 
 // Needed reports whether there is anything to migrate: a legacy global
@@ -361,11 +371,13 @@ func (m GlobalMigration) Needed() bool { return m.needed || m.InstallModeBackfil
 
 // strictReadLegacyGlobal parses the v1 global lock with no empty-on-error
 // tolerance for broken JSON. A lock below the last v1 version migrates as
-// empty - v1 itself deliberately discarded those on read.
-func strictReadLegacyGlobal(path string) (GlobalState, error) {
+// empty - v1 itself deliberately discarded those on read - but the skill
+// names it held come back as unsupported, so the plan can say what retiring
+// the file drops.
+func strictReadLegacyGlobal(path string) (GlobalState, []string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return EmptyGlobalState(), err
+		return EmptyGlobalState(), nil, err
 	}
 	var legacy struct {
 		Version             int                       `json:"version"`
@@ -375,10 +387,10 @@ func strictReadLegacyGlobal(path string) (GlobalState, error) {
 		Experimental        []string                  `json:"experimental"`
 	}
 	if err := json.Unmarshal(data, &legacy); err != nil {
-		return EmptyGlobalState(), fmt.Errorf("%s is not valid JSON: %w", path, err)
+		return EmptyGlobalState(), nil, fmt.Errorf("%s is not valid JSON: %w", path, err)
 	}
 	if legacy.Skills == nil || legacy.Version < legacyGlobalLockVersion {
-		return EmptyGlobalState(), nil
+		return EmptyGlobalState(), skillNames(legacy.Skills), nil
 	}
 	return GlobalState{
 		Version:             globalStateVersion,
@@ -386,7 +398,7 @@ func strictReadLegacyGlobal(path string) (GlobalState, error) {
 		Dismissed:           legacy.Dismissed,
 		ConfiguredHarnesses: legacy.ConfiguredHarnesses,
 		Experimental:        legacy.Experimental,
-	}, nil
+	}, nil, nil
 }
 
 // PlanGlobalMigration inspects the machine's global state and reports what a
@@ -400,7 +412,7 @@ func PlanGlobalMigration() (GlobalMigration, error) {
 		plan.needed = true
 		plan.LegacyPath = legacy
 		var err error
-		parsed, err = strictReadLegacyGlobal(legacy)
+		parsed, plan.Unsupported, err = strictReadLegacyGlobal(legacy)
 		if err != nil {
 			return plan, err
 		}
