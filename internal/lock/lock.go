@@ -34,13 +34,18 @@ type LocalSkillLockEntry struct {
 // to refresh. Format is the shape of the canonical file, which mirrors the
 // source, so the canonical file's extension need never be guessed. It is
 // omitempty, and absent means markdown: every canonical file written before
-// this field existed is a .md.
+// this field existed is a .md. Harnesses names the harnesses mdm wrote the
+// definition into, so remove, update, install and list act on those files and
+// no others: a same-named file in a harness the user never asked for is the
+// user's. It is omitempty because entries written before it existed have no
+// list, and the commands fall back to inferring one from the disk for those.
 type AgentLockEntry struct {
-	Source     string `json:"source"`
-	SourceType string `json:"sourceType"`
-	Ref        string `json:"ref,omitempty"`
-	AgentPath  string `json:"agentPath"`
-	Format     string `json:"format,omitempty"`
+	Source     string   `json:"source"`
+	SourceType string   `json:"sourceType"`
+	Ref        string   `json:"ref,omitempty"`
+	AgentPath  string   `json:"agentPath"`
+	Format     string   `json:"format,omitempty"`
+	Harnesses  []string `json:"harnesses,omitempty"`
 }
 
 // LocalSkillLockFile is a view of the skills section of the project lock.

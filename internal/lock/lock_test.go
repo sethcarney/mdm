@@ -103,3 +103,46 @@ func TestAgentLockEntryWithoutFormatRoundTripsEmpty(t *testing.T) {
 		t.Errorf("an entry with no format wrote one, so omitempty is missing:\n%s", data)
 	}
 }
+
+// The harness list is what lets remove, update, install and list act on the
+// files mdm wrote and no others. It has to survive a round trip through both
+// locks, and an entry written before the field existed has to read back with
+// no list, which the commands layer takes as "infer from the disk".
+//
+// Mutation this test catches: dropping Harnesses from AgentLockEntry, or
+// losing its omitempty.
+func TestAgentLockEntryRecordsTheHarnesses(t *testing.T) {
+	cwd := t.TempDir()
+	if err := AddAgentToLocalLock("critic", AgentLockEntry{
+		Source: "o/r", SourceType: "github", AgentPath: "agents/critic.md", Harnesses: []string{"claude-code", "cursor"},
+	}, cwd); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(GetProjectLockPath(cwd))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"harnesses"`) {
+		t.Errorf("mdm.lock has no \"harnesses\" key:\n%s", data)
+	}
+	entry := ReadProjectLock(cwd).Agents["critic"]
+	if len(entry.Harnesses) != 2 || entry.Harnesses[0] != "claude-code" || entry.Harnesses[1] != "cursor" {
+		t.Errorf("Harnesses = %v, want [claude-code cursor]", entry.Harnesses)
+	}
+
+	content := `{"version":2,"agents":{"old":{"source":"o/r","sourceType":"github","agentPath":"agents/old.md"}}}`
+	if err := os.WriteFile(GetProjectLockPath(cwd), []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+	old := ReadProjectLock(cwd).Agents["old"]
+	if len(old.Harnesses) != 0 {
+		t.Errorf("an entry written before the field existed reads back with Harnesses = %v, want none", old.Harnesses)
+	}
+	if err := AddAgentToLocalLock("other", AgentLockEntry{Source: "o/r", SourceType: "github", AgentPath: "a.md"}, cwd); err != nil {
+		t.Fatal(err)
+	}
+	data, _ = os.ReadFile(GetProjectLockPath(cwd))
+	if strings.Contains(string(data), `"harnesses"`) {
+		t.Errorf("an entry with no harness list wrote one, so omitempty is missing:\n%s", data)
+	}
+}

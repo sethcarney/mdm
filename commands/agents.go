@@ -87,6 +87,10 @@ type AgentOptions struct {
 	AllowHiddenChars bool
 	Copy             bool
 	Symlink          bool
+	// HarnessesFor overrides Harnesses per definition, keyed by disk name.
+	// The restore path sets it so each definition goes back into exactly
+	// the harnesses its lock entry names; the flags never do.
+	HarnessesFor map[string][]string
 }
 
 // asAddOptions adapts AgentOptions to the AddOptions fields

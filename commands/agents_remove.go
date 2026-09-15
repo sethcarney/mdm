@@ -10,55 +10,59 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/sethcarney/mdm/internal/agentfile"
 	"github.com/sethcarney/mdm/internal/harness"
 	"github.com/sethcarney/mdm/internal/lock"
 	"github.com/sethcarney/mdm/internal/source"
 	"github.com/sethcarney/mdm/internal/ui"
 )
 
-// agentInstalledOutside reports whether a harness other than the ones in kept
-// still has a copy, so a `--harness X` removal knows whether the canonical
-// file and lock entry are still needed. A kept copy is the user's own file,
-// not an install, and does not count.
-func agentInstalledOutside(name string, kept map[string]bool, global bool, cwd string) bool {
-	for _, h := range agentInstalledHarnesses(name, global, cwd) {
-		if !kept[h] {
-			return true
-		}
-	}
-	return false
+// agentRemoval is what removeAgentFromDisk did for one definition.
+type agentRemoval struct {
+	// fullyRemoved is true once the canonical file and the lock entry are
+	// gone; false when the definition lives on in a harness outside the
+	// filter, or when nothing could be verified as mdm's to remove.
+	fullyRemoved bool
+	// kept lists the user's own files inside the local source the definition
+	// was added from, left as real files.
+	kept []string
+	// foreign lists files at a harness path that mdm did not write - a
+	// hand-written definition, or a copy edited since - left alone, as
+	// "<harness>: <path>".
+	foreign []string
 }
 
-// removeAgentHarnessCopies deletes the definition's file under each harness,
-// except inside localSourceAbs, where the file is the user's own: an adopted
-// link there is turned back into a real file and the path reported in kept.
-// keptHarness names the harnesses whose copy was kept; failed describes every
+// removeAgentHarnessCopies deletes the definition's file under each harness.
+// Inside localSourceAbs the file is the user's own: an adopted link there is
+// turned back into a real file and the path reported in kept. Elsewhere a
+// file is deleted only when mdmOwnsAgentFile can show mdm wrote it; any other
+// file is reported in foreign and left where it is. failed describes every
 // deletion or un-adoption that did not succeed.
-func removeAgentHarnessCopies(name string, harnesses []string, localSourceAbs, canonicalPath string, global bool, cwd string) (kept []string, keptHarness map[string]bool, failed []string) {
-	keptHarness = map[string]bool{}
+func removeAgentHarnessCopies(name string, harnesses []string, localSourceAbs, canonicalPath string, global bool, cwd string) (res agentRemoval, failed []string) {
 	for _, harnessName := range harnesses {
 		target := agentHarnessPath(name, harnessName, global, cwd)
 		if target == "" || !isPathSafe(harness.AgentsInstallDirFor(harnessName, global, cwd), target) {
 			continue
 		}
+		if _, statErr := os.Lstat(target); statErr != nil {
+			continue
+		}
 		if localSourceAbs != "" && isInsideOrEqual(target, localSourceAbs) {
-			if _, statErr := os.Lstat(target); statErr != nil {
-				continue
-			}
 			if unErr := unadoptAgentLink(target, canonicalPath); unErr != nil {
 				failed = append(failed, fmt.Sprintf("%s (%v)", harnessName, unErr))
 				continue
 			}
-			kept = append(kept, target)
-			keptHarness[harnessName] = true
+			res.kept = append(res.kept, target)
+			continue
+		}
+		if !mdmOwnsAgentFile(target, harnessName, canonicalPath) {
+			res.foreign = append(res.foreign, harnessDisplayName(harnessName)+": "+target)
 			continue
 		}
 		if rmErr := removeFileFn(target); rmErr != nil && !os.IsNotExist(rmErr) {
 			failed = append(failed, fmt.Sprintf("%s (%v)", harnessName, rmErr))
 		}
 	}
-	return kept, keptHarness, failed
+	return res, failed
 }
 
 func buildAgentRemoveCmd() *cobra.Command {
@@ -132,42 +136,50 @@ func filterLockNames(lockNames, filterNames []string) ([]string, bool) {
 var removeFileFn = os.Remove
 
 // removeAgentFromDisk deletes one definition's per-harness copy for every
-// harness in harnessFilter (all harnesses when empty). It drops the canonical
-// file and the lock entry only once no harness, including harnesses outside
-// harnessFilter, still has a copy. It returns fullyRemoved=false with a nil
-// error when the copies in scope went but the definition lives elsewhere.
+// harness holding it that is in harnessFilter (every one when empty). Which
+// harnesses hold it is the lock entry's list, or, for an entry written before
+// the list existed, the harnesses whose file mdm can show it wrote; a
+// same-named file anywhere else is the user's and is never looked at. It drops
+// the canonical file and the lock entry only once no harness outside the
+// filter still holds a copy, and otherwise takes the cleared harnesses off the
+// entry's list, so the lock keeps describing the disk.
 //
 // Files inside the local source the definition was added from are the user's
 // own and are never deleted; they are returned in kept. `mdm agents add .`
 // adopts a hand-written .claude/agents/critic.md by copying it to the canonical
 // file and leaving a symlink behind, so a kept link is first turned back into
 // the real file it replaced, before the canonical file it points at can go.
-func removeAgentFromDisk(name string, harnessFilter []string, format agentfile.Format, global bool, cwd string) (fullyRemoved bool, kept []string, err error) {
-	harnesses := harnessFilter
-	if len(harnesses) == 0 {
-		for n := range harness.AllHarnesses {
-			harnesses = append(harnesses, n)
-		}
+func removeAgentFromDisk(name string, harnessFilter []string, entry lock.AgentLockEntry, global bool, cwd string) (agentRemoval, error) {
+	held := agentInstalledIn(name, entry, global, cwd)
+	targets := held
+	if len(harnessFilter) > 0 {
+		targets = keepIn(held, stringSet(harnessFilter))
 	}
-	localSourceAbs := resolveLocalAgentSourceAbs(name, global, cwd)
+	localSourceAbs := resolveLocalAgentSourceAbs(entry, cwd)
 	canonicalDir := harness.CanonicalAgentsDir(global, cwd)
-	canonicalPath := agentCanonicalPath(name, format, global, cwd)
+	canonicalPath := agentCanonicalPath(name, lockedAgentFormat(entry), global, cwd)
 
-	kept, keptHarness, failed := removeAgentHarnessCopies(name, harnesses, localSourceAbs, canonicalPath, global, cwd)
+	res, failed := removeAgentHarnessCopies(name, targets, localSourceAbs, canonicalPath, global, cwd)
 	if len(failed) > 0 {
-		return false, kept, fmt.Errorf("could not remove from %s", strings.Join(failed, ", "))
+		return res, fmt.Errorf("could not remove from %s", strings.Join(failed, ", "))
 	}
-	if agentInstalledOutside(name, keptHarness, global, cwd) {
-		return false, kept, nil
+	if remaining := withoutHarnesses(held, stringSet(targets)); len(remaining) > 0 {
+		if agentRecordedHarnesses(entry) != nil {
+			entry.Harnesses = remaining
+			if err := writeAgentEntry(name, entry, global, cwd); err != nil {
+				return res, fmt.Errorf("could not update lock file: %w", err)
+			}
+		}
+		return res, nil
 	}
 
 	if localSourceAbs != "" && isInsideOrEqual(canonicalPath, localSourceAbs) {
 		if _, statErr := os.Lstat(canonicalPath); statErr == nil {
-			kept = append(kept, canonicalPath)
+			res.kept = append(res.kept, canonicalPath)
 		}
 	} else if isPathSafe(canonicalDir, canonicalPath) {
 		if rmErr := removeFileFn(canonicalPath); rmErr != nil && !os.IsNotExist(rmErr) {
-			return false, kept, fmt.Errorf("could not remove the canonical file: %w", rmErr)
+			return res, fmt.Errorf("could not remove the canonical file: %w", rmErr)
 		}
 	}
 
@@ -178,23 +190,28 @@ func removeAgentFromDisk(name string, harnessFilter []string, format agentfile.F
 		lockErr = lock.RemoveAgentFromLocalLock(name, cwd)
 	}
 	if lockErr != nil {
-		return false, kept, fmt.Errorf("could not update lock file: %w", lockErr)
+		return res, fmt.Errorf("could not update lock file: %w", lockErr)
 	}
-	return true, kept, nil
+	res.fullyRemoved = true
+	return res, nil
+}
+
+// writeAgentEntry puts an entry read from the lock back, unchanged apart from
+// what the caller edited. recordAgentEntry is for a fresh install and
+// relativizes a local source; an entry read from the lock already has the
+// form the lock keeps.
+func writeAgentEntry(name string, entry lock.AgentLockEntry, global bool, cwd string) error {
+	if global {
+		return lock.AddAgentToGlobalState(name, entry)
+	}
+	return lock.AddAgentToLocalLock(name, entry, cwd)
 }
 
 // resolveLocalAgentSourceAbs returns the absolute path of the directory the
 // definition was added from when that was a local path, or "" otherwise. It is
 // the agents-side twin of resolveLocalSourceAbs.
-func resolveLocalAgentSourceAbs(name string, global bool, cwd string) string {
-	var entry lock.AgentLockEntry
-	var ok bool
-	if global {
-		entry, ok = lock.ReadGlobalState().Agents[name]
-	} else {
-		entry, ok = lock.ReadProjectLock(cwd).Agents[name]
-	}
-	if !ok || entry.SourceType != string(source.SourceTypeLocal) || entry.Source == "" {
+func resolveLocalAgentSourceAbs(entry lock.AgentLockEntry, cwd string) string {
+	if entry.SourceType != string(source.SourceTypeLocal) || entry.Source == "" {
 		return ""
 	}
 	src := entry.Source
@@ -301,7 +318,7 @@ func runAgentRemove(positional []string, opts AgentOptions) bool {
 	// A name the user typed that matched nothing is a failed removal: a
 	// script must not read "No matching agent definitions found." as done.
 	// "*" and no names at all ask for whatever is there, which can be nothing.
-	explicit := len(filterNames) > 0 && !(len(filterNames) == 1 && filterNames[0] == "*")
+	explicit := len(filterNames) > 0 && (len(filterNames) != 1 || filterNames[0] != "*")
 	if len(lockNames) == 0 {
 		fmt.Printf("%sNo agent definitions installed.%s\n", ansiDim, ansiReset)
 		return !explicit
@@ -328,20 +345,31 @@ func runAgentRemove(positional []string, opts AgentOptions) bool {
 	fmt.Println()
 	ok = true
 	for _, name := range toRemove {
-		fullyRemoved, kept, err := removeAgentFromDisk(name, opts.Harnesses, lockedAgentFormat(lockEntries[name]), global, cwd)
-		switch {
-		case err != nil:
+		if !removeOneAgent(name, opts.Harnesses, lockEntries[name], global, cwd) {
 			ok = false
-			ui.LogError(fmt.Sprintf("%s: %v", name, err))
-		case fullyRemoved:
-			ui.LogSuccess("Removed " + name)
-		default:
-			ui.LogWarn(fmt.Sprintf("%s: removed from the given harness(es), but it is still installed elsewhere - keeping the definition and its lock entry", name))
-		}
-		if len(kept) > 0 {
-			ui.LogInfo(fmt.Sprintf("%s: kept %s: inside the local source it was added from", name, strings.Join(displayPaths(kept, cwd), ", ")))
 		}
 	}
 	fmt.Println()
 	return ok
+}
+
+// removeOneAgent removes one definition, prints its lines, and reports
+// whether the removal succeeded.
+func removeOneAgent(name string, harnessFilter []string, entry lock.AgentLockEntry, global bool, cwd string) bool {
+	res, err := removeAgentFromDisk(name, harnessFilter, entry, global, cwd)
+	switch {
+	case err != nil:
+		ui.LogError(fmt.Sprintf("%s: %v", name, err))
+	case res.fullyRemoved:
+		ui.LogSuccess("Removed " + name)
+	default:
+		ui.LogWarn(fmt.Sprintf("%s: removed from the given harness(es), but it is still installed elsewhere - keeping the definition and its lock entry", name))
+	}
+	if len(res.kept) > 0 {
+		ui.LogInfo(fmt.Sprintf("%s: kept %s: inside the local source it was added from", name, strings.Join(displayPaths(res.kept, cwd), ", ")))
+	}
+	for _, f := range res.foreign {
+		ui.LogInfo(fmt.Sprintf("%s: left %s alone: not the file mdm wrote there", name, f))
+	}
+	return err == nil
 }

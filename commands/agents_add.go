@@ -160,7 +160,7 @@ func runAgentAdd(sourceInput string, opts AgentOptions) bool {
 
 	baseEntry := agentLockEntry(parsed, sourceInput)
 	fmt.Println()
-	outcome := installAgentsForHarnesses(selected, harnesses, global, mode, baseEntry, cloneDir, cwd)
+	outcome := installAgents(selected, harnesses, global, mode, baseEntry, cloneDir, cwd, agentInstallRun{harnessesFor: opts.HarnessesFor})
 	fmt.Println()
 	printAgentInstallSummary(outcome, global, mode)
 	// A definition mdm already owns is not a failure to install it.
@@ -408,11 +408,32 @@ func canonicalRollback(a *agentfile.AgentFile, name string, global bool, cwd str
 	return func() { _ = removeFileFn(path) }
 }
 
+// agentInstallRun is what one add run knows beyond the harness list it was
+// given: a per-definition override of that list, keyed by disk name, which
+// the restore path uses to put each definition back into exactly the
+// harnesses its lock entry names.
+type agentInstallRun struct {
+	harnessesFor map[string][]string
+}
+
+// targetsFor returns the harnesses one definition goes to.
+func (r agentInstallRun) targetsFor(name string, harnesses []string) []string {
+	if override, ok := r.harnessesFor[name]; ok && len(override) > 0 {
+		return override
+	}
+	return harnesses
+}
+
 // installAgentsForHarnesses installs each selected definition into every
 // requested harness, and records it in the lock only when at least one harness
 // received it. A harness with no agent-definition directory recorded is a
 // skip with a reason. A definition no harness accepted leaves nothing behind.
 func installAgentsForHarnesses(agents []*agentfile.AgentFile, harnesses []string, global bool, mode InstallMode, baseEntry lock.AgentLockEntry, cloneDir, cwd string) agentInstallOutcome {
+	return installAgents(agents, harnesses, global, mode, baseEntry, cloneDir, cwd, agentInstallRun{})
+}
+
+// installAgents is installAgentsForHarnesses with the run's extra knowledge.
+func installAgents(agents []*agentfile.AgentFile, harnesses []string, global bool, mode InstallMode, baseEntry lock.AgentLockEntry, cloneDir, cwd string, run agentInstallRun) agentInstallOutcome {
 	fallbacks := symlinkFallbacks{noun: "agent definitions", group: "agents"}
 	var materialized materializedInstalls
 	outcome := agentInstallOutcome{fallbacks: &fallbacks, materialized: &materialized}
@@ -439,52 +460,72 @@ func installAgentsForHarnesses(agents []*agentfile.AgentFile, harnesses []string
 			continue
 		}
 		claimed[name] = a.Path
-		fmt.Printf("%sInstalling %s%s%s...\n", ansiDim, ansiText, a.Name, ansiReset)
-		warnAgentNamePattern(a.Name, harnesses)
-		rollback := canonicalRollback(a, name, global, cwd)
 
-		var failures agentFailures
-		var skipReasons []string
-		installedAny := false
-		for _, harnessName := range harnesses {
-			result := installAgentFile(a, harnessName, global, cwd, mode)
-			fallbacks.note(harnessName, result)
-			materialized.note(harnessName, result)
-			failures.note(harnessName, result)
-			switch {
-			case result.Success:
-				installedAny = true
-				if !received[harnessName] {
-					received[harnessName] = true
-					outcome.harnesses = append(outcome.harnesses, harnessName)
-				}
-			case result.Skipped:
-				skipReasons = append(skipReasons, result.Error)
-			}
-		}
-
-		for _, reason := range skipReasons {
-			ui.LogInfo(fmt.Sprintf("%s: skipped - %s", a.Name, reason))
-		}
-
-		if !installedAny {
-			rollback()
-			reportAgentFailure(a.Name, &failures)
+		targets := run.targetsFor(name, harnesses)
+		installedTo := installOneAgent(a, name, targets, global, cwd, mode, &outcome)
+		if len(installedTo) == 0 {
 			continue
 		}
-		if failures.any() {
-			reportAgentFailure(a.Name, &failures)
-		} else {
-			ui.LogSuccess(a.Name)
-		}
 		outcome.installed++
+		for _, harnessName := range installedTo {
+			if !received[harnessName] {
+				received[harnessName] = true
+				outcome.harnesses = append(outcome.harnesses, harnessName)
+			}
+		}
 
 		entry := baseEntry
 		entry.AgentPath = agentFileRepoPath(a.Path, cloneDir)
 		entry.Format = string(agentCanonicalFormat(a))
+		// The list is what remove, update and install act on. A harness an
+		// earlier add of the same definition reached is still holding it, so
+		// this run's harnesses join that list rather than replacing it.
+		entry.Harnesses = unionHarnesses(recorded[name].Harnesses, installedTo)
 		recordAgentEntry(name, entry, global, cwd)
 	}
 	return outcome
+}
+
+// installOneAgent installs one definition into each of harnesses, prints its
+// per-definition lines, and returns the harnesses that received it, in the
+// order given. A definition no harness accepted has its canonical write
+// rolled back and returns nothing.
+func installOneAgent(a *agentfile.AgentFile, name string, harnesses []string, global bool, cwd string, mode InstallMode, outcome *agentInstallOutcome) []string {
+	fmt.Printf("%sInstalling %s%s%s...\n", ansiDim, ansiText, a.Name, ansiReset)
+	warnAgentNamePattern(a.Name, harnesses)
+	rollback := canonicalRollback(a, name, global, cwd)
+
+	var failures agentFailures
+	var skipReasons []string
+	var installedTo []string
+	for _, harnessName := range harnesses {
+		result := installAgentFile(a, harnessName, global, cwd, mode)
+		outcome.fallbacks.note(harnessName, result)
+		outcome.materialized.note(harnessName, result)
+		failures.note(harnessName, result)
+		switch {
+		case result.Success:
+			installedTo = append(installedTo, harnessName)
+		case result.Skipped:
+			skipReasons = append(skipReasons, result.Error)
+		}
+	}
+
+	for _, reason := range skipReasons {
+		ui.LogInfo(fmt.Sprintf("%s: skipped - %s", a.Name, reason))
+	}
+
+	if len(installedTo) == 0 {
+		rollback()
+		reportAgentFailure(a.Name, &failures)
+		return nil
+	}
+	if failures.any() {
+		reportAgentFailure(a.Name, &failures)
+	} else {
+		ui.LogSuccess(a.Name)
+	}
+	return installedTo
 }
 
 // printAgentInstallSummary is printInstallSummary's counterpart for agent

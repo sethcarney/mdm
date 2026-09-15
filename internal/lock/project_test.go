@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -226,7 +227,7 @@ func TestProjectLockAgentsSectionIsolatedFromSkills(t *testing.T) {
 		t.Fatal(err)
 	}
 	lk := ReadProjectLock(cwd)
-	if lk.Agents["critic"] != agentBefore {
+	if !reflect.DeepEqual(lk.Agents["critic"], agentBefore) {
 		t.Errorf("agent entry changed by a skills write: %+v", lk.Agents["critic"])
 	}
 
