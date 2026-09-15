@@ -27,10 +27,10 @@ repository source string is **untrusted input**:
 
 - `mdm skills add <source>` takes the source from the command line.
 - `mdm skills install` and `mdm skills update` **replay the `source` field
-  stored in `skills-lock.json`** - a file that is commonly committed to a repo
+  stored in `mdm.lock`** - a file that is commonly committed to a repo
   and shared across a team.
 
-Without a restriction, a poisoned `skills-lock.json` entry (or a crafted
+Without a restriction, a poisoned `mdm.lock` entry (or a crafted
 "install this" snippet) could turn a routine `mdm skills install` during
 onboarding into remote code execution on the developer's machine.
 

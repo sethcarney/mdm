@@ -113,7 +113,7 @@ Expected output: yellow warnings printed, installation continues.
 Verify that ordinary emoji warn without blocking, and without the flag:
 
 ```bash
-mdm skills add ./tests/testdata/emoji-skill --project --agent claude-code -y
+mdm skills add ./tests/testdata/emoji-skill --project --harness claude-code -y
 ```
 
 Expected output: `variation-selector` warnings naming the emoji base each one completes, followed by a normal install.

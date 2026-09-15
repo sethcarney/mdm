@@ -98,7 +98,7 @@ git URL with a `#ref`, a local path, or a well-known alias (`vercel`,
 | `--yes`, `-y` | Skip confirmation prompts |
 | `--copy` | Copy files instead of symlinking; switches the scope to copy mode |
 | `--symlink` | Symlink files from `.agents/skills` (the default); switches a scope back from copy mode |
-| `--all` | Remove every skill without prompting (shorthand for `--skill '*' -y`) |
+| `--all` | Install every skill to every harness without prompting (shorthand for `--skill '*' --harness '*' -y`) |
 | `--full-depth` | Search all subdirectories for skills |
 | `--skip-audit` | Skip the security audit check for public skills |
 | `--fail-on-audit` | Exit non-zero on security findings instead of prompting |
@@ -432,7 +432,7 @@ fails rather than silently doing nothing.
 `skills-lock.json` is replaced with a tombstone that points v1 users at
 `mdm.lock` - interactive runs offer to delete it outright instead.
 Patched v1 releases refuse the tombstone with an "upgrade mdm" error;
-older v1 releases read it as an empty lock.
+older v1 releases read it as an empty lock, and if one of them then runs `skills add` it rewrites the file as a v1 lock that v2 and `mdm migrate` still read.
 Commit the new lock and the removals together. v2 reads the v1 files
 transparently until you migrate, but only ever writes the new ones, and
 `mdm doctor` flags projects that still carry v1 files. `mdm upgrade` offers
