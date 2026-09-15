@@ -109,7 +109,7 @@ func warnAgentNamesNotInSource(requested []string, selected []*agentfile.AgentFi
 	for _, filterName := range requested {
 		matched := false
 		for _, a := range selected {
-			if skillNameMatches(a.Name, filterName) {
+			if agentNameMatches(a.Name, filterName) {
 				matched = true
 				break
 			}

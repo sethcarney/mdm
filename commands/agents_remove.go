@@ -113,7 +113,7 @@ func filterLockNames(lockNames, filterNames []string) ([]string, bool) {
 	var keep []string
 	for _, f := range filterNames {
 		for _, n := range lockNames {
-			if skillNameMatches(n, f) {
+			if agentNameMatches(n, f) {
 				keep = append(keep, n)
 				break
 			}

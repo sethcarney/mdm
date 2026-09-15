@@ -274,13 +274,13 @@ func keepIn(names []string, set map[string]bool) []string {
 	return out
 }
 
-// filterAgentsByName keeps agents whose name matches one of names (by the
-// same case/sanitized rule skills use).
+// filterAgentsByName keeps agents whose name matches one of names, by the
+// disk-name rule agentNameMatches applies.
 func filterAgentsByName(agents []*agentfile.AgentFile, names []string) []*agentfile.AgentFile {
 	var filtered []*agentfile.AgentFile
 	for _, a := range agents {
 		for _, f := range names {
-			if skillNameMatches(a.Name, f) {
+			if agentNameMatches(a.Name, f) {
 				filtered = append(filtered, a)
 				break
 			}
