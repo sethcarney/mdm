@@ -116,3 +116,47 @@ func TestDoctorFlagsLegacyLockFiles(t *testing.T) {
 		t.Errorf("doctor should point at mdm migrate when v1 lock files exist, got:\n%s", stdout)
 	}
 }
+
+// TestRemoveLastSkillFromV1ProjectStaysRemoved covers the upgrade path where
+// v2 removes the last entry of a project that still has a v1 skills-lock.json:
+// an empty mdm.lock has to shadow the v1 file, or the next read falls back to
+// it and `mdm skills install` reinstalls what was just removed.
+func TestRemoveLastSkillFromV1ProjectStaysRemoved(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "sk", "plain")
+	if err := os.MkdirAll(src, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "SKILL.md"), []byte("---\nname: plain\ndescription: plain\n---\nBody.\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	// What a v1.93.0 `skills add ./sk/plain -p -a claude-code -y` leaves behind.
+	canonical := filepath.Join(dir, ".agents", "skills", "plain")
+	if err := os.MkdirAll(canonical, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(canonical, "SKILL.md"), []byte("---\nname: plain\ndescription: plain\n---\nBody.\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "skills-lock.json"), []byte(`{"version":1,"skills":{"plain":{"source":"sk/plain","sourceType":"local"}}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, stderr, code := runMdmInDir(t, dir, freshEnv(t), "skills", "remove", "plain", "-y")
+	if code != 0 || !strings.Contains(stdout, "Removed plain") {
+		t.Fatalf("remove exited %d:\n%s%s", code, stdout, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(dir, lockName)); err != nil {
+		t.Fatalf("an empty %s must shadow skills-lock.json after the removal: %v", lockName, err)
+	}
+	stdout, stderr, code = runMdmInDir(t, dir, freshEnv(t), "skills", "install", "-y")
+	if code != 0 {
+		t.Fatalf("install exited %d:\n%s%s", code, stdout, stderr)
+	}
+	if strings.Contains(stdout, "Restoring") {
+		t.Fatalf("the removed skill was resurrected from skills-lock.json:\n%s", stdout)
+	}
+	if _, err := os.Stat(canonical); !os.IsNotExist(err) {
+		t.Fatal("removed skill is back on disk")
+	}
+}

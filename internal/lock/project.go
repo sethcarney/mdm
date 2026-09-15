@@ -406,17 +406,50 @@ func readProjectLockE(cwd string) (ProjectLockFile, error) {
 		lk.Version = projectLockVersion
 	}
 	if lk.Version < projectLockVersion {
+		// No version at all. A bare `{}` is harmless, but a file that still
+		// carries sections lost its version line to a hand edit or a bad
+		// merge. Reading it as empty would let the next write replace it
+		// with only the newest entry, so it aborts like any other damage.
+		if !lk.isEmpty() {
+			return EmptyProjectLock(), errUnversionedLock(path)
+		}
 		return EmptyProjectLock(), nil
 	}
 	normalizeProjectLock(&lk)
 	return lk, nil
 }
 
-// WriteProjectLock writes mdm.lock. A lock with nothing left in it
-// removes the file instead, matching the v1 knowledge/plugins behavior.
+func errUnversionedLock(path string) error {
+	return fmt.Errorf("%s has entries but no version field - add \"version\": %d or restore the file from version control",
+		filepath.Base(path), projectLockVersion)
+}
+
+// legacyProjectDataPresent reports whether any v1 project lock file still
+// holds data: present, and not v2's own tombstone.
+func legacyProjectDataPresent(cwd string) bool {
+	for _, fname := range LegacyProjectLockNames {
+		data, err := os.ReadFile(filepath.Join(cwd, fname))
+		if err != nil {
+			continue
+		}
+		if fname == "skills-lock.json" && legacyTombstone(data) {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+// WriteProjectLock writes mdm.lock. A lock with nothing left in it removes
+// the file instead, matching the v1 knowledge/plugins behavior - unless a v1
+// lock file with data is still beside it. Reads fall back to those files
+// whenever mdm.lock is absent and nothing ever writes to them, so removing
+// the last entry of an unmigrated project would resurrect it on the next
+// read. An empty mdm.lock shadows the v1 files until `mdm migrate` retires
+// them.
 func WriteProjectLock(lk ProjectLockFile, cwd string) error {
 	path := GetProjectLockPath(cwd)
-	if lk.isEmpty() {
+	if lk.isEmpty() && !legacyProjectDataPresent(filepath.Dir(path)) {
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 			return err
 		}
