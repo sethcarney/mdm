@@ -39,7 +39,17 @@ pass them space-separated after the flag or repeat the flag for each value:
   mdm agents add owner/repo --agent code-reviewer
   mdm agents add owner/repo --harness claude-code cursor
   mdm agents add ./my-agents`, ansiBold, ansiReset),
-		Args: cobra.ExactArgs(1),
+		// `mdm agents add claude-code cursor` was how harnesses were
+		// configured before this release. cobra's "accepts 1 arg(s),
+		// received 2" says nothing about where that went, so a list made
+		// only of harness names gets the hint instead.
+		Args: func(cmd *cobra.Command, args []string) error {
+			if allHarnessNames(args) {
+				printHarnessNamesHint(args, "add", "a source of agent definitions", "<source>", "installs")
+				os.Exit(1)
+			}
+			return cobra.ExactArgs(1)(cmd, args)
+		},
 		Run: func(cmd *cobra.Command, args []string) {
 			// Nothing installed anywhere is a failed run. The exit lives
 			// here, not in runAgentAdd, because the restore path calls
@@ -102,9 +112,7 @@ func runAgentAdd(sourceInput string, opts AgentOptions) bool {
 	// release. A bare harness name is never a source, so it would otherwise
 	// fail as a git clone of a repository called "cursor".
 	if harness.AllHarnesses[sourceInput] != nil {
-		fmt.Fprintf(os.Stderr, "%s%s is a harness, not a source of agent definitions.%s\n", ansiText, sourceInput, ansiReset)
-		fmt.Fprintf(os.Stderr, "Harness management moved to %smdm harnesses add %s%s in this release; %smdm agents add <source>%s installs agent definitions.\n",
-			ansiText, sourceInput, ansiReset, ansiText, ansiReset)
+		printHarnessNamesHint([]string{sourceInput}, "add", "a source of agent definitions", "<source>", "installs")
 		os.Exit(1)
 	}
 	parsed := source.ParseSource(sourceInput)

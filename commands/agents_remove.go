@@ -240,8 +240,39 @@ func unadoptAgentLink(target, canonicalPath string) error {
 	return replaceFileFrom(canonicalPath, target)
 }
 
+// hintHarnessNamesToRemove prints the moved-to-`mdm harnesses` hint when a
+// requested name is a harness rather than an installed definition, and
+// reports whether it did. `mdm agents remove cursor` was how a harness was
+// dropped before this release; it would otherwise match no lock entry and
+// report that nothing was found. A definition that happens to be named after
+// a harness is still a definition, so a name the lock holds is never hinted.
+func hintHarnessNamesToRemove(filterNames, lockNames []string) bool {
+	var harnessNames []string
+	for _, f := range filterNames {
+		if harness.AllHarnesses[f] == nil {
+			continue
+		}
+		recorded := false
+		for _, n := range lockNames {
+			if agentNameMatches(n, f) {
+				recorded = true
+				break
+			}
+		}
+		if !recorded {
+			harnessNames = append(harnessNames, f)
+		}
+	}
+	if len(harnessNames) == 0 {
+		return false
+	}
+	printHarnessNamesHint(harnessNames, "remove", "an installed agent definition", "<name>", "removes")
+	return true
+}
+
 // runAgentRemove reports whether every selected removal succeeded. A
-// cancelled prompt and an empty scope are not failures.
+// cancelled prompt and an empty scope are not failures; an explicit name that
+// matched nothing is.
 func runAgentRemove(positional []string, opts AgentOptions) bool {
 	cwd, _ := os.Getwd()
 	filterNames := append(append([]string{}, opts.Agents...), positional...)
@@ -264,13 +295,25 @@ func runAgentRemove(positional []string, opts AgentOptions) bool {
 	}
 
 	lockNames, lockEntries := agentLockEntries(global, cwd)
+	if hintHarnessNamesToRemove(filterNames, lockNames) {
+		return false
+	}
+	// A name the user typed that matched nothing is a failed removal: a
+	// script must not read "No matching agent definitions found." as done.
+	// "*" and no names at all ask for whatever is there, which can be nothing.
+	explicit := len(filterNames) > 0 && !(len(filterNames) == 1 && filterNames[0] == "*")
 	if len(lockNames) == 0 {
 		fmt.Printf("%sNo agent definitions installed.%s\n", ansiDim, ansiReset)
-		return true
+		return !explicit
 	}
 
 	toRemove, ok := selectAgentsToRemove(lockNames, filterNames, opts)
-	if !ok || len(toRemove) == 0 {
+	if !ok {
+		// An explicit filter fails only by matching nothing; without one,
+		// the user cancelled the prompt.
+		return !explicit
+	}
+	if len(toRemove) == 0 {
 		return true
 	}
 
