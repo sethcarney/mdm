@@ -221,6 +221,11 @@ func (l ProjectLockFile) isEmpty() bool {
 		len(l.Agents) == 0 && len(l.ConfiguredHarnesses) == 0 && len(l.extra) == 0 && l.InstallMode == ""
 }
 
+// IsEmpty reports whether the lock carries nothing worth committing - only the
+// version line. Migration uses it to tell a real migration from retiring legacy
+// files that held no entries.
+func (l ProjectLockFile) IsEmpty() bool { return l.isEmpty() }
+
 // orderedObject builds a JSON object whose keys come out in write order, which
 // encoding/json's map marshalling cannot do. The first marshal error is kept and
 // every later write is a no-op, so callers check once at the end.

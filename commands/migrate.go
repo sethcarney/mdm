@@ -214,14 +214,17 @@ func executeMigration(cwd string, plan lock.ProjectMigration, gplan lock.GlobalM
 		if err := lock.ExecuteProjectMigration(cwd, !noTombstone); err != nil {
 			return err
 		}
-		_, statErr := os.Stat(lock.GetProjectLockPath(cwd))
 		switch {
 		case len(plan.Legacy) == 0:
 			fmt.Printf("%s✓%s Recorded install mode %q on %s, no legacy files to retire.\n", ansiGreen, ansiReset, plan.InstallModeBackfill, lockName)
-		case statErr == nil:
-			fmt.Printf("%s✓%s Project migrated to %s - commit it together with the removed files.\n", ansiGreen, ansiReset, lockName)
+		case lock.ReadProjectLock(cwd).IsEmpty():
+			// The legacy files held no entries, so the write left only a
+			// version line. Say so rather than "commit it" - a bare lock is
+			// nothing to commit. (The old check was whether the file exists,
+			// which is always true after the write, so this branch never ran.)
+			fmt.Printf("%s✓%s Legacy lock files retired - they held no entries, so %s is empty and need not be committed.\n", ansiGreen, ansiReset, lockName)
 		default:
-			fmt.Printf("%s✓%s Legacy lock files retired - they held no entries, so there is no %s to commit.\n", ansiGreen, ansiReset, lockName)
+			fmt.Printf("%s✓%s Project migrated to %s - commit it together with the removed files.\n", ansiGreen, ansiReset, lockName)
 		}
 	}
 	if gplan.Needed() {
