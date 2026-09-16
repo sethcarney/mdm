@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/sethcarney/mdm/internal/lock"
+	"github.com/sethcarney/mdm/internal/ui"
 )
 
 func buildKnowledgeInstallCmd() *cobra.Command {
@@ -21,6 +22,11 @@ onboarding, like 'mdm skills install'.`,
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			runKnowledgeInstall(allowHiddenChars)
+			// A restore that installed less than the lock describes must not
+			// look green to CI.
+			if restoreFailed {
+				os.Exit(1)
+			}
 		},
 	}
 
@@ -39,8 +45,19 @@ func runKnowledgeInstall(allowHiddenChars bool) {
 
 	names := selectKnowledgeLockEntries(lk, nil)
 	fmt.Printf("\n%sRestoring %d bundle(s) from %s...%s\n", ansiText, len(names), lockName, ansiReset)
+	var unrestorable []string
 	for _, name := range names {
+		// An entry recorded from a local path this machine does not have is
+		// reported and skipped. The add path exits the process on a missing
+		// local directory, which would abandon every bundle after this one.
+		if why := unreachableLocalSource(lk.Bundles[name].Source, cwd); why != "" {
+			ui.LogWarn(fmt.Sprintf("%s: %s", name, why))
+			unrestorable = append(unrestorable, name)
+			continue
+		}
 		reinstallKnowledgeBundle(name, lk.Bundles[name], allowHiddenChars)
 	}
+	reportUnrestorable(unrestorable, "bundle",
+		"Move it into the repository, or re-add it from a source your team can reach.")
 	fmt.Printf("%sDone.%s\n\n", ansiText, ansiReset)
 }

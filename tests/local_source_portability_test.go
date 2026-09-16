@@ -123,9 +123,10 @@ func TestInstallSkipsUnreachableLocalSource(t *testing.T) {
 		t.Fatalf("skills add exited %d: %s%s", code, stdout, stderr)
 	}
 
-	// Add an entry whose source left with the machine that wrote it. "zz-" so
-	// it sorts after "good" and the good one is already installed when the
-	// unreachable one is reached - the ordering the old code survived.
+	// Add an entry whose source left with the machine that wrote it. Skills
+	// restore grouped by source in sorted order, and "../" sorts before "./",
+	// so the unreachable group is reached first and the good one is what the
+	// old code abandoned.
 	lockPath := filepath.Join(proj, "mdm.lock")
 	data, err := os.ReadFile(lockPath)
 	if err != nil {
@@ -135,8 +136,8 @@ func TestInstallSkipsUnreachableLocalSource(t *testing.T) {
 	if err := json.Unmarshal(data, &lk); err != nil {
 		t.Fatalf("parsing lock: %v", err)
 	}
-	lk["skills"].(map[string]any)["zz-gone"] = map[string]any{
-		"source":     "../nowhere/zz-gone",
+	lk["skills"].(map[string]any)["aa-gone"] = map[string]any{
+		"source":     "../nowhere/aa-gone",
 		"sourceType": "local",
 	}
 	patched, _ := json.MarshalIndent(lk, "", "  ")
@@ -152,10 +153,78 @@ func TestInstallSkipsUnreachableLocalSource(t *testing.T) {
 	if code == 0 {
 		t.Errorf("exit code = 0, want non-zero: a half-restored checkout must not look green to CI\n%s", out)
 	}
-	if !strings.Contains(out, "zz-gone") {
+	if !strings.Contains(out, "aa-gone") {
 		t.Errorf("output does not name the unrestorable skill:\n%s", out)
 	}
 	if _, err := os.Stat(filepath.Join(proj, ".agents", "skills", "good", "SKILL.md")); err != nil {
 		t.Errorf("the reachable skill was not restored: %v\n%s", err, out)
+	}
+}
+
+// TestKnowledgeAndPluginsInstallSkipUnreachableLocalSource is the same
+// guarantee for the two restores that used to stop dead: one entry recorded
+// from a path this machine does not have must not abandon the entries queued
+// behind it.
+func TestKnowledgeAndPluginsInstallSkipUnreachableLocalSource(t *testing.T) {
+	proj := t.TempDir()
+	env := freshEnv(t)
+
+	for _, args := range [][]string{
+		{"knowledge", "init", "kb"},
+		{"plugins", "init", "myplug"},
+		{"knowledge", "add", "./kb"},
+		{"plugins", "add", "./myplug", "--harness", "claude-code"},
+	} {
+		if stdout, stderr, code := runMdmInDir(t, proj, env, args...); code != 0 {
+			t.Fatalf("mdm %s exited %d: %s%s", strings.Join(args, " "), code, stdout, stderr)
+		}
+	}
+
+	// "aa-" sorts first, so the unreachable entry is reached before the good
+	// one. That ordering is the whole point: exiting there abandoned every
+	// entry queued behind it. With the bad entry last there is nothing left to
+	// lose and the old code looks fine.
+	lockPath := filepath.Join(proj, "mdm.lock")
+	data, err := os.ReadFile(lockPath)
+	if err != nil {
+		t.Fatalf("reading lock: %v", err)
+	}
+	var lk map[string]any
+	if err := json.Unmarshal(data, &lk); err != nil {
+		t.Fatalf("parsing lock: %v", err)
+	}
+	for section, dir := range map[string]string{"knowledge": "knowledge", "plugins": ".agents/plugins"} {
+		lk[section].(map[string]any)["aa-gone"] = map[string]any{
+			"source":     "../nowhere/aa-gone",
+			"sourceType": "local",
+			"installDir": dir + "/aa-gone",
+		}
+	}
+	patched, _ := json.MarshalIndent(lk, "", "  ")
+	if err := os.WriteFile(lockPath, patched, 0o644); err != nil {
+		t.Fatalf("writing lock: %v", err)
+	}
+
+	for _, tc := range []struct {
+		args     []string
+		survivor string
+	}{
+		{[]string{"knowledge", "install"}, filepath.Join("knowledge", "kb")},
+		{[]string{"plugins", "install"}, filepath.Join(".agents", "plugins", "myplug")},
+	} {
+		if err := os.RemoveAll(filepath.Join(proj, tc.survivor)); err != nil {
+			t.Fatalf("clearing %s: %v", tc.survivor, err)
+		}
+		stdout, stderr, code := runMdmInDir(t, proj, env, tc.args...)
+		out := stdout + stderr
+		if code == 0 {
+			t.Errorf("mdm %s exit code = 0, want non-zero\n%s", strings.Join(tc.args, " "), out)
+		}
+		if !strings.Contains(out, "aa-gone") {
+			t.Errorf("mdm %s did not name the unrestorable entry:\n%s", strings.Join(tc.args, " "), out)
+		}
+		if _, err := os.Stat(filepath.Join(proj, tc.survivor)); err != nil {
+			t.Errorf("mdm %s did not restore the reachable entry: %v\n%s", strings.Join(tc.args, " "), err, out)
+		}
 	}
 }

@@ -158,6 +158,7 @@ func restoreAgentsMap(entries map[string]lock.AgentLockEntry, global bool, opts 
 		_ = runAgentAdd(src, groupOpts)
 	}
 
-	reportUnrestorable(unrestorable, "agent definition")
+	reportUnrestorable(unrestorable, "agent definition",
+		"Move it into the repository, or re-add it from a source your team can reach.")
 	fmt.Printf("%sDone.%s\n\n", ansiText, ansiReset)
 }

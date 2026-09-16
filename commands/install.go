@@ -269,14 +269,15 @@ func restoreSkills(entries map[string]sourceRef, baseOpts AddOptions) {
 		runAdd(src, opts)
 	}
 
-	reportUnrestorable(unrestorable, "skill")
+	reportUnrestorable(unrestorable, "skill",
+		"Vendor it with `mdm skills cherry-pick`, or re-add it from a source your team can reach.")
 	fmt.Printf("%sDone.%s\n\n", ansiText, ansiReset)
 }
 
 // reportUnrestorable closes a restore that skipped entries, and marks the run
 // failed. A restore that silently returns 0 having installed less than the lock
 // describes is the thing CI cannot notice.
-func reportUnrestorable(names []string, noun string) {
+func reportUnrestorable(names []string, noun, hint string) {
 	if len(names) == 0 {
 		return
 	}
@@ -284,7 +285,7 @@ func reportUnrestorable(names []string, noun string) {
 	fmt.Println()
 	ui.LogError(fmt.Sprintf("%d %s(s) could not be restored on this machine: %s",
 		len(names), noun, strings.Join(names, ", ")))
-	fmt.Printf("%s  A local source outside the project is not part of the repository. Vendor it with `mdm skills cherry-pick`, or re-add it from a source your team can reach.%s\n", ansiDim, ansiReset)
+	fmt.Printf("%s  A local source outside the project is not part of the repository. %s%s\n", ansiDim, hint, ansiReset)
 	restoreFailed = true
 }
 
