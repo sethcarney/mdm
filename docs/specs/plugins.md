@@ -1,9 +1,21 @@
-# Spec: Experimental Agent Plugins Support (`mdm plugins`)
+# Design spec: Agent Plugins support (`mdm plugins`)
+
+!!! info "Historical document - `mdm plugins` is stable"
+    This is the **original design spec**, written when the feature was still
+    being built, and it is kept unchanged as a record of that design. It
+    describes an experimental gate and a separate `plugins-lock.json`;
+    **neither exists any more.** In v2 the gate was removed, the command group
+    is always available with no opt-in, and its lock entries live in the
+    `plugins` section of `mdm.lock` (`mdm migrate` folds an old file in).
+
+    For how `mdm plugins` works today, read the
+    [Agent Plugins guide](../plugins.md) and the
+    [command reference](../commands.md#mdm-plugins).
 
 | | |
 |---|---|
 | **Status** | Implemented - graduated to full support in v2 |
-| **Stability** | Stable. This document is the original design spec, kept as a historical record: the experimental gate it describes was removed in v2, and the separate `plugins-lock.json` became the `plugins` section of `mdm.lock` (see `mdm migrate`). |
+| **Stability** | Stable. Everything below describes the original experimental phase and is retained for history only. |
 | **Author** | Dakota Kim |
 | **Created** | 2026-08-06 |
 | **Tracking issue** | TBD |

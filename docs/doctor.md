@@ -1,8 +1,10 @@
 # mdm doctor
 
-Check the health of installed skills and project markdown files.
+Check the health of everything mdm installs, plus your project markdown.
 
-`mdm doctor` runs a series of local checks and prints a report grouped by category. It covers skill and agent-definition installation integrity, harness symlinks, and any markdown files large enough to strain harness context windows - including instruction files, skill content, and general project docs.
+`mdm doctor` runs a series of local checks and prints a report grouped by category. It covers skill, agent-definition, knowledge-bundle, and plugin installation integrity, harness symlinks, leftover v1 lock files, and any markdown files large enough to strain harness context windows - including instruction files, skill content, and general project docs.
+
+Sections appear only when they have something to report, so a project with no bundles or plugins sees the same output it always did.
 
 ## Checks performed
 
@@ -21,6 +23,34 @@ For each skill recorded in the lock file:
 ### Agent definitions
 
 For each [agent definition](agent-artifacts.md) recorded in the lock file: whether its canonical file (`.agents/agents/<name>.md`, or `.toml` for a TOML source) still exists, and whether every harness it is installed in has a healthy copy - distinguishing a broken symlink in a harness (target missing; run `mdm agents update <name>`) from the definition not being installed in any harness at all (run `mdm agents install`).
+
+### Knowledge bundles
+
+For each [knowledge bundle](knowledge.md) recorded in the `knowledge` section of `mdm.lock`:
+
+| Check | What it catches |
+| --- | --- |
+| Bundle directory exists | Bundle was deleted from disk after install - run `mdm knowledge install` |
+| Content hash matches lock | Bundle files were modified since install - run `mdm knowledge update <name>` |
+| OKF conformance | The bundle no longer validates - run `mdm knowledge validate ./knowledge/<name>` |
+
+### Plugins
+
+For each [plugin](plugins.md) recorded in the `plugins` section of `mdm.lock`:
+
+| Check | What it catches |
+| --- | --- |
+| Plugin directory exists | Plugin was deleted from disk after install - run `mdm plugins install` |
+| `plugin.json` loads | A malformed or missing manifest - run `mdm plugins validate ./.agents/plugins/<name>` |
+| Content hash matches lock | Plugin files were modified since install - run `mdm plugins update <name>` |
+| Skill links intact | A linked skill is missing, or is now owned by a different plugin |
+| MCP config in sync | A recorded server is missing from a harness's MCP config, or an mdm-managed server is in the config but not in the lock |
+| Gitignore hint | A plugin data directory holding machine-local state that isn't gitignored |
+| MCP portability hint | Wired MCP config carrying absolute paths that only resolve on this machine |
+
+### Migration
+
+Flags project and global state that still uses the v1 layout: a `skills-lock.json`, `knowledge-lock.json`, or `plugins-lock.json` that should be folded into `mdm.lock`, a global `~/.agents/skills-lock.json` that should become `mdm-state.json`, and a scope that is using an install mode it has not recorded. All of them are fixed by [`mdm migrate`](commands.md#mdm-migrate).
 
 ### Instruction files
 
@@ -64,11 +94,6 @@ Project skills:
   ▲ large-skill
     ▲ SKILL.md is 45KB - may strain harness context windows
 
-Agent definitions:
-
-  ▲ agent "code-reviewer" is not installed in any harness - run `mdm agents install` to restore
-  ✗ agent "test-writer": broken symlink in Cursor - target missing, run `mdm agents update test-writer` to repair
-
 Instruction files:
 
   ▲ CLAUDE.md is 32KB - may strain harness context windows
@@ -80,6 +105,23 @@ Rules linking:
 Skill coverage:
 
   ▲ Cursor (cursor) is configured but skill "my-skill" is not installed for it - run `mdm skills add` to include it
+
+Knowledge bundles:
+
+  ▲ platform-docs: modified since install (content hash mismatch) - run `mdm knowledge update platform-docs` to re-fetch
+
+Plugins:
+
+  ✗ my-plugin: plugin directory ./.agents/plugins/my-plugin not found - run `mdm plugins install` to restore
+
+Agent definitions:
+
+  ▲ agent "code-reviewer" is not installed in any harness - run `mdm agents install` to restore
+  ✗ agent "test-writer": broken symlink in Cursor - target missing, run `mdm agents update test-writer` to repair
+
+Migration:
+
+  ▲ skills-lock.json is a v1 lock file - fold it into mdm.lock with `mdm migrate`
 
 Project markdown:
 

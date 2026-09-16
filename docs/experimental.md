@@ -48,5 +48,11 @@ support in v2 - the command groups are always visible and need no opt-in.
 
 | Feature | Graduated | Now |
 |---|---|---|
-| `knowledge` | v2 | [`mdm knowledge`](specs/knowledge.md), fully supported |
-| `plugins` | v2 | [`mdm plugins`](specs/plugins.md), fully supported |
+| `knowledge` | v2 | [`mdm knowledge`](knowledge.md) - always available, no opt-in |
+| `plugins` | v2 | [`mdm plugins`](plugins.md) - always available, no opt-in |
+
+A graduated name is no longer a gate. `mdm experimental enable knowledge`
+refuses with *"knowledge graduated to full support in v2 - it is always on, no
+opt-in needed"* rather than storing anything, and `mdm experimental disable
+knowledge` drops a stale opt-in an older release left behind. `mdm migrate`
+clears those opt-ins in bulk.

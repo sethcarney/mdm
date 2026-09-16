@@ -135,7 +135,7 @@ After removing harnesses from the configured list, mdm also cleans up the files 
         projects use for hand-written skills. Removing OpenClaw deletes only what
         mdm installed there; a [cherry-picked fork](skills/cherry-pick.md) and any
         hand-written skill the lock does not record are left in place. See
-        [Troubleshooting](troubleshooting.md#mdm-harnesses-remove-deleted-skills-i-wrote-by-hand).
+        [Troubleshooting](troubleshooting.md#mdm-harnesses-remove-and-hand-written-skills-in-skills).
 - **Instructions file** - the harness's instructions file (e.g. `CLAUDE.md`, `.cursorrules`, `.github/copilot-instructions.md`) is removed **only when mdm created it as a symlink** to `AGENTS.md`; a real file you wrote by hand is kept, with a note. The shared `AGENTS.md` is never touched.
 
 ```bash

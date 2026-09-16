@@ -60,12 +60,12 @@ solves exactly that.
 
 <div class="grid cards" markdown>
 
--   :material-robot-happy:{ .lg .middle } __45 harnesses supported__
+-   :material-robot-happy:{ .lg .middle } __43 harnesses supported__
 
     ---
 
-    Claude Code, Cursor, Cline, GitHub Copilot, Gemini CLI, Codex, and 39 more -
-    out of the box.
+    Claude Code, Cursor, Cline, GitHub Copilot, Gemini CLI, Codex, and 37 more -
+    out of the box. Run `mdm harnesses list --available` for the full list.
 
 -   :material-source-branch:{ .lg .middle } __One source of truth__
 
@@ -120,7 +120,7 @@ solves exactly that.
     `mdm knowledge` installs, validates, and updates Open Knowledge Format (OKF)
     bundles.
 
-    [:octicons-arrow-right-24: Knowledge](specs/knowledge.md)
+    [:octicons-arrow-right-24: Knowledge](knowledge.md)
 
 -   :material-puzzle-outline:{ .lg .middle } __Agent Plugins__
 
@@ -129,7 +129,7 @@ solves exactly that.
     `mdm plugins` installs and validates Agent Plugins - portable packages of
     skills and MCP servers.
 
-    [:octicons-arrow-right-24: Plugins](specs/plugins.md)
+    [:octicons-arrow-right-24: Plugins](plugins.md)
 
 </div>
 
@@ -145,8 +145,8 @@ mdm
 ├── agents        Manage agent definitions installed into harnesses (add · list · remove · update · install)
 ├── knowledge     Manage OKF knowledge bundles
 ├── plugins       Manage Agent Plugins (skills + MCP servers)
-├── doctor        Check installed skills and project markdown for health issues
-├── migrate       Fold v1 lock files into mdm.lock
+├── doctor        Check skills, agent definitions, bundles, plugins, and project markdown
+├── migrate       Fold v1 lock files into mdm.lock and mdm-state.json
 ├── bug           Open a prefilled bug-report form (no network I/O)
 ├── experimental  Manage experimental feature gates
 ├── upgrade       Self-update the mdm binary from GitHub releases

@@ -119,7 +119,7 @@ nav:
       - init: skills/init.md
       - install: skills/install.md
       - sync: skills/sync.md
-  - Design specs:
+  - Design specs (historical):
       - Knowledge (OKF): specs/knowledge.md
       - Plugins: specs/plugins.md
   - Security:

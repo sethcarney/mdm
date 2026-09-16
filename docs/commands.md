@@ -19,7 +19,7 @@ mdm
 ├── upgrade                                 # Self-update the binary (aliases: update-cli, self-update)
 ├── uninstall                               # Remove the binary (alias: remove-cli)
 ├── bug                                     # Open a prefilled bug-report form (no network I/O)
-├── doctor                                  # Health-check installed skills & project markdown
+├── doctor                                  # Health-check skills, agents, bundles, plugins & markdown
 ├── completion [bash|zsh|fish|powershell]   # Generate shell completion
 │   └── install                             # Write completion into your shell rc
 ├── skills                                  # Manage skills for AI harnesses
@@ -54,7 +54,7 @@ mdm
 │   ├── list                                # Show features and status (alias: ls)
 │   ├── enable <feature>                    # Persist an opt-in
 │   └── disable <feature>                   # Remove a persisted opt-in
-├── harnesses                                # Manage the configured harness list
+├── harnesses                               # Manage the configured harness list
 │   ├── list                                # Show configured harnesses (alias: ls)
 │   ├── add [harnesses...]                  # Add harnesses (interactive with no args, alias: a)
 │   └── remove [harnesses...]               # Remove harnesses & their unique files (aliases: rm, r)
@@ -363,13 +363,14 @@ Manage Open Knowledge Format (OKF) bundles.
 
 | Flag | Applies to | Description |
 | --- | --- | --- |
-| `--dir` | `add` | Directory to install bundles into (relative to project root) |
+| `--dir` | `add` | Directory to install bundles into (relative to project root, default `knowledge`) |
 | `--bundle`, `-b` | `add` | Bundle names to install (repeatable; `*` for all) |
-| `--yes`, `-y` | `remove` | Skip confirmation prompts |
+| `--dry-run` | `add` | Show what would be installed without writing anything |
+| `--yes`, `-y` | `add` / `remove` | Skip confirmation prompts (`add`: install every discovered bundle) |
 | `--json` | `validate` | Print the validation report as JSON |
 | `--allow-hidden-chars` | `add` / `update` / `install` | Allow markdown files with hidden Unicode characters |
 
-[:octicons-arrow-right-24: Details](specs/knowledge.md)
+[:octicons-arrow-right-24: Details](knowledge.md)
 
 ---
 
@@ -396,11 +397,11 @@ the vendor-neutral [agent-plugins.org](https://agent-plugins.org) standard.
 | `--dry-run` | `add` | Show what would be installed without writing anything |
 | `--purge-data` | `remove` | Also delete the plugin's persistent data directory |
 | `--with-mcp` | `init` | Also scaffold an example `mcp.json` |
-| `--yes`, `-y` | `add` / `remove` | Skip confirmation prompts |
+| `--yes`, `-y` | `add` / `remove` | Skip confirmation prompts (`add`: install every discovered plugin) |
 | `--json` | `validate` | Print the validation report as JSON |
 | `--allow-hidden-chars` | `add` / `update` / `install` | Allow markdown files with hidden Unicode characters |
 
-[:octicons-arrow-right-24: Details](specs/plugins.md)
+[:octicons-arrow-right-24: Details](plugins.md)
 
 ---
 
@@ -506,8 +507,10 @@ always get the URL printed even when nothing can open it.
 
 ## `mdm doctor`
 
-Check installed skills and project markdown for health issues - broken symlinks,
-hash mismatches, missing READMEs, and oversized markdown files.
+Check installed skills, agent definitions, knowledge bundles, plugins, and
+project markdown for health issues - broken symlinks, hash mismatches, OKF and
+plugin conformance errors, MCP config drift, leftover v1 lock files, missing
+READMEs, and oversized markdown files.
 
 ```bash
 mdm doctor
