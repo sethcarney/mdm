@@ -100,7 +100,10 @@ func restoreAgentsMap(entries map[string]lock.AgentLockEntry, global bool, opts 
 	}
 	groups := groupBySourceRef(refs)
 
-	baseOpts := AgentOptions{Yes: opts.yes, AllowHiddenChars: opts.allowHiddenChars, Copy: opts.copy, Symlink: opts.symlink}
+	// Force: a restore reinstalls the lock's own entries, so the recorded
+	// source is by definition the one each definition belongs to, even when
+	// that source has since moved the file.
+	baseOpts := AgentOptions{Yes: opts.yes, AllowHiddenChars: opts.allowHiddenChars, Copy: opts.copy, Symlink: opts.symlink, Force: true}
 	if global {
 		baseOpts.Global = true
 	} else {

@@ -87,6 +87,11 @@ type AgentOptions struct {
 	AllowHiddenChars bool
 	Copy             bool
 	Symlink          bool
+	// Force lets an add replace a definition the lock already records from
+	// a different source, or from a different file of the same source.
+	// Without it such an add is refused, since two names that sanitize to
+	// one disk name would otherwise silently swap what every harness serves.
+	Force bool
 	// HarnessesFor overrides Harnesses per definition, keyed by disk name.
 	// The restore path sets it so each definition goes back into exactly
 	// the harnesses its lock entry names; the flags never do.

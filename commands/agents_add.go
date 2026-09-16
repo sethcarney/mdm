@@ -69,6 +69,7 @@ pass them space-separated after the flag or repeat the flag for each value:
 	f.BoolVar(&opts.AllowHiddenChars, "allow-hidden-chars", false, "Allow markdown files with hidden Unicode characters")
 	f.BoolVar(&opts.Copy, "copy", false, "Copy files instead of symlinking (switches the scope to copy mode)")
 	f.BoolVar(&opts.Symlink, "symlink", false, "Symlink files from .agents/agents (the default; switches a scope back from copy mode)")
+	f.BoolVar(&opts.Force, "force", false, "Replace a definition already installed under the same name from another source")
 	// The install mode is one switch with two settings, so asking for
 	// both is a contradiction rather than a precedence puzzle.
 	cmd.MarkFlagsMutuallyExclusive("copy", "symlink")
@@ -163,7 +164,7 @@ func runAgentAdd(sourceInput string, opts AgentOptions) bool {
 
 	baseEntry := agentLockEntry(parsed, sourceInput)
 	fmt.Println()
-	outcome := installAgents(selected, harnesses, global, mode, baseEntry, rootDir, cwd, agentInstallRun{harnessesFor: opts.HarnessesFor})
+	outcome := installAgents(selected, harnesses, global, mode, baseEntry, rootDir, cwd, agentInstallRun{harnessesFor: opts.HarnessesFor, force: opts.Force})
 	fmt.Println()
 	printAgentInstallSummary(outcome, global, mode)
 	// A definition mdm already owns is not a failure to install it.
@@ -360,6 +361,7 @@ func agentFileRepoPath(agentPath, rootDir string) string {
 // every harness it was aimed at and install nowhere.
 type agentInstallOutcome struct {
 	alreadyInstalled int      // definitions skipped because their file is the canonical copy the lock already records
+	refused          int      // definitions refused because the lock records their name from another source
 	installed        int      // definitions that reached at least one harness
 	harnesses        []string // harnesses that actually received something, in the order given
 	fallbacks        *symlinkFallbacks
@@ -415,9 +417,50 @@ func canonicalRollback(a *agentfile.AgentFile, name string, global bool, cwd str
 // agentInstallRun is what one add run knows beyond the harness list it was
 // given: a per-definition override of that list, keyed by disk name, which
 // the restore path uses to put each definition back into exactly the
-// harnesses its lock entry names.
+// harnesses its lock entry names; and whether a definition the lock records
+// from another source may be replaced.
 type agentInstallRun struct {
 	harnessesFor map[string][]string
+	force        bool
+}
+
+// sameAgentSource reports whether two entries name the same source. A local
+// path is compared resolved, since the lock keeps it cwd-relative and a fresh
+// entry carries it absolute; a remote one by the URL it parses to, so
+// "owner/repo" and its https form agree. The ref is not compared: re-adding
+// at another ref re-pins the same definition.
+func sameAgentSource(a, b lock.AgentLockEntry, cwd string) bool {
+	if a.SourceType != b.SourceType {
+		return false
+	}
+	if a.SourceType == string(source.SourceTypeLocal) {
+		return resolveLocalAgentSourceAbs(a, cwd) == resolveLocalAgentSourceAbs(b, cwd)
+	}
+	au, bu := source.ParseSource(a.Source).URL, source.ParseSource(b.Source).URL
+	if au == "" || bu == "" {
+		return a.Source == b.Source
+	}
+	return au == bu
+}
+
+// agentSourceConflict explains why installing a definition as name would
+// silently replace the one the lock already records under it, or returns ""
+// when it would not. Two frontmatter names can sanitize to one disk name -
+// "critic" from one source and "Critic" from another - and the guard inside
+// one run (claimed) cannot see across runs. The lock can: a recorded entry
+// from a different source, or from a different file of the same source, is
+// a collision. An entry written before AgentPath was recorded for its source
+// cannot be compared by file and is compared by source alone.
+func agentSourceConflict(prior, incoming lock.AgentLockEntry, incomingPath, name, cwd string) string {
+	if !sameAgentSource(prior, incoming, cwd) {
+		return fmt.Sprintf("%s is already installed from %s (%s); installing %s from %s would replace it - remove it with `mdm agents remove %s` first, or pass --force to replace it",
+			name, prior.Source, prior.AgentPath, incomingPath, incoming.Source, name)
+	}
+	if prior.AgentPath != "" && incomingPath != "" && prior.AgentPath != incomingPath {
+		return fmt.Sprintf("%s is already installed from %s in %s; %s in the same source would replace it - remove it with `mdm agents remove %s` first, or pass --force to replace it",
+			name, prior.Source, prior.AgentPath, incomingPath, name)
+	}
+	return ""
 }
 
 // targetsFor returns the harnesses one definition goes to.
@@ -466,6 +509,21 @@ func installAgents(agents []*agentfile.AgentFile, harnesses []string, global boo
 		claimed[name] = a.Path
 
 		targets := run.targetsFor(name, harnesses)
+		agentPath := agentFileRepoPath(a.Path, rootDir)
+		if prior, ok := recorded[name]; ok {
+			if conflict := agentSourceConflict(prior, baseEntry, agentPath, name, cwd); conflict != "" {
+				if !run.force {
+					ui.LogError(fmt.Sprintf("%s: %s", a.Name, conflict))
+					outcome.refused++
+					continue
+				}
+				// A forced replacement is a replacement everywhere: the
+				// harnesses still serving the prior definition get the new
+				// one too, or the lock would name one source while some
+				// harness served another.
+				targets = unionHarnesses(targets, prior.Harnesses)
+			}
+		}
 		installedTo := installOneAgent(a, name, targets, global, cwd, mode, &outcome)
 		if len(installedTo) == 0 {
 			continue
@@ -479,7 +537,7 @@ func installAgents(agents []*agentfile.AgentFile, harnesses []string, global boo
 		}
 
 		entry := baseEntry
-		entry.AgentPath = agentFileRepoPath(a.Path, rootDir)
+		entry.AgentPath = agentPath
 		entry.Format = string(agentCanonicalFormat(a))
 		// The list is what remove, update and install act on. A harness an
 		// earlier add of the same definition reached is still holding it, so

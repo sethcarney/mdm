@@ -1550,7 +1550,10 @@ func TestAgentsAddModeFlagsConvertTheWholeScope(t *testing.T) {
 	setConfigured(t, cwd, "claude-code")
 	src := agentSourceDir(t)
 
-	runAgentsAdd(t, src, "--copy")
+	// --force: the lock records critic from o/r, and this add brings the
+	// same name from a local directory, which is a cross-source collision
+	// the add refuses unless told to replace the definition.
+	runAgentsAdd(t, src, "--copy", "--force")
 	assertRecordedMode(t, cwd, lock.InstallModeCopy)
 	assertRealSkill(t, skillLink)
 	if isSymlink(t, agentLink) {
