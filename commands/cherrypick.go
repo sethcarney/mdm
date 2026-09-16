@@ -580,11 +580,13 @@ func installForks(forked []string, opts CherryPickOptions, cwd string) {
 	}
 
 	fmt.Println()
-	installSkillsForHarnesses(skills, harnesses, global, mode, lock.SkillLockEntry{
+	if installSkillsForHarnesses(skills, harnesses, global, mode, lock.SkillLockEntry{
 		Source:     forksRoot,
 		SourceType: string(source.SourceTypeLocal),
 		SourceURL:  forksRoot,
-	}, cwd, "")
+	}, cwd, "") == 0 {
+		os.Exit(1)
+	}
 }
 
 // ─── Status ────────────────────────────────────────────────────────────────────

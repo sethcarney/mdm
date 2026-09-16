@@ -351,11 +351,13 @@ func runAddLocal(parsed source.ParsedSource, opts AddOptions, cwd string) {
 	}
 
 	fmt.Println()
-	installSkillsForHarnesses(selectedSkills, harnesses, global, mode, lock.SkillLockEntry{
+	if installSkillsForHarnesses(selectedSkills, harnesses, global, mode, lock.SkillLockEntry{
 		Source:     localPath,
 		SourceType: string(source.SourceTypeLocal),
 		SourceURL:  localPath,
-	}, cwd, "")
+	}, cwd, "") == 0 {
+		os.Exit(1)
+	}
 	// Said after the install, not before: the install itself is fine. It is the
 	// lock entry it just wrote that no teammate can use, because a path outside
 	// the project is not part of the repository they clone.
@@ -525,7 +527,9 @@ func runAddGitOrHub(parsed source.ParsedSource, opts AddOptions, cwd, sourceInpu
 		Ref:        lockRef,
 	}
 
-	installSkillsForHarnesses(selectedSkills, harnesses, global, mode, baseLockEntry, cwd, tmpDir)
+	if installSkillsForHarnesses(selectedSkills, harnesses, global, mode, baseLockEntry, cwd, tmpDir) == 0 {
+		os.Exit(1)
+	}
 
 	maybeShowFindPrompt(cwd)
 }
@@ -710,8 +714,15 @@ func runAddBlob(result *blob.BlobInstallResult, parsed source.ParsedSource, opts
 
 // ─── Shared install logic ──────────────────────────────────────────────────────
 
-func installSkillsForHarnesses(skills []*skill.Skill, harnesses []string, global bool, mode InstallMode, baseLockEntry lock.SkillLockEntry, cwd string, cloneDir string) {
+// installSkillsForHarnesses installs each skill into every harness and records
+// it in the lock. It returns the number of skills that reached at least one
+// harness. A skill no harness accepted - refused for every one, e.g. a plugin
+// owns the name - records no lock entry and is not counted: an orphan entry the
+// lock has no install to back would otherwise survive, unremovable via
+// `mdm skills remove` and reported by doctor as missing on disk.
+func installSkillsForHarnesses(skills []*skill.Skill, harnesses []string, global bool, mode InstallMode, baseLockEntry lock.SkillLockEntry, cwd string, cloneDir string) int {
 	var fallbacks symlinkFallbacks
+	installed := 0
 	for _, s := range skills {
 		sName := sanitizeName(s.Name)
 		fmt.Printf("%sInstalling %s%s%s...\n", ansiDim, ansiText, s.Name, ansiReset)
@@ -730,6 +741,12 @@ func installSkillsForHarnesses(skills []*skill.Skill, harnesses []string, global
 		} else {
 			ui.LogWarn(fmt.Sprintf("%s (failed for: %s)", s.Name, strings.Join(failedHarnesses, ", ")))
 		}
+
+		// No harness accepted it: write nothing to the lock and do not count it.
+		if len(failedHarnesses) == len(harnesses) {
+			continue
+		}
+		installed++
 
 		skillPath := skillMdRepoPath(s.Path, cloneDir)
 
@@ -758,7 +775,8 @@ func installSkillsForHarnesses(skills []*skill.Skill, harnesses []string, global
 	}
 
 	fmt.Println()
-	printInstallSummary(len(skills), global, harnesses, mode, &fallbacks)
+	printInstallSummary(installed, global, harnesses, mode, &fallbacks)
+	return installed
 }
 
 // skillMdRepoPath returns the repo-relative path to the SKILL.md file for a
@@ -1206,6 +1224,11 @@ func printInstallSummary(count int, global bool, harnesses []string, mode Instal
 	scope := "project"
 	if global {
 		scope = "global"
+	}
+	if count == 0 {
+		fmt.Printf("%sNo skills were installed (%s scope).%s\n\n", ansiYellow, scope, ansiReset)
+		fallbacks.warn()
+		return
 	}
 	noun := "skill"
 	if count != 1 {
