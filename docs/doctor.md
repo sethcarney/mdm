@@ -41,10 +41,14 @@ Walks the entire project tree and flags any other `.md` file that is too large. 
 
 ### Size thresholds
 
-| Size     | Severity                                             |
-| -------- | ------------------------------------------------------ |
-| ≥ 20 KB  | Warning - may strain harness context windows         |
-| ≥ 100 KB | Error - likely too large for harness context windows |
+| Size      | Severity                                             |
+| --------- | ------------------------------------------------------ |
+| ≥ 64 KB   | Warning - may strain harness context windows         |
+| ≥ 256 KB  | Error - likely too large for harness context windows |
+
+Markdown is plain text at roughly 4 bytes per token, so these map to about
+16K and 64K tokens - a nudge at ~12% of a 128K-token context window, an error
+at roughly half of it.
 
 ## Output
 

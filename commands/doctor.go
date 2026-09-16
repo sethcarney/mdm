@@ -16,8 +16,13 @@ import (
 )
 
 const (
-	fileSizeWarnBytes  = 20 * 1024  // 20 KB - may strain context windows
-	fileSizeErrorBytes = 100 * 1024 // 100 KB - likely too large
+	// Markdown is plain text at roughly 4 bytes per token, so these bytes map
+	// to token counts against a harness context window. Sized against the
+	// smallest mainstream modern window (~128K tokens): 64 KB is ~16K tokens
+	// (~12% of it), a doc worth a nudge; 256 KB is ~64K tokens (~half of it), a
+	// single file large enough to genuinely crowd out everything else.
+	fileSizeWarnBytes  = 64 * 1024  // 64 KB - starting to strain context windows
+	fileSizeErrorBytes = 256 * 1024 // 256 KB - eats half a 128K-token window
 
 	// Maximum filesystem entries walked before the project-wide markdown
 	// scan gives up, to avoid hangs on very large repositories.
