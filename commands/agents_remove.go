@@ -31,13 +31,50 @@ type agentRemoval struct {
 	foreign []string
 }
 
+// sameLinkOnDisk reports whether two paths name the same directory entry
+// without following a final symlink: an adopted source file that is now a
+// link to the canonical file is the same entry as itself and a different one
+// from the canonical file it points at, which is exactly the distinction a
+// removal after `mdm agents add .` needs.
+func sameLinkOnDisk(a, b string) bool {
+	ai, err := os.Lstat(a)
+	if err != nil {
+		return false
+	}
+	bi, err := os.Lstat(b)
+	if err != nil {
+		return false
+	}
+	return os.SameFile(ai, bi)
+}
+
+// localSourceKeeper returns the test for a path being the user's own file
+// inside the local source the definition was added from. With the source
+// file recorded, that is the one file discovery found - `mdm agents add .`
+// discovers a hand-written .claude/agents/critic.md and then writes Codex's
+// TOML and Copilot's copy beside it, and those are mdm's to delete. An entry
+// written before the file was recorded cannot tell the source from what was
+// written beside it, so for those nothing inside the source directory is
+// deleted, as before. A definition from a remote source keeps nothing.
+func localSourceKeeper(entry lock.AgentLockEntry, cwd string) func(path string) bool {
+	localSourceAbs := resolveLocalAgentSourceAbs(entry, cwd)
+	if localSourceAbs == "" {
+		return func(string) bool { return false }
+	}
+	if entry.AgentPath == "" {
+		return func(path string) bool { return isInsideOrEqual(path, localSourceAbs) }
+	}
+	sourceFile := filepath.Join(localSourceAbs, filepath.FromSlash(entry.AgentPath))
+	return func(path string) bool { return sameLinkOnDisk(path, sourceFile) }
+}
+
 // removeAgentHarnessCopies deletes the definition's file under each harness.
-// Inside localSourceAbs the file is the user's own: an adopted link there is
-// turned back into a real file and the path reported in kept. Elsewhere a
-// file is deleted only when mdmOwnsAgentFile can show mdm wrote it; any other
-// file is reported in foreign and left where it is. failed describes every
+// A file isSource says is the user's own is kept: an adopted link there is
+// turned back into a real file and the path reported in kept. Any other file
+// is deleted only when mdmOwnsAgentFile can show mdm wrote it, and is
+// otherwise reported in foreign and left where it is. failed describes every
 // deletion or un-adoption that did not succeed.
-func removeAgentHarnessCopies(name string, harnesses []string, localSourceAbs, canonicalPath string, global bool, cwd string) (res agentRemoval, failed []string) {
+func removeAgentHarnessCopies(name string, harnesses []string, isSource func(string) bool, canonicalPath string, global bool, cwd string) (res agentRemoval, failed []string) {
 	for _, harnessName := range harnesses {
 		target := agentHarnessPath(name, harnessName, global, cwd)
 		if target == "" || !isPathSafe(harness.AgentsInstallDirFor(harnessName, global, cwd), target) {
@@ -46,7 +83,7 @@ func removeAgentHarnessCopies(name string, harnesses []string, localSourceAbs, c
 		if _, statErr := os.Lstat(target); statErr != nil {
 			continue
 		}
-		if localSourceAbs != "" && isInsideOrEqual(target, localSourceAbs) {
+		if isSource(target) {
 			if unErr := unadoptAgentLink(target, canonicalPath); unErr != nil {
 				failed = append(failed, fmt.Sprintf("%s (%v)", harnessName, unErr))
 				continue
@@ -144,22 +181,24 @@ var removeFileFn = os.Remove
 // filter still holds a copy, and otherwise takes the cleared harnesses off the
 // entry's list, so the lock keeps describing the disk.
 //
-// Files inside the local source the definition was added from are the user's
-// own and are never deleted; they are returned in kept. `mdm agents add .`
-// adopts a hand-written .claude/agents/critic.md by copying it to the canonical
-// file and leaving a symlink behind, so a kept link is first turned back into
-// the real file it replaced, before the canonical file it points at can go.
+// The file the definition was discovered from in a local source is the user's
+// own and is never deleted; it is returned in kept. `mdm agents add .` adopts
+// a hand-written .claude/agents/critic.md by copying it to the canonical file
+// and leaving a symlink behind, so a kept link is first turned back into the
+// real file it replaced, before the canonical file it points at can go.
+// Everything mdm wrote beside it - the canonical file, Codex's TOML, Copilot's
+// copy - goes with the rest.
 func removeAgentFromDisk(name string, harnessFilter []string, entry lock.AgentLockEntry, global bool, cwd string) (agentRemoval, error) {
 	held := agentInstalledIn(name, entry, global, cwd)
 	targets := held
 	if len(harnessFilter) > 0 {
 		targets = keepIn(held, stringSet(harnessFilter))
 	}
-	localSourceAbs := resolveLocalAgentSourceAbs(entry, cwd)
+	isSource := localSourceKeeper(entry, cwd)
 	canonicalDir := harness.CanonicalAgentsDir(global, cwd)
 	canonicalPath := agentCanonicalPath(name, lockedAgentFormat(entry), global, cwd)
 
-	res, failed := removeAgentHarnessCopies(name, targets, localSourceAbs, canonicalPath, global, cwd)
+	res, failed := removeAgentHarnessCopies(name, targets, isSource, canonicalPath, global, cwd)
 	if len(failed) > 0 {
 		return res, fmt.Errorf("could not remove from %s", strings.Join(failed, ", "))
 	}
@@ -173,10 +212,8 @@ func removeAgentFromDisk(name string, harnessFilter []string, entry lock.AgentLo
 		return res, nil
 	}
 
-	if localSourceAbs != "" && isInsideOrEqual(canonicalPath, localSourceAbs) {
-		if _, statErr := os.Lstat(canonicalPath); statErr == nil {
-			res.kept = append(res.kept, canonicalPath)
-		}
+	if isSource(canonicalPath) {
+		res.kept = append(res.kept, canonicalPath)
 	} else if isPathSafe(canonicalDir, canonicalPath) {
 		if rmErr := removeFileFn(canonicalPath); rmErr != nil && !os.IsNotExist(rmErr) {
 			return res, fmt.Errorf("could not remove the canonical file: %w", rmErr)

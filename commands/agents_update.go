@@ -172,7 +172,7 @@ func refreshableHarnesses(name string, held []string, canonicalPath string, glob
 // updateOneAgent reinstalls one fetched definition into every harness that
 // holds it and records the result. It returns true when the lock entry was
 // refreshed.
-func updateOneAgent(a *agentfile.AgentFile, name string, entry lock.AgentLockEntry, baseEntry lock.AgentLockEntry, cloneDir string, global bool, cwd string, mode InstallMode) bool {
+func updateOneAgent(a *agentfile.AgentFile, name string, entry lock.AgentLockEntry, baseEntry lock.AgentLockEntry, rootDir string, global bool, cwd string, mode InstallMode) bool {
 	held := agentInstalledIn(name, entry, global, cwd)
 	if len(held) == 0 {
 		ui.LogWarn(fmt.Sprintf("%s: not installed in any harness, skipping", a.Name))
@@ -210,7 +210,7 @@ func updateOneAgent(a *agentfile.AgentFile, name string, entry lock.AgentLockEnt
 	}
 
 	fresh := baseEntry
-	fresh.AgentPath = agentFileRepoPath(a.Path, cloneDir)
+	fresh.AgentPath = agentFileRepoPath(a.Path, rootDir)
 	fresh.Format = string(agentCanonicalFormat(a))
 	// An entry with a list keeps it: a harness whose file went missing is
 	// still where the lock says the definition belongs. One without a list
@@ -238,7 +238,7 @@ func runAgentUpdateGroups(groups []updateGroup, global bool, cwd string, allowHi
 		vlog(verboseFlag, "updating agent definition(s) from %q: %v", g.source, g.names)
 
 		parsed := source.ParseSource(g.source)
-		searchRoot, cloneDir, cleanup := fetchAgentSource(parsed, verboseFlag)
+		searchRoot, rootDir, cleanup := fetchAgentSource(parsed, verboseFlag)
 
 		found, err := agentfile.DiscoverAgentFiles(searchRoot, parsed.Subpath)
 		if err != nil {
@@ -269,7 +269,7 @@ func runAgentUpdateGroups(groups []updateGroup, global bool, cwd string, allowHi
 				continue
 			}
 			claimed[name] = a.Path
-			if updateOneAgent(a, name, entries[name], baseEntry, cloneDir, global, cwd, mode) {
+			if updateOneAgent(a, name, entries[name], baseEntry, rootDir, global, cwd, mode) {
 				stats.updated++
 			}
 		}

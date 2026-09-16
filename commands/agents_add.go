@@ -79,9 +79,12 @@ pass them space-separated after the flag or repeat the flag for each value:
 }
 
 // fetchAgentSource materializes sourceInput on disk and returns the directory
-// to search, the git clone root for AgentPath bookkeeping (empty for a local
-// path), and a cleanup func for any temp clone.
-func fetchAgentSource(parsed source.ParsedSource, verbose bool) (searchRoot, cloneDir string, cleanup func()) {
+// to search, the root AgentPath is recorded relative to - the git clone for a
+// remote source, the local directory itself for a local one - and a cleanup
+// func for any temp clone. A local install records the path too: it is what
+// lets `mdm agents remove` tell the one file `mdm agents add .` discovered
+// from the harness files mdm then wrote beside it.
+func fetchAgentSource(parsed source.ParsedSource, verbose bool) (searchRoot, rootDir string, cleanup func()) {
 	noop := func() {}
 	switch parsed.Type {
 	case source.SourceTypeLocal:
@@ -89,7 +92,7 @@ func fetchAgentSource(parsed source.ParsedSource, verbose bool) (searchRoot, clo
 			fmt.Fprintf(os.Stderr, "%sError:%s Path not found: %s\n", ansiText, ansiReset, parsed.LocalPath)
 			os.Exit(1)
 		}
-		return parsed.LocalPath, "", noop
+		return parsed.LocalPath, parsed.LocalPath, noop
 	case source.SourceTypeWellKnown:
 		fmt.Fprintf(os.Stderr, "%sError:%s well-known registries are not supported for agent definitions\n", ansiText, ansiReset)
 		os.Exit(1)
@@ -120,7 +123,7 @@ func runAgentAdd(sourceInput string, opts AgentOptions) bool {
 		sourceInput, parsed.Type, parsed.URL, parsed.Ref, parsed.Subpath)
 	fmt.Println()
 
-	searchRoot, cloneDir, cleanup := fetchAgentSource(parsed, verboseFlag)
+	searchRoot, rootDir, cleanup := fetchAgentSource(parsed, verboseFlag)
 	defer cleanup()
 
 	// Reported, not exited: the restore path calls this once per source
@@ -160,7 +163,7 @@ func runAgentAdd(sourceInput string, opts AgentOptions) bool {
 
 	baseEntry := agentLockEntry(parsed, sourceInput)
 	fmt.Println()
-	outcome := installAgents(selected, harnesses, global, mode, baseEntry, cloneDir, cwd, agentInstallRun{harnessesFor: opts.HarnessesFor})
+	outcome := installAgents(selected, harnesses, global, mode, baseEntry, rootDir, cwd, agentInstallRun{harnessesFor: opts.HarnessesFor})
 	fmt.Println()
 	printAgentInstallSummary(outcome, global, mode)
 	// A definition mdm already owns is not a failure to install it.
@@ -346,10 +349,11 @@ func agentLockEntry(parsed source.ParsedSource, sourceInput string) lock.AgentLo
 	return entry
 }
 
-// agentFileRepoPath returns the repo-relative path to a discovered agent
-// definition file. cloneDir is the git clone root, empty for a local install.
-func agentFileRepoPath(agentPath, cloneDir string) string {
-	return repoRelPath(agentPath, cloneDir)
+// agentFileRepoPath returns the source-relative path to a discovered agent
+// definition file: relative to the git clone root for a remote source, and to
+// the local directory for a local one.
+func agentFileRepoPath(agentPath, rootDir string) string {
+	return repoRelPath(agentPath, rootDir)
 }
 
 // agentInstallOutcome is what an add run did. A definition can be skipped by
@@ -428,12 +432,12 @@ func (r agentInstallRun) targetsFor(name string, harnesses []string) []string {
 // requested harness, and records it in the lock only when at least one harness
 // received it. A harness with no agent-definition directory recorded is a
 // skip with a reason. A definition no harness accepted leaves nothing behind.
-func installAgentsForHarnesses(agents []*agentfile.AgentFile, harnesses []string, global bool, mode InstallMode, baseEntry lock.AgentLockEntry, cloneDir, cwd string) agentInstallOutcome {
-	return installAgents(agents, harnesses, global, mode, baseEntry, cloneDir, cwd, agentInstallRun{})
+func installAgentsForHarnesses(agents []*agentfile.AgentFile, harnesses []string, global bool, mode InstallMode, baseEntry lock.AgentLockEntry, rootDir, cwd string) agentInstallOutcome {
+	return installAgents(agents, harnesses, global, mode, baseEntry, rootDir, cwd, agentInstallRun{})
 }
 
 // installAgents is installAgentsForHarnesses with the run's extra knowledge.
-func installAgents(agents []*agentfile.AgentFile, harnesses []string, global bool, mode InstallMode, baseEntry lock.AgentLockEntry, cloneDir, cwd string, run agentInstallRun) agentInstallOutcome {
+func installAgents(agents []*agentfile.AgentFile, harnesses []string, global bool, mode InstallMode, baseEntry lock.AgentLockEntry, rootDir, cwd string, run agentInstallRun) agentInstallOutcome {
 	fallbacks := symlinkFallbacks{noun: "agent definitions", group: "agents"}
 	var materialized materializedInstalls
 	outcome := agentInstallOutcome{fallbacks: &fallbacks, materialized: &materialized}
@@ -475,7 +479,7 @@ func installAgents(agents []*agentfile.AgentFile, harnesses []string, global boo
 		}
 
 		entry := baseEntry
-		entry.AgentPath = agentFileRepoPath(a.Path, cloneDir)
+		entry.AgentPath = agentFileRepoPath(a.Path, rootDir)
 		entry.Format = string(agentCanonicalFormat(a))
 		// The list is what remove, update and install act on. A harness an
 		// earlier add of the same definition reached is still holding it, so
