@@ -31,8 +31,11 @@ and [docs/agent-artifacts.md](docs/agent-artifacts.md#formats-markdown-and-toml)
 
 Three names deliberately keep the old word and must not be renamed: `AGENTS.md`
 itself, the shared `.agents/` directory (`.agents/skills`, `.agents/agents`), and
-the `configuredAgents` JSON key that v1 lock readers still parse (the Go field
-behind it is `ConfiguredHarnesses`).
+the `configuredAgents` JSON key in the **legacy v1 `skills-lock.json`** that the
+migration reader still parses (the Go field behind it is `ConfiguredHarnesses`).
+`mdm.lock` and `mdm-state.json` are v2-era file names with no released
+predecessor, so they start at `"version": 1` and use `configuredHarnesses`
+exclusively - only the v1 `skills-lock.json` lineage carries `configuredAgents`.
 
 ## Git Conventions
 

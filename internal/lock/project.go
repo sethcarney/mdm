@@ -70,7 +70,11 @@ const (
 // ProjectLockName is the unified project lock file at the project root.
 const ProjectLockName = "mdm.lock"
 
-const projectLockVersion = 2
+// projectLockVersion is the format version of mdm.lock. mdm.lock is a v2-era
+// file name with no released predecessor, so it starts at 1 - the legacy
+// skills-lock.json version numbers belong to a different file that `mdm migrate`
+// folds away, and are handled entirely on the migration path.
+const projectLockVersion = 1
 
 // ProjectLockFile is the in-memory form of mdm.lock. Unknown top-level keys are
 // captured on read and re-emitted on write, and so are unknown keys inside each
@@ -328,21 +332,8 @@ func (l *ProjectLockFile) UnmarshalJSON(data []byte) error {
 	if err := decode("installMode", &l.InstallMode); err != nil {
 		return err
 	}
-	if _, ok := raw["configuredHarnesses"]; ok {
-		if err := decode("configuredHarnesses", &l.ConfiguredHarnesses); err != nil {
-			return err
-		}
-		// A lock carrying both spellings keeps the new one; the old key must
-		// not ride along in the unknown-key passthrough forever.
-		delete(raw, "configuredAgents")
-	} else if _, ok := raw["configuredAgents"]; ok {
-		// mdm.lock's v2 format shipped this key spelled configuredAgents.
-		// Real locks exist on disk with that spelling, so decode falls back
-		// to it and deletes it from raw, which recovers the harness list and
-		// stops a round trip leaving both spellings in the file.
-		if err := decode("configuredAgents", &l.ConfiguredHarnesses); err != nil {
-			return err
-		}
+	if err := decode("configuredHarnesses", &l.ConfiguredHarnesses); err != nil {
+		return err
 	}
 	l.rawSkills = captureRawEntries(raw["skills"])
 	l.rawKnowledge = captureRawEntries(raw["knowledge"])
@@ -404,17 +395,11 @@ func readProjectLockE(cwd string) (ProjectLockFile, error) {
 	if lk.Version > projectLockVersion {
 		return EmptyProjectLock(), errNewerLock(path, lk.Version, projectLockVersion)
 	}
-	// A version 1 lock predates the install-mode switch: upgrade it in memory
-	// and let the next write persist the version. `mdm migrate` infers the mode
-	// from disk. A range, not `== 1`, so the next bump keeps this path.
-	if lk.Version >= 1 && lk.Version < projectLockVersion {
-		lk.Version = projectLockVersion
-	}
 	if lk.Version < projectLockVersion {
-		// No version at all. A bare `{}` is harmless, but a file that still
-		// carries sections lost its version line to a hand edit or a bad
-		// merge. Reading it as empty would let the next write replace it
-		// with only the newest entry, so it aborts like any other damage.
+		// Version 0 - no version field. A bare `{}` is harmless, but a file that
+		// still carries sections lost its version line to a hand edit or a bad
+		// merge. Reading it as empty would let the next write replace it with
+		// only the newest entry, so it aborts like any other damage.
 		if !lk.isEmpty() {
 			return EmptyProjectLock(), errUnversionedLock(path)
 		}

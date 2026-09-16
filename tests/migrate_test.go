@@ -32,7 +32,7 @@ func TestMigrateDryRunDoesNotClearGraduatedOptIns(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	original := []byte(`{"version":2,"experimental":["knowledge","plugins"],"skills":{}}`)
+	original := []byte(`{"version":1,"experimental":["knowledge","plugins"],"skills":{}}`)
 	if err := os.WriteFile(statePath, original, 0o600); err != nil {
 		t.Fatal(err)
 	}

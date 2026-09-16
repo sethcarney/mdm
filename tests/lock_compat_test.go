@@ -81,11 +81,11 @@ func TestTombstoneDoesNotAbortV2(t *testing.T) {
 	}
 }
 
-// A version 1 mdm.lock predates the install-mode switch. It must still
-// restore its skills, and the file must be at the current version
-// afterwards. The v1 line's read-as-empty handling of an unrecognized
-// version is exactly the bug this upgrade path exists to avoid.
-func TestVersion1LockUpgradesOnInstall(t *testing.T) {
+// mdm.lock is version 1 - a new file name with no released predecessor. A
+// current-version lock restores its skills to the harnesses it records and
+// stays at version 1 afterwards. (An unrecognized version reading as empty is
+// exactly the bug the version guard exists to avoid.)
+func TestCurrentLockRestoresSkills(t *testing.T) {
 	dir := t.TempDir()
 
 	skillDir := filepath.Join(dir, "my-skill")
@@ -95,17 +95,17 @@ func TestVersion1LockUpgradesOnInstall(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: my-skill\ndescription: d\n---\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	v1 := `{"version":1,"skills":{"my-skill":{"source":"./my-skill","sourceType":"local"}},"configuredAgents":["claude-code"]}`
-	if err := os.WriteFile(filepath.Join(dir, lockName), []byte(v1), 0600); err != nil {
+	lk := `{"version":1,"configuredHarnesses":["claude-code"],"skills":{"my-skill":{"source":"./my-skill","sourceType":"local"}}}`
+	if err := os.WriteFile(filepath.Join(dir, lockName), []byte(lk), 0600); err != nil {
 		t.Fatal(err)
 	}
 
 	stdout, stderr, code := runMdmInDir(t, dir, freshEnv(t), "skills", "install", "-y")
 	if code != 0 {
-		t.Fatalf("skills install against a version 1 lock exited %d:\n%s%s", code, stdout, stderr)
+		t.Fatalf("skills install against the lock exited %d:\n%s%s", code, stdout, stderr)
 	}
 	if _, err := os.Stat(filepath.Join(dir, ".claude", "skills", "my-skill", "SKILL.md")); err != nil {
-		t.Errorf("skill not restored from the version 1 lock: %v\n%s", err, stdout)
+		t.Errorf("skill not restored from the lock: %v\n%s", err, stdout)
 	}
 
 	after, err := os.ReadFile(filepath.Join(dir, lockName))
@@ -117,46 +117,12 @@ func TestVersion1LockUpgradesOnInstall(t *testing.T) {
 		Skills  map[string]json.RawMessage `json:"skills"`
 	}
 	if err := json.Unmarshal(after, &parsed); err != nil {
-		t.Fatalf("lock is not valid JSON after the upgrade: %v\n%s", err, after)
+		t.Fatalf("lock is not valid JSON after install: %v\n%s", err, after)
 	}
-	if parsed.Version != 2 {
-		t.Errorf("lock version = %d, want 2 after the upgrade:\n%s", parsed.Version, after)
+	if parsed.Version != 1 {
+		t.Errorf("lock version = %d, want 1:\n%s", parsed.Version, after)
 	}
 	if _, ok := parsed.Skills["my-skill"]; !ok {
-		t.Errorf("skill entry lost by the upgrade:\n%s", after)
-	}
-}
-
-// The v2 lock format was unreleased when configuredAgents became
-// configuredHarnesses, but v2 locks written by intermediate builds exist in
-// working trees. One with the old key at version 2 restores as before and is
-// rewritten under the new key alone.
-func TestV2LockWithOldHarnessKeyRestoresAndIsRewritten(t *testing.T) {
-	dir := t.TempDir()
-	skillDir := filepath.Join(dir, "my-skill")
-	if err := os.MkdirAll(skillDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: my-skill\ndescription: d\n---\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	old := `{"version":2,"skills":{"my-skill":{"source":"./my-skill","sourceType":"local"}},"configuredAgents":["claude-code"]}`
-	if err := os.WriteFile(filepath.Join(dir, lockName), []byte(old), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	stdout, stderr, code := runMdmInDir(t, dir, freshEnv(t), "skills", "install", "-y")
-	if code != 0 {
-		t.Fatalf("skills install against a v2 lock with the old key exited %d:\n%s%s", code, stdout, stderr)
-	}
-	if _, err := os.Stat(filepath.Join(dir, ".claude", "skills", "my-skill", "SKILL.md")); err != nil {
-		t.Errorf("skill not restored to the harness the old key named: %v\n%s", err, stdout)
-	}
-	after, err := os.ReadFile(filepath.Join(dir, lockName))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(after), `"configuredHarnesses"`) || strings.Contains(string(after), `"configuredAgents"`) {
-		t.Errorf("lock should be rewritten under configuredHarnesses alone:\n%s", after)
+		t.Errorf("skill entry lost:\n%s", after)
 	}
 }
