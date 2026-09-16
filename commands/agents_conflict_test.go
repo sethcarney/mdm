@@ -86,28 +86,55 @@ func TestAgentSourceConflictTellsSourcesApart(t *testing.T) {
 	prior := lock.AgentLockEntry{Source: "owner/repo", SourceType: "github", Ref: "main", AgentPath: "agents/critic.md"}
 
 	same := lock.AgentLockEntry{Source: "https://github.com/owner/repo", SourceType: "github", Ref: "v2"}
-	if got := agentSourceConflict(prior, same, "agents/critic.md", "critic", cwd); got != "" {
+	if got := agentSourceConflict(prior, same, "agents/critic.md", "critic", "", cwd); got != "" {
 		t.Errorf("the same repository under another spelling and ref was reported as a conflict: %s", got)
 	}
-	if got := agentSourceConflict(prior, same, "custom/Critic.md", "critic", cwd); got == "" {
+	if got := agentSourceConflict(prior, same, "custom/Critic.md", "critic", "", cwd); got == "" {
 		t.Error("a different file of the same source, sanitizing to the installed name, was not reported")
 	}
 	other := lock.AgentLockEntry{Source: "owner/other", SourceType: "github", Ref: "main"}
-	if got := agentSourceConflict(prior, other, "agents/critic.md", "critic", cwd); got == "" {
+	if got := agentSourceConflict(prior, other, "agents/critic.md", "critic", "", cwd); got == "" {
 		t.Error("a different repository was not reported")
 	}
 
 	// An entry written before the path was recorded is compared by source alone.
 	old := prior
 	old.AgentPath = ""
-	if got := agentSourceConflict(old, same, "custom/Critic.md", "critic", cwd); got != "" {
+	if got := agentSourceConflict(old, same, "custom/Critic.md", "critic", "", cwd); got != "" {
 		t.Errorf("an entry with no recorded path was compared by path: %s", got)
 	}
 
 	// Local sources compare resolved: the lock keeps ./src, a fresh entry the absolute path.
 	local := lock.AgentLockEntry{Source: "./src", SourceType: "local", AgentPath: "agents/critic.md"}
 	fresh := lock.AgentLockEntry{Source: filepath.Join(cwd, "src"), SourceType: "local"}
-	if got := agentSourceConflict(local, fresh, "agents/critic.md", "critic", cwd); got != "" {
+	if got := agentSourceConflict(local, fresh, "agents/critic.md", "critic", "", cwd); got != "" {
 		t.Errorf("the same local directory, relative and absolute, was reported as a conflict: %s", got)
+	}
+}
+
+// A definition that moved within the same source is a relocation, not a
+// conflict: when the prior file no longer exists under the fetched root, the
+// re-add proceeds without --force. When it still exists, two files really do
+// claim one name and the conflict stands.
+func TestAgentSourceConflictAllowsAMoveWithinTheSameSource(t *testing.T) {
+	root := t.TempDir()
+	cwd := t.TempDir()
+	prior := lock.AgentLockEntry{Source: "owner/repo", SourceType: "github", Ref: "main", AgentPath: "agents/critic.md"}
+	incoming := lock.AgentLockEntry{Source: "owner/repo", SourceType: "github", Ref: "main"}
+
+	// The prior path is gone from the source: the definition moved.
+	if got := agentSourceConflict(prior, incoming, "custom-agents/critic.md", "critic", root, cwd); got != "" {
+		t.Errorf("a move within the same source should not conflict, got: %s", got)
+	}
+
+	// The prior path still exists alongside the new one: a genuine duplicate.
+	if err := os.MkdirAll(filepath.Join(root, "agents"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "agents", "critic.md"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := agentSourceConflict(prior, incoming, "custom-agents/critic.md", "critic", root, cwd); got == "" {
+		t.Error("two files of the same source claiming one name should still conflict")
 	}
 }

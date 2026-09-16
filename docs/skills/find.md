@@ -16,6 +16,7 @@ Aliases: `search`, `f`, `s`
 
 | Flag     | Description                                       |
 | -------- | ------------------------------------------------- |
+| `--source` | List the skills available at a remote source (e.g. `owner/repo`) without installing, instead of searching the registry |
 | `--json` | Print results as a JSON array and exit without installing (CI / scripting use) |
 
 ## Flow

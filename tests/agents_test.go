@@ -543,8 +543,14 @@ func TestAgentsInstallSurvivesASourceWithNoDefinitions(t *testing.T) {
 	}
 
 	stdout, stderr, code := runMdmInDir(t, projectDir, env, "agents", "install", "-y")
-	if code != 0 {
-		t.Fatalf("mdm agents install exited %d:\n%s%s", code, stdout, stderr)
+	// The empty source must not abort the restore - critic still comes back -
+	// but a definition the lock records that no source yields is reported and
+	// makes the run fail, rather than passing silently as it once did.
+	if code == 0 {
+		t.Fatalf("install should exit non-zero when ghost cannot be restored:\n%s%s", stdout, stderr)
+	}
+	if !strings.Contains(stdout+stderr, "ghost") {
+		t.Errorf("install should name the unrestorable definition:\n%s%s", stdout, stderr)
 	}
 	if _, err := os.Lstat(filepath.Join(projectDir, ".claude", "agents", "critic.md")); err != nil {
 		t.Errorf("critic was not restored after the empty source; the restore stopped early:\n%s%s", stdout, stderr)

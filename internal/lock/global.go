@@ -15,7 +15,10 @@ import (
 // Unknown top-level keys survive a round trip. Reads fall back to the v1
 // skills-lock.json when it is absent; writes always go to mdm-state.json.
 
-const globalStateVersion = 2
+// globalStateVersion is the format version of mdm-state.json. Like mdm.lock it
+// is a v2-era file name with no released predecessor, so it starts at 1; the
+// legacy global skills-lock.json version is handled on the migration path.
+const globalStateVersion = 1
 
 // legacyGlobalLockVersion is the version the v1 global skills-lock.json
 // had to carry to be readable.
@@ -106,18 +109,8 @@ func (s *GlobalState) UnmarshalJSON(data []byte) error {
 	if err := decode("installMode", &s.InstallMode); err != nil {
 		return err
 	}
-	if _, ok := raw["configuredHarnesses"]; ok {
-		if err := decode("configuredHarnesses", &s.ConfiguredHarnesses); err != nil {
-			return err
-		}
-	} else if _, ok := raw["configuredAgents"]; ok {
-		// mdm-state.json's v2 format shipped this key spelled
-		// configuredAgents. Real files exist with that spelling, so decode
-		// falls back to it and deletes it from raw, which recovers the
-		// harness list and leaves one spelling behind.
-		if err := decode("configuredAgents", &s.ConfiguredHarnesses); err != nil {
-			return err
-		}
+	if err := decode("configuredHarnesses", &s.ConfiguredHarnesses); err != nil {
+		return err
 	}
 	s.rawSkills = captureRawEntries(raw["skills"])
 	s.rawAgents = captureRawEntries(raw["agents"])
@@ -157,6 +150,14 @@ func legacyGlobalLockPath() string {
 	return filepath.Join(home, harness.SharedRootDir, "skills-lock.json")
 }
 
+// isEmpty reports whether the state carries nothing worth preserving. It mirrors
+// ProjectLockFile.isEmpty: an unversioned file with any of these is damaged data
+// the reader must not silently drop, not a bare `{}` it may treat as empty.
+func (s GlobalState) isEmpty() bool {
+	return len(s.Skills) == 0 && len(s.Agents) == 0 && len(s.ConfiguredHarnesses) == 0 &&
+		len(s.Experimental) == 0 && len(s.extra) == 0 && s.InstallMode == ""
+}
+
 // ReadGlobalState reads mdm-state.json, falling back to the legacy v1
 // skills-lock.json when it does not exist. Missing state reads as empty; state
 // this binary cannot understand aborts the process.
@@ -186,13 +187,15 @@ func readGlobalStateE() (GlobalState, error) {
 	if s.Version > globalStateVersion {
 		return EmptyGlobalState(), errNewerLock(path, s.Version, globalStateVersion)
 	}
-	// A version 1 state file predates the install-mode switch: upgrade it in
-	// memory and let the next write persist the version. `mdm migrate` infers
-	// the mode from disk. A range, not `== 1`, so the next bump keeps this path.
-	if s.Version >= 1 && s.Version < globalStateVersion {
-		s.Version = globalStateVersion
-	}
 	if s.Version < globalStateVersion {
+		// Version 0 - no version field. A bare `{}` is harmless, but a file that
+		// still carries skills, agents, or configured harnesses lost its version
+		// line to a hand edit or a bad merge. Reading it as empty would let the
+		// next write replace it with only the newest entry, so it aborts like the
+		// project reader does rather than silently dropping the records.
+		if !s.isEmpty() {
+			return EmptyGlobalState(), errUnversionedLock(path)
+		}
 		return EmptyGlobalState(), nil
 	}
 	if s.Skills == nil {

@@ -270,7 +270,14 @@ func planUpdates(candidates []updateCandidate, check upToDateCheck, stats *updat
 
 	for _, c := range candidates {
 		if c.sourceType == string(source.SourceTypeLocal) {
-			vlog(verboseFlag, "skip %s: local source is not remotely updatable", c.lockName)
+			// A local source is never re-fetched: for skills it is often a
+			// cherry-picked fork that must not be overwritten, and for agent
+			// definitions edits belong in the source and are picked up by a
+			// re-add. Say so out loud rather than folding it silently into the
+			// "up to date" count, which read as though the source had been
+			// checked and found current.
+			vlog(verboseFlag, "skip %s: local source is not re-fetched", c.lockName)
+			ui.LogInfo(fmt.Sprintf("%s: installed from a local path, not re-fetched - edit the source and re-run `mdm %s add` to refresh it", c.lockName, c.commandGroup()))
 			stats.skipped++
 			continue
 		}
@@ -392,6 +399,6 @@ func runUpdateWithOpts(skillFilter []string, opts UpdateOptions) {
 		fmt.Printf("%sNo skills to update.%s\n", ansiDim, ansiReset)
 		return
 	}
-	fmt.Printf("%sUpdate complete:%s %d updated, %d already up to date\n", ansiText, ansiReset, stats.updated, stats.skipped)
+	fmt.Printf("%sUpdate complete:%s %d updated, %d unchanged\n", ansiText, ansiReset, stats.updated, stats.skipped)
 	fmt.Println()
 }

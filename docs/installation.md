@@ -50,14 +50,14 @@ Pin a release when the container needs to be reproducible:
 ```jsonc
 "features": {
   "ghcr.io/sethcarney/mdm/mdm:1": {
-    "version": "1.9.1"
+    "version": "2.0.0"
   }
 }
 ```
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
-| `version` | string | `latest` | Release of mdm to install. `latest`, or a release tag such as `1.9.1` (the leading `v` is optional). |
+| `version` | string | `latest` | Release of mdm to install. `latest`, or a release tag such as `2.0.0` (the leading `v` is optional). |
 
 Features install during **image build**, before the workspace is mounted, so the
 feature only puts the binary on `PATH`. Anything that reads or writes the repo
@@ -94,8 +94,9 @@ link` fits the same slot.
 
 === "Download a release"
 
-    Grab a prebuilt binary for Linux, macOS, or Windows (x64 + ARM64) from the
-    [GitHub Releases page](https://github.com/sethcarney/mdm/releases/latest),
+    Grab a prebuilt binary from the
+    [GitHub Releases page](https://github.com/sethcarney/mdm/releases/latest) -
+    Linux and macOS in x64 and ARM64, Windows in x64,
     then move it onto your `PATH`.
 
 === "Build from source"

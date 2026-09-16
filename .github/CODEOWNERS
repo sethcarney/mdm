@@ -22,3 +22,9 @@ internal/mcpwire/                @sethcarney @GhostScientist
 commands/plugins*.go             @sethcarney @GhostScientist
 docs/specs/plugins.md            @sethcarney @GhostScientist
 tests/plugins_test.go            @sethcarney @GhostScientist
+
+# Agent definitions (predefined subagents) - parsing/conversion library, CLI group, installer, and docs
+internal/agentfile/              @sethcarney @atselevich
+commands/agents*.go              @sethcarney @atselevich
+commands/agent_installer*.go     @sethcarney @atselevich
+docs/agent-artifacts.md          @sethcarney @atselevich

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "configuredAgents": [
+  "configuredHarnesses": [
     "claude-code",
     "github-copilot",
     "opencode"

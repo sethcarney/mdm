@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/sethcarney/mdm/internal/harness"
@@ -161,5 +162,49 @@ func TestGlobalStateUnreadableErrors(t *testing.T) {
 	}
 	if _, err := readGlobalStateE(); err == nil {
 		t.Error("corrupt state file should error")
+	}
+}
+
+// TestGlobalStateUnversionedWithEntriesAborts is the global counterpart of
+// TestProjectLockUnversionedWithEntriesAborts: a state file that lost its
+// version line to a hand edit or bad merge but still carries records must abort
+// rather than read as empty, which let the next write drop every record.
+func TestGlobalStateUnversionedWithEntriesAborts(t *testing.T) {
+	isolateGlobal(t)
+	path := GetGlobalStatePath()
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatal(err)
+	}
+	content := []byte(`{"configuredHarnesses":["claude-code"],"skills":{"keep":{"source":"o/r","sourceType":"github"}}}`)
+	if err := os.WriteFile(path, content, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readGlobalStateE(); err == nil || !strings.Contains(err.Error(), "no version field") {
+		t.Fatalf("expected an unversioned-state error, got %v", err)
+	}
+	// The write path the error protects must not have run.
+	data, _ := os.ReadFile(path)
+	if !strings.Contains(string(data), "keep") {
+		t.Fatalf("the unversioned state was modified: %s", data)
+	}
+}
+
+// TestGlobalStateBareObjectReadsEmpty pins that a versionless but empty `{}`
+// stays harmless - only content-bearing unversioned files abort.
+func TestGlobalStateBareObjectReadsEmpty(t *testing.T) {
+	isolateGlobal(t)
+	path := GetGlobalStatePath()
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(`{}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := readGlobalStateE()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(s.Skills) != 0 || len(s.ConfiguredHarnesses) != 0 {
+		t.Fatalf("bare object should read empty, got %+v", s)
 	}
 }

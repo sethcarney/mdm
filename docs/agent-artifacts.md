@@ -194,6 +194,12 @@ than one per definition. Every harness a definition is *currently* installed
 to is refreshed - not just the canonical copy - so a copy-mode harness
 install is kept in sync too, instead of going stale.
 
+A definition installed from a local path is **not** re-fetched: update names
+it and moves on, since edits belong in the source and are picked up by a
+re-add (`mdm agents add <path>`), not by an update. This matches the skills
+side, where a local source is often a cherry-picked fork an update must not
+overwrite.
+
 Refreshing obeys the same rule as removal: within the harnesses the lock
 records, an update overwrites only a file it can show mdm wrote. A file you put
 at that path yourself is reported and left as it is, rather than being replaced

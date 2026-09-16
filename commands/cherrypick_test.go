@@ -293,9 +293,10 @@ func TestIsCherryPickedSource(t *testing.T) {
 func TestRemoveHarnessSkillsDirKeepsForks(t *testing.T) {
 	skillsDir := t.TempDir()
 	writeTestFork(t, filepath.Join(skillsDir, "forked"))
+	// A copy-mode install: a real directory whose name the lock records.
 	writeTestFile(t, filepath.Join(skillsDir, "installed", "SKILL.md"), "---\nname: installed\ndescription: b\n---\n")
 
-	kept, removed := removeHarnessSkillsDir(skillsDir)
+	kept, removed := removeHarnessSkillsDir(skillsDir, map[string]bool{"installed": true})
 	if !removed || kept != 1 {
 		t.Fatalf("kept = %d, removed = %v; want 1, true", kept, removed)
 	}
@@ -303,7 +304,7 @@ func TestRemoveHarnessSkillsDirKeepsForks(t *testing.T) {
 		t.Error("the fork must survive a harness removal")
 	}
 	if _, err := os.Stat(filepath.Join(skillsDir, "installed")); !os.IsNotExist(err) {
-		t.Error("the installed skill should have been removed")
+		t.Error("the locked copy-mode install should have been removed")
 	}
 }
 
@@ -312,12 +313,38 @@ func TestRemoveHarnessSkillsDirRemovesEverythingWhenNoForks(t *testing.T) {
 	skillsDir := filepath.Join(parent, "skills")
 	writeTestFile(t, filepath.Join(skillsDir, "installed", "SKILL.md"), "---\nname: installed\ndescription: b\n---\n")
 
-	kept, removed := removeHarnessSkillsDir(skillsDir)
+	kept, removed := removeHarnessSkillsDir(skillsDir, map[string]bool{"installed": true})
 	if !removed || kept != 0 {
 		t.Fatalf("kept = %d, removed = %v; want 0, true", kept, removed)
 	}
 	if _, err := os.Stat(skillsDir); !os.IsNotExist(err) {
-		t.Error("a directory with no forks in it should be removed whole, as before")
+		t.Error("a directory with only mdm-installed skills should be removed whole, as before")
+	}
+}
+
+// TestRemoveHarnessSkillsDirKeepsHandMadeSkills pins the S4 fix: a real skill
+// directory the user created by hand - not a symlink, not a fork, and not
+// recorded in the lock - is not mdm's to delete, so it survives, and the
+// harness directory that still holds it survives too.
+func TestRemoveHarnessSkillsDirKeepsHandMadeSkills(t *testing.T) {
+	skillsDir := t.TempDir()
+	// A symlink install mdm made: removed.
+	target := t.TempDir()
+	if err := os.Symlink(target, filepath.Join(skillsDir, "linked")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	// A hand-made skill the lock does not record: kept.
+	writeTestFile(t, filepath.Join(skillsDir, "hand-made", "SKILL.md"), "---\nname: hand-made\ndescription: mine\n---\n")
+
+	kept, removed := removeHarnessSkillsDir(skillsDir, map[string]bool{"linked": true})
+	if !removed || kept != 1 {
+		t.Fatalf("kept = %d, removed = %v; want 1, true", kept, removed)
+	}
+	if _, err := os.Stat(filepath.Join(skillsDir, "hand-made", "SKILL.md")); err != nil {
+		t.Error("a hand-made skill mdm never installed must survive a harness removal")
+	}
+	if _, err := os.Lstat(filepath.Join(skillsDir, "linked")); !os.IsNotExist(err) {
+		t.Error("the symlink install should have been removed")
 	}
 }
 

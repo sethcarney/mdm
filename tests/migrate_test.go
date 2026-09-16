@@ -18,6 +18,46 @@ func writeV1Project(t *testing.T, dir string) {
 	}
 }
 
+// TestMigrateDryRunDoesNotClearGraduatedOptIns pins that `migrate --dry-run`
+// leaves the global state file untouched even when it carries stale opt-ins for
+// graduated features. Clearing them ran before the dry-run guard, so the dry
+// run rewrote mdm-state.json - the one thing --dry-run promises never to do.
+func TestMigrateDryRunDoesNotClearGraduatedOptIns(t *testing.T) {
+	dir := t.TempDir()
+	home := t.TempDir()
+	stateDir := t.TempDir()
+	env := isolatedEnv(home, stateDir)
+
+	statePath := filepath.Join(stateDir, "mdm", "state.json")
+	if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	original := []byte(`{"version":1,"experimental":["knowledge","plugins"],"skills":{}}`)
+	if err := os.WriteFile(statePath, original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Nothing to migrate in the project, so this hits the clear-opt-ins branch.
+	stdout, stderr, code := runMdmInDir(t, dir, env, "migrate", "--dry-run")
+	if code != 0 {
+		t.Fatalf("migrate --dry-run exited %d: %s", code, stderr)
+	}
+	if !strings.Contains(stdout, "Would clear") {
+		t.Errorf("dry run should report what it would clear, got: %q", stdout)
+	}
+	if got, _ := os.ReadFile(statePath); string(got) != string(original) {
+		t.Errorf("dry run modified the state file:\n%s", got)
+	}
+
+	// A real migrate does clear them.
+	if _, stderr, code := runMdmInDir(t, dir, env, "migrate"); code != 0 {
+		t.Fatalf("migrate exited %d: %s", code, stderr)
+	}
+	if got, _ := os.ReadFile(statePath); strings.Contains(string(got), "knowledge") {
+		t.Errorf("real migrate should have cleared the stale opt-ins:\n%s", got)
+	}
+}
+
 func TestMigrateDryRunChangesNothing(t *testing.T) {
 	dir := t.TempDir()
 	writeV1Project(t, dir)

@@ -1,6 +1,6 @@
 # mdm (markdown management CLI)
 
-Installs the [mdm](https://github.com/sethcarney/mdm) CLI - manage AI agent
+Installs the [mdm](https://github.com/sethcarney/mdm) CLI - manage AI harness
 instruction files (`AGENTS.md`, `CLAUDE.md`, `.cursorrules`) and install skills
 from GitHub, GitLab, URLs, or the [skills.sh](https://skills.sh) registry.
 
@@ -16,14 +16,14 @@ from GitHub, GitLab, URLs, or the [skills.sh](https://skills.sh) registry.
 
 | Options Id | Description | Type | Default Value |
 | ---------- | ----------- | ---- | ------------- |
-| version | Release of mdm to install: 'latest', or a release tag such as '1.9.1' (the leading 'v' is optional). | string | latest |
+| version | Release of mdm to install: 'latest', or a release tag such as '2.0.0' (the leading 'v' is optional). | string | latest |
 
 Pin a release when you want the container to be reproducible:
 
 ```jsonc
 "features": {
     "ghcr.io/sethcarney/mdm/mdm:1": {
-        "version": "1.9.1"
+        "version": "2.0.0"
     }
 }
 ```
@@ -78,13 +78,13 @@ exists:
 "features": {
     "ghcr.io/sethcarney/mdm/mdm:1": {}
 },
-// Restore the skills committed in mdm.lock for whichever agents this
+// Restore the skills committed in mdm.lock for whichever harnesses this
 // repo configures - the onboarding path mdm skills install exists for.
 "postCreateCommand": "mdm skills install"
 ```
 
 `mdm rules link`, which makes `AGENTS.md` the single source of truth and
-symlinks each agent's instruction file to it, fits the same slot.
+symlinks each harness's instruction file to it, fits the same slot.
 
 ## Supported platforms
 

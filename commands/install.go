@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -11,6 +12,15 @@ import (
 	"github.com/sethcarney/mdm/internal/lock"
 	"github.com/sethcarney/mdm/internal/ui"
 )
+
+// skillRestoredOnDisk reports whether a skill's canonical directory is present
+// after a restore. The lock key is the sanitized name, which is also the
+// canonical directory name, and copy mode materializes the canonical directory
+// too, so its presence is the signal that the source still had the skill.
+func skillRestoredOnDisk(name string, global bool, cwd string) bool {
+	_, err := os.Stat(filepath.Join(getCanonicalSkillsDir(global, cwd), name))
+	return err == nil
+}
 
 // restoreOptions carries what `mdm skills install` was asked for. The mode
 // flags belong here too: install is the command that restores a scope which
@@ -262,11 +272,23 @@ func restoreSkills(entries map[string]sourceRef, baseOpts AddOptions) {
 		fmt.Printf("%sInstalling from %s...%s\n", ansiDim, group.source, ansiReset)
 		opts := baseOpts
 		opts.Skills = group.names
+		opts.RestoreMode = true
 		src := group.source
 		if group.ref != "" && !strings.Contains(src, "#") {
 			src = src + "#" + group.ref
 		}
 		runAdd(src, opts)
+
+		// runAdd cannot report which names it restored, so confirm each expected
+		// skill actually landed: a name the lock records but the source no longer
+		// yields leaves no canonical directory, and RestoreMode kept runAdd from
+		// exiting the process over it, so the loop reaches the others.
+		for _, name := range group.names {
+			if !skillRestoredOnDisk(name, baseOpts.Global, cwd) {
+				ui.LogWarn(fmt.Sprintf("%s: not found in %s - the lock records it but the source no longer has it", name, group.source))
+				unrestorable = append(unrestorable, name)
+			}
+		}
 	}
 
 	reportUnrestorable(unrestorable, "skill",

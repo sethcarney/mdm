@@ -502,58 +502,32 @@ func TestGlobalStateRoundTripsInstallMode(t *testing.T) {
 	}
 }
 
-func TestProjectLockUpgradesV1InPlace(t *testing.T) {
+// mdm.lock is version 1 - a new file name with no released predecessor. A
+// current-version lock reads its sections and configured harnesses, does not
+// infer a mode on read, and round-trips at the same version.
+func TestProjectLockReadsCurrentVersion(t *testing.T) {
 	cwd := t.TempDir()
-	v1 := `{"version":1,"skills":{"s1":{"source":"o/r","sourceType":"github"}},"configuredAgents":["claude-code"]}`
-	if err := os.WriteFile(GetProjectLockPath(cwd), []byte(v1), 0600); err != nil {
+	current := `{"version":1,"configuredHarnesses":["claude-code"],"skills":{"s1":{"source":"o/r","sourceType":"github"}}}`
+	if err := os.WriteFile(GetProjectLockPath(cwd), []byte(current), 0600); err != nil {
 		t.Fatal(err)
 	}
 
 	lk := ReadProjectLock(cwd)
 	if _, ok := lk.Skills["s1"]; !ok {
-		t.Fatal("a version 1 lock must not read as empty after the bump")
+		t.Fatal("a current-version lock must not read as empty")
 	}
 	if len(lk.ConfiguredHarnesses) != 1 {
-		t.Errorf("configuredAgents lost on upgrade: %v", lk.ConfiguredHarnesses)
+		t.Errorf("configuredHarnesses lost: %v", lk.ConfiguredHarnesses)
 	}
 	if lk.InstallMode != "" {
-		t.Errorf("upgrade must not infer a mode on read, got %q", lk.InstallMode)
+		t.Errorf("reading must not infer a mode, got %q", lk.InstallMode)
 	}
 
-	// The next write persists it as version 2.
 	if err := AddSkillToLocalLock("s2", LocalSkillLockEntry{Source: "a/b", SourceType: "github"}, cwd); err != nil {
 		t.Fatal(err)
 	}
 	if got := ReadProjectLock(cwd).Version; got != projectLockVersion {
 		t.Errorf("Version = %d, want %d", got, projectLockVersion)
-	}
-}
-
-// mdm.lock's v2 format shipped with configuredAgents, so a real lock on disk
-// can carry the old key at version 2. The fallback decode must consume it
-// rather than leave it to the unknown-key passthrough, or a round trip emits
-// both spellings.
-func TestProjectLockOldKeyDoesNotRoundTripAlongsideNewKey(t *testing.T) {
-	cwd := t.TempDir()
-	v2 := `{"version":2,"skills":{"s1":{"source":"o/r","sourceType":"github"}},"configuredAgents":["claude-code"]}`
-	if err := os.WriteFile(GetProjectLockPath(cwd), []byte(v2), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	lk := ReadProjectLock(cwd)
-	if err := WriteProjectLock(lk, cwd); err != nil {
-		t.Fatal(err)
-	}
-
-	raw, err := os.ReadFile(GetProjectLockPath(cwd))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(raw), `"configuredHarnesses"`) {
-		t.Errorf("written lock does not use the v2 key:\n%s", raw)
-	}
-	if strings.Contains(string(raw), `"configuredAgents"`) {
-		t.Errorf("written lock still carries the old key alongside the new one:\n%s", raw)
 	}
 }
 
@@ -674,61 +648,5 @@ func TestGlobalStateUpgradesV1InPlace(t *testing.T) {
 	}
 	if _, ok := ReadGlobalState().Skills["g1"]; !ok {
 		t.Fatal("a version 1 global state must not read as empty after the bump")
-	}
-}
-
-// The global equivalent of TestProjectLockOldKeyDoesNotRoundTripAlongsideNewKey:
-// PR 161 shipped mdm-state.json's v2 format with configuredAgents too, so the
-// same fallback-then-consume behavior is required here.
-func TestGlobalStateOldKeyDoesNotRoundTripAlongsideNewKey(t *testing.T) {
-	isolateGlobal(t)
-	path := GetGlobalStatePath()
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		t.Fatal(err)
-	}
-	v2WithOldKey := `{"version":2,"skills":{"g1":{"source":"o/r","sourceType":"github","sourceUrl":"u","installedAt":"t","updatedAt":"t"}},"configuredAgents":["claude-code"]}`
-	if err := os.WriteFile(path, []byte(v2WithOldKey), 0600); err != nil {
-		t.Fatal(err)
-	}
-
-	s := ReadGlobalState()
-	if err := WriteGlobalState(s); err != nil {
-		t.Fatal(err)
-	}
-
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(raw), `"configuredHarnesses"`) {
-		t.Errorf("written state does not use the v2 key:\n%s", raw)
-	}
-	if strings.Contains(string(raw), `"configuredAgents"`) {
-		t.Errorf("written state still carries the old key alongside the new one:\n%s", raw)
-	}
-}
-
-// A lock that somehow carries both spellings (a hand merge, or a v2 build
-// writing over an older one) keeps configuredHarnesses. The old key used to
-// survive in the unknown-key passthrough and be written back on every save.
-func TestProjectLockWithBothHarnessKeysDropsTheOldOne(t *testing.T) {
-	cwd := t.TempDir()
-	both := `{"version":2,"skills":{},"configuredHarnesses":["cursor"],"configuredAgents":["claude-code"]}`
-	if err := os.WriteFile(GetProjectLockPath(cwd), []byte(both), 0600); err != nil {
-		t.Fatal(err)
-	}
-	lk := ReadProjectLock(cwd)
-	if len(lk.ConfiguredHarnesses) != 1 || lk.ConfiguredHarnesses[0] != "cursor" {
-		t.Errorf("ConfiguredHarnesses = %v, want the new key's value", lk.ConfiguredHarnesses)
-	}
-	if err := WriteProjectLock(lk, cwd); err != nil {
-		t.Fatal(err)
-	}
-	raw, err := os.ReadFile(GetProjectLockPath(cwd))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(raw), `"configuredAgents"`) {
-		t.Errorf("the old key survived a round trip beside the new one:\n%s", raw)
 	}
 }

@@ -21,7 +21,7 @@ func TestInstallModeAccessorsProjectScope(t *testing.T) {
 
 func TestSetInstallModePreservesOtherSections(t *testing.T) {
 	cwd := t.TempDir()
-	content := `{"version":2,"skills":{"s":{"source":"o/r","sourceType":"github"}},"futureFlag":true}`
+	content := `{"version":1,"skills":{"s":{"source":"o/r","sourceType":"github"}},"futureFlag":true}`
 	if err := os.WriteFile(GetProjectLockPath(cwd), []byte(content), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestAgentLockEntryRecordsTheCanonicalFormat(t *testing.T) {
 // markdown, and a fresh markdown entry must not start writing one.
 func TestAgentLockEntryWithoutFormatRoundTripsEmpty(t *testing.T) {
 	cwd := t.TempDir()
-	content := `{"version":2,"agents":{"critic":{"source":"o/r","sourceType":"github","agentPath":"agents/critic.md"}}}`
+	content := `{"version":1,"agents":{"critic":{"source":"o/r","sourceType":"github","agentPath":"agents/critic.md"}}}`
 	if err := os.WriteFile(GetProjectLockPath(cwd), []byte(content), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestAgentLockEntryRecordsTheHarnesses(t *testing.T) {
 		t.Errorf("Harnesses = %v, want [claude-code cursor]", entry.Harnesses)
 	}
 
-	content := `{"version":2,"agents":{"old":{"source":"o/r","sourceType":"github","agentPath":"agents/old.md"}}}`
+	content := `{"version":1,"agents":{"old":{"source":"o/r","sourceType":"github","agentPath":"agents/old.md"}}}`
 	if err := os.WriteFile(GetProjectLockPath(cwd), []byte(content), 0600); err != nil {
 		t.Fatal(err)
 	}

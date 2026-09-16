@@ -55,39 +55,29 @@ mdm harnesses add cursor                  # now
 There is deliberately no alias. `mdm agents add <name>` kept working across the
 rename would have changed meaning without telling anyone.
 
-## `mdm harnesses remove` deleted skills I wrote by hand
+## `mdm harnesses remove` and hand-written skills in `./skills/`
 
-**Symptom.** You keep your own skills in `./skills/`, run `mdm harnesses remove openclaw`,
-and the whole directory is gone.
+**What happens.** Removing a harness cleans up the skills mdm installed into its
+directory. OpenClaw's project skills directory is literally `skills/` - the same
+conventional location many projects use for hand-written skills - so this is the
+one harness whose directory can also hold your own work.
 
-**Cause.** Removing a harness cleans up the files that belong exclusively to it,
-including its skills directory. OpenClaw's project skills directory is literally
-`skills/` - the same conventional location many projects use for hand-written
-skills - so mdm cannot tell your work from OpenClaw's install and removes the
-directory whole.
+`mdm harnesses remove` uses the lock to tell the two apart. It removes only the
+entries mdm installed - the symlinks it created, and the directories the lock
+records as skills - and leaves everything else: a [cherry-picked
+fork](skills/cherry-pick.md) (marked by `.mdm-origin.json`) and any hand-written
+skill the lock does not record. A directory left empty afterwards is cleaned up;
+one that still holds your skills is kept.
 
-This affects one harness in practice. Of the 31 harnesses that own a project skills
-directory, OpenClaw is the only one whose directory is not dot-prefixed:
+The one case still to watch: a hand-written skill whose directory name matches a
+skill the lock records as installed there. mdm treats that name as its own and
+removes it. If you keep hand-written skills alongside mdm-managed ones in
+`./skills/`, give them names no installed skill uses, or commit the directory so
+`git restore skills/` can bring anything back.
 
-| Harness | Project skills directory | Removed by `mdm harnesses remove <harness>` |
-| --- | --- | --- |
-| OpenClaw | `skills/` | yes - **and this is where people keep their own skills** |
-| Claude Code, Roo, Windsurf, Goose, and 26 others | `.claude/skills/`, `.roo/skills/`, … | yes, but the directory is unambiguously the harness's |
-| Cursor, Codex, Gemini CLI, and 11 others | shared `.agents/skills/` | never - shared directories are always preserved |
-
-**Recovery.** If the directory was committed, `git restore skills/` (or
-`git checkout -- skills/`) brings it back. If it was untracked and uncommitted,
-mdm deletes it outright and there is nothing to restore - the removal does not
-go through the trash.
-
-**Avoiding it.**
-
-- Commit `./skills/` before running `mdm harnesses remove`. This is the reliable
-  protection, and it is worth doing anyway for anything you have written.
-- Keep hand-written skills somewhere OpenClaw does not claim - any directory
-  that is not `./skills/` is untouched by harness removal.
-- Or do not configure OpenClaw as a harness. `mdm harnesses list` shows what is
-  configured; only configured harnesses are cleaned up.
+**Instruction files** are treated the same way: `mdm harnesses remove` deletes a
+harness's instruction file (e.g. `CLAUDE.md`) only when mdm created it as a
+symlink to `AGENTS.md`. A real file you wrote by hand is kept, with a note.
 
 **Cherry-picked skills are already protected.** A skill forked with
 [`mdm skills cherry-pick`](skills/cherry-pick.md) carries an `.mdm-origin.json`

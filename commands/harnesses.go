@@ -343,9 +343,12 @@ func runHarnessesRemove(cmd *cobra.Command, args []string, global, yes bool) err
 		return fmt.Errorf("harness names are required when using --yes")
 	}
 
-	toRemove, ok := resolveHarnessesToRemove(args, configured)
-	if !ok {
-		return nil
+	toRemove, err := resolveHarnessesToRemove(args, configured)
+	if err != nil {
+		return err
+	}
+	if len(toRemove) == 0 {
+		return nil // picker cancelled
 	}
 
 	if !yes && !confirmHarnessesRemoval(toRemove) {
@@ -371,17 +374,24 @@ func runHarnessesRemove(cmd *cobra.Command, args []string, global, yes bool) err
 	return nil
 }
 
-// resolveHarnessesToRemove returns harnesses from explicit args or via interactive
-// picker when no args are provided.
-func resolveHarnessesToRemove(args []string, configured []string) ([]string, bool) {
+// resolveHarnessesToRemove returns the harnesses to remove from explicit args,
+// or via the interactive picker when none are given. A name that is not a
+// harness at all is an error - matching `harnesses add`, which fails rather than
+// exiting 0 as though it had done something. A cancelled picker returns no names
+// and no error, which the caller treats as "nothing to do".
+func resolveHarnessesToRemove(args, configured []string) ([]string, error) {
 	if len(args) > 0 {
 		validated, ok := validateNamedHarnesses(args)
 		if !ok {
-			return nil, false
+			return nil, fmt.Errorf("no valid harnesses specified")
 		}
-		return validated, true
+		return validated, nil
 	}
-	return pickHarnessesToRemove(configured)
+	picked, ok := pickHarnessesToRemove(configured)
+	if !ok {
+		return nil, nil
+	}
+	return picked, nil
 }
 
 // confirmHarnessesRemoval shows a confirmation prompt listing the harnesses to be
@@ -429,46 +439,79 @@ func pickHarnessesToRemove(configured []string) ([]string, bool) {
 	return toRemove, true
 }
 
-// removeHarnessSkillsDir deletes a harness's own skills directory, keeping any
-// cherry-picked forks inside it. A harness directory can be the project's forks
-// directory (OpenClaw reads ./skills), and a fork is the project's own source.
-// It returns the number of forks kept and whether anything was removed.
-func removeHarnessSkillsDir(skillsPath string) (kept int, removed bool) {
+// mdmOwnsHarnessSkillEntry reports whether one entry in a harness's skills
+// directory is something mdm put there: a symlink into the canonical directory
+// (symlink mode), or a real directory whose name a lock entry records (a copy-
+// mode install). A cherry-picked fork, or any other real directory the user
+// created by hand, is theirs and is kept.
+func mdmOwnsHarnessSkillEntry(e os.DirEntry, path string, owned map[string]bool) bool {
+	if e.Type()&os.ModeSymlink != 0 {
+		return true
+	}
+	if e.IsDir() && fork.IsFork(path) {
+		return false
+	}
+	return owned[e.Name()]
+}
+
+// removeHarnessSkillsDir removes the skills mdm installed into a harness's own
+// directory, leaving anything the user created there. owned is the set of skill
+// names the lock records for this scope, so a copy-mode install is recognized
+// even though it is a real directory. kept counts the entries left behind; the
+// directory itself is removed only when nothing of the user's remains.
+func removeHarnessSkillsDir(skillsPath string, owned map[string]bool) (kept int, removed bool) {
 	info, err := os.Lstat(skillsPath)
 	if err != nil {
 		return 0, false
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
+		// The directory itself is a symlink mdm made; removing the link leaves
+		// its target intact.
 		_ = os.Remove(skillsPath)
 		return 0, true
 	}
 
 	entries, err := os.ReadDir(skillsPath)
 	if err != nil {
-		_ = os.RemoveAll(skillsPath)
-		return 0, true
-	}
-	for _, e := range entries {
-		if e.IsDir() && fork.IsFork(filepath.Join(skillsPath, e.Name())) {
-			kept++
-		}
-	}
-	if kept == 0 {
-		_ = os.RemoveAll(skillsPath)
-		return 0, true
+		// Not a directory we can enumerate - do not RemoveAll blindly, since
+		// that is exactly the hand-made content this guard exists to spare.
+		return 0, false
 	}
 	for _, e := range entries {
 		path := filepath.Join(skillsPath, e.Name())
-		if e.IsDir() && fork.IsFork(path) {
+		if mdmOwnsHarnessSkillEntry(e, path, owned) {
+			_ = os.RemoveAll(path)
+			removed = true
 			continue
 		}
-		_ = os.RemoveAll(path)
+		kept++
 	}
-	return kept, true
+	if kept == 0 {
+		// Nothing of the user's is left; drop the now-empty directory.
+		_ = os.RemoveAll(skillsPath)
+		return 0, true
+	}
+	return kept, removed
 }
 
-func reportHarnessSkillsDirCleanup(skillsPath, displayName string) {
-	kept, removed := removeHarnessSkillsDir(skillsPath)
+// lockedSkillNames returns the set of skill names the lock records for the scope,
+// used to recognize copy-mode installs in a harness's skills directory.
+func lockedSkillNames(global bool, cwd string) map[string]bool {
+	names := map[string]bool{}
+	if global {
+		for n := range lock.ReadGlobalState().Skills {
+			names[n] = true
+		}
+		return names
+	}
+	for n := range lock.ReadLocalLock(cwd).Skills {
+		names[n] = true
+	}
+	return names
+}
+
+func reportHarnessSkillsDirCleanup(skillsPath, displayName string, owned map[string]bool) {
+	kept, removed := removeHarnessSkillsDir(skillsPath, owned)
 	if !removed {
 		return
 	}
@@ -484,6 +527,7 @@ func reportHarnessSkillsDirCleanup(skillsPath, displayName string) {
 // (.agents/skills, AGENTS.md) are never touched.
 func cleanUpRemovedHarnessFiles(toRemove []string, global bool, cwd string) {
 	vlog(verboseFlag, "cleaning up files for removed harness(es): %v (global=%v)", toRemove, global)
+	owned := lockedSkillNames(global, cwd)
 	for _, name := range toRemove {
 		cfg := harness.AllHarnesses[name]
 		if cfg == nil {
@@ -500,17 +544,27 @@ func cleanUpRemovedHarnessFiles(toRemove []string, global bool, cwd string) {
 				skillsPath = filepath.Join(cwd, cfg.SkillsDir)
 			}
 			if skillsPath != "" {
-				reportHarnessSkillsDirCleanup(skillsPath, cfg.DisplayName)
+				reportHarnessSkillsDirCleanup(skillsPath, cfg.DisplayName, owned)
 			}
 		}
 
 		// Remove the harness's instructions file (project scope only; skip when
 		// the harness has no unique instructions file or reads AGENTS.md natively).
+		// Only a symlink is mdm's - `mdm rules link` and harness setup create
+		// instruction files only as links to AGENTS.md. A real file is one the
+		// user wrote by hand, which harness add already refuses to touch; remove
+		// must not delete it either.
 		if !global && !cfg.NativeInstructions {
 			instrPath := filepath.Join(cwd, cfg.InstructionsFile)
-			if _, err := os.Lstat(instrPath); err == nil {
+			fi, err := os.Lstat(instrPath)
+			switch {
+			case err != nil:
+				// nothing there
+			case fi.Mode()&os.ModeSymlink != 0:
 				_ = os.Remove(instrPath)
 				ui.LogInfo("Removed " + cfg.InstructionsFile)
+			default:
+				ui.LogInfo(fmt.Sprintf("Kept %s - a real file mdm did not create; delete it by hand if you no longer want it", cfg.InstructionsFile))
 			}
 		}
 	}

@@ -128,16 +128,15 @@ Remove 1 harness(es): Windsurf? [y/N]
 
 After removing harnesses from the configured list, mdm also cleans up the files that belong exclusively to each removed harness:
 
-- **Skills directory** - the harness's own skills folder (e.g. `.claude/skills/`, `.roo/skills/`) is removed if it exists. The shared `.agents/skills/` directory is never touched.
+- **Skills directory** - the skills mdm installed into the harness's own folder (e.g. `.claude/skills/`, `.roo/skills/`) are removed: the ones its lock records and the symlinks it created. The shared `.agents/skills/` directory is never touched, and a directory left empty afterwards is cleaned up.
 
-    !!! warning "OpenClaw's skills directory is `./skills/`"
-        Removing OpenClaw deletes `./skills/` - the same directory many projects
-        use for hand-written skills. mdm cannot tell your own skills from an
-        OpenClaw install, so anything in there that is not a
-        [cherry-picked fork](skills/cherry-pick.md) goes with it. Commit the
-        directory first, or keep your skills elsewhere. See
+    !!! note "OpenClaw's skills directory is `./skills/`"
+        OpenClaw's project skills folder is `./skills/` - the same directory many
+        projects use for hand-written skills. Removing OpenClaw deletes only what
+        mdm installed there; a [cherry-picked fork](skills/cherry-pick.md) and any
+        hand-written skill the lock does not record are left in place. See
         [Troubleshooting](troubleshooting.md#mdm-harnesses-remove-deleted-skills-i-wrote-by-hand).
-- **Instructions file** - the harness's instructions file (e.g. `CLAUDE.md`, `.cursorrules`, `.github/copilot-instructions.md`) is removed. The shared `AGENTS.md` is never touched.
+- **Instructions file** - the harness's instructions file (e.g. `CLAUDE.md`, `.cursorrules`, `.github/copilot-instructions.md`) is removed **only when mdm created it as a symlink** to `AGENTS.md`; a real file you wrote by hand is kept, with a note. The shared `AGENTS.md` is never touched.
 
 ```bash
 # Interactive removal

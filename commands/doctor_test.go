@@ -169,11 +169,11 @@ func TestCheckLargeMarkdownSkipsDirs(t *testing.T) {
 func TestCheckLargeMarkdownDetectsOversized(t *testing.T) {
 	dir := t.TempDir()
 
-	// Warn-level file (20KB ≤ size < 100KB)
+	// Warn-level file (fileSizeWarnBytes ≤ size < fileSizeErrorBytes)
 	if err := writeFileOfSize(filepath.Join(dir, "warn.md"), fileSizeWarnBytes+1); err != nil {
 		t.Fatal(err)
 	}
-	// Error-level file (≥ 100KB)
+	// Error-level file (≥ fileSizeErrorBytes)
 	if err := writeFileOfSize(filepath.Join(dir, "big.md"), fileSizeErrorBytes+1); err != nil {
 		t.Fatal(err)
 	}
@@ -191,10 +191,10 @@ func TestCheckLargeMarkdownDetectsOversized(t *testing.T) {
 		}
 	}
 	if !warnFound {
-		t.Error("expected a warn issue for the 20KB+ file")
+		t.Error("expected a warn issue for the warn-threshold file")
 	}
 	if !errFound {
-		t.Error("expected an error issue for the 100KB+ file")
+		t.Error("expected an error issue for the error-threshold file")
 	}
 }
 

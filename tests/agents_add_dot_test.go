@@ -7,6 +7,44 @@ import (
 	"testing"
 )
 
+// `mdm agents add .` discovers a hand-written .claude/agents/critic.md - the
+// harness's own directory is one of ConventionalDirs - so the source file is
+// also Claude Code's install destination. Adopting it must leave that committed
+// file as a real file: replacing it with a symlink into the gitignored
+// canonical directory deletes the only committed copy, and a fresh clone gets a
+// dangling link no `mdm agents install` can restore. The canonical copy is
+// written for other harnesses and for restore, but the source stays put.
+func TestAgentsAddDotKeepsAdoptedSourceARealFile(t *testing.T) {
+	projectDir := t.TempDir()
+	stateDir := t.TempDir()
+	env := isolatedEnv(projectDir, stateDir)
+	own, original := writeOwnClaudeCritic(t, projectDir)
+
+	if stdout, stderr, code := runMdmInDir(t, projectDir, env,
+		"agents", "add", ".", "--harness", "claude-code", "--project", "-y"); code != 0 {
+		t.Fatalf("mdm agents add . exited %d:\n%s%s", code, stdout, stderr)
+	}
+
+	fi, err := os.Lstat(own)
+	if err != nil {
+		t.Fatalf("the adopted definition is gone after add: %v", err)
+	}
+	if fi.Mode()&os.ModeSymlink != 0 {
+		target, _ := os.Readlink(own)
+		t.Fatalf("adoption turned the committed file into a symlink (-> %s); a clone would lose it", target)
+	}
+	if got, _ := os.ReadFile(own); string(got) != original {
+		t.Errorf("adoption changed the source file:\n%s", got)
+	}
+
+	// The canonical copy still exists so other harnesses and `agents install`
+	// have a source of truth.
+	canonical := filepath.Join(projectDir, ".agents", "agents", "critic.md")
+	if _, err := os.Stat(canonical); err != nil {
+		t.Errorf("canonical copy was not written: %v", err)
+	}
+}
+
 // `mdm agents add .` on a project holding a hand-written
 // .claude/agents/critic.md adopts it and writes Codex's TOML and Copilot's
 // copy beside it. `mdm agents remove critic` then found every one of those

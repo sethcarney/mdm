@@ -156,6 +156,19 @@ func restoreAgentsMap(entries map[string]lock.AgentLockEntry, global bool, opts 
 			src = src + "#" + group.ref
 		}
 		_ = runAgentAdd(src, groupOpts)
+
+		// runAgentAdd reports nothing back to a restore that must survive an
+		// empty group, so confirm each expected definition actually landed: a
+		// name the lock records but the source no longer yields leaves no
+		// canonical file, and would otherwise pass as a clean restore that
+		// silently installed nothing.
+		for _, name := range group.names {
+			canonicalPath := agentCanonicalPath(name, lockedAgentFormat(entries[name]), global, cwd)
+			if !fileExists(canonicalPath) {
+				ui.LogWarn(fmt.Sprintf("%s: not found in %s - the lock records it but the source no longer has it", name, group.source))
+				unrestorable = append(unrestorable, name)
+			}
+		}
 	}
 
 	reportUnrestorable(unrestorable, "agent definition",

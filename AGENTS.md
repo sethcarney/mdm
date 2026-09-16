@@ -31,8 +31,11 @@ and [docs/agent-artifacts.md](docs/agent-artifacts.md#formats-markdown-and-toml)
 
 Three names deliberately keep the old word and must not be renamed: `AGENTS.md`
 itself, the shared `.agents/` directory (`.agents/skills`, `.agents/agents`), and
-the `configuredAgents` JSON key that v1 lock readers still parse (the Go field
-behind it is `ConfiguredHarnesses`).
+the `configuredAgents` JSON key in the **legacy v1 `skills-lock.json`** that the
+migration reader still parses (the Go field behind it is `ConfiguredHarnesses`).
+`mdm.lock` and `mdm-state.json` are v2-era file names with no released
+predecessor, so they start at `"version": 1` and use `configuredHarnesses`
+exclusively - only the v1 `skills-lock.json` lineage carries `configuredAgents`.
 
 ## Git Conventions
 
@@ -442,8 +445,8 @@ mdm
 │   └── disable <feature>                   # Remove a persisted opt-in
 ├── harnesses                               # Manage the configured harness list used as default install targets
 │   ├── list                                # Show configured harnesses for the current scope (alias: ls)
-│   ├── add [harnesses...]                  # Add harnesses to the configured list (interactive picker with no args)
-│   └── remove [harnesses...]               # Remove harnesses and their unique skill/instruction files
+│   ├── add [harnesses...]                  # Add harnesses to the configured list (interactive picker with no args) (alias: a)
+│   └── remove [harnesses...]               # Remove harnesses and their unique skill/instruction files (aliases: rm, r)
 ├── agents                                  # Manage agent definitions - subagent persona files installed into a harness
 │   ├── add <source>                        # Install agent definitions from GitHub, a URL, or a local path (alias: a)
 │   ├── list                                # List installed agent definitions (alias: ls)
@@ -482,6 +485,7 @@ mdm
 │   ├── agents_remove.go # `mdm agents remove`: harness copies, then canonical file + lock entry once nothing holds it
 │   ├── agents_install.go # `mdm agents install`: restore definitions from the lock
 │   ├── agents_update.go # `mdm agents update`: re-fetch by source+ref, refresh every harness install
+│   ├── agents_held.go   # Which harnesses hold a definition, and which of their files mdm may touch (mdmOwnsAgentFile)
 │   ├── agent_installer.go # Installs one definition into one harness; agentDiskName, the canonical/harness path pair
 │   ├── rules.go         # `mdm rules` group: link/status/unlink harness instruction files
 │   ├── selfupdate.go    # `mdm upgrade`: downloads and replaces the mdm binary from GitHub releases
@@ -507,7 +511,7 @@ mdm
     ├── pathsafe/        # The one copy of the install path guard: IsSafeRelDir (lexical) + ResolvedContains (on-disk containment), applied by skill/ and agentfile/ to directories a source declares for itself
     ├── source/          # URL/path parsing into ParsedSource (GitHub, GitLab, local, well-known)
     ├── registry/        # Well-known registry fetching (.well-known/agent-skills standard)
-    ├── lock/            # mdm.lock read/write (skills, agents, knowledge, plugins sections; reads legacy v1 lock files as a fallback); tracks hashes, versions, timestamps, the per-scope installMode, and configuredHarnesses (still written under the `configuredAgents` JSON key for v1 readers)
+    ├── lock/            # mdm.lock read/write (skills, agents, knowledge, plugins sections; reads legacy v1 lock files as a fallback); tracks hashes, versions, timestamps, the per-scope installMode, and configuredHarnesses (written under the `configuredHarnesses` key; the legacy `configuredAgents` key is still read as a fallback for v1 files)
     ├── git/             # Shallow git clone; branch/ref handling
     ├── blob/            # GitHub API tree/blob queries for skill discovery
     ├── security/        # markdownscan: hidden-character / prompt-smuggling detection; embeds Unicode emoji-variation-sequences.txt
@@ -571,7 +575,7 @@ specifically:
   printed reason, not a failure - but a run that installed nothing anywhere
   prints no success line and exits non-zero.
 
-`mdm skills cherry-pick` → `cherrypick.go` reuses steps 1–3, then diverges:
+`mdm skills cherry-pick` → `cherrypick.go` reuses steps 1-3, then diverges:
 
 4. The skill directory is copied into `./skills/<name>` - the project's own tree,
    not a harness's
@@ -693,6 +697,6 @@ git tag v1.5.8
 git push origin v1.5.8
 ```
 
-GoReleaser builds binaries for Linux/macOS/Windows (x64 + ARM64), creates a GitHub release, and injects the tag as the version via ldflags. `internal/version/version.go` holds a `"dev"` fallback for `go install` users - do not bump it for releases, the tag is the source of truth.
+GoReleaser builds binaries for Linux and macOS (x64 + ARM64) and Windows (x64 only - `windows/arm64` is ignored in `.goreleaser.yaml`), creates a GitHub release, and injects the tag as the version via ldflags. `internal/version/version.go` holds a `"dev"` fallback for `go install` users - do not bump it for releases, the tag is the source of truth.
 
 Pre-releases work the same way: push a tag like `v1.6.0-rc.1` and GoReleaser marks the GitHub release as a prerelease automatically. `mdm upgrade` skips prereleases because GitHub's `/releases/latest` API excludes them.

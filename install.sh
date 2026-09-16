@@ -85,8 +85,13 @@ if command -v sha256sum >/dev/null 2>&1; then
 elif command -v shasum >/dev/null 2>&1; then
   ACTUAL="$(shasum -a 256 "${WORK_DIR}/${BINARY_NAME}" | awk '{print $1}')"
 else
+  # No hashing tool available. Warn loudly but proceed rather than block an
+  # install on an exotic box without coreutils or perl. When cosign is present,
+  # the step above has already verified the signed checksum manifest; this only
+  # skips re-hashing the binary against it.
   ACTUAL=""
-  echo "Neither sha256sum nor shasum found - cannot verify the download." >&2
+  echo "WARNING: neither sha256sum nor shasum found - cannot verify ${BINARY_NAME} against ${CHECKSUM_FILE}." >&2
+  echo "WARNING: continuing without checksum verification. Install coreutils (sha256sum) or perl (shasum) to enable it." >&2
 fi
 
 if [ -n "$ACTUAL" ]; then

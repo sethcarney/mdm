@@ -64,8 +64,8 @@ func runMigrate(dryRun, yes, noTombstone, force bool) error {
 	}
 
 	if !plan.Needed() && !gplan.Needed() {
-		clearGraduatedOptIns()
 		fmt.Printf("\n%sNothing to migrate - no v1 lock files found.%s\n\n", ansiDim, ansiReset)
+		clearGraduatedOptIns(dryRun)
 		return nil
 	}
 
@@ -214,14 +214,17 @@ func executeMigration(cwd string, plan lock.ProjectMigration, gplan lock.GlobalM
 		if err := lock.ExecuteProjectMigration(cwd, !noTombstone); err != nil {
 			return err
 		}
-		_, statErr := os.Stat(lock.GetProjectLockPath(cwd))
 		switch {
 		case len(plan.Legacy) == 0:
 			fmt.Printf("%s✓%s Recorded install mode %q on %s, no legacy files to retire.\n", ansiGreen, ansiReset, plan.InstallModeBackfill, lockName)
-		case statErr == nil:
-			fmt.Printf("%s✓%s Project migrated to %s - commit it together with the removed files.\n", ansiGreen, ansiReset, lockName)
+		case lock.ReadProjectLock(cwd).IsEmpty():
+			// The legacy files held no entries, so the write left only a
+			// version line. Say so rather than "commit it" - a bare lock is
+			// nothing to commit. (The old check was whether the file exists,
+			// which is always true after the write, so this branch never ran.)
+			fmt.Printf("%s✓%s Legacy lock files retired - they held no entries, so %s is empty and need not be committed.\n", ansiGreen, ansiReset, lockName)
 		default:
-			fmt.Printf("%s✓%s Legacy lock files retired - they held no entries, so there is no %s to commit.\n", ansiGreen, ansiReset, lockName)
+			fmt.Printf("%s✓%s Project migrated to %s - commit it together with the removed files.\n", ansiGreen, ansiReset, lockName)
 		}
 	}
 	if gplan.Needed() {
@@ -234,14 +237,14 @@ func executeMigration(cwd string, plan lock.ProjectMigration, gplan lock.GlobalM
 			fmt.Printf("%s✓%s Global state migrated to %s.\n", ansiGreen, ansiReset, lock.GetGlobalStatePath())
 		}
 	}
-	clearGraduatedOptIns()
+	clearGraduatedOptIns(false)
 	fmt.Println()
 	return nil
 }
 
 // clearGraduatedOptIns drops persisted experimental opt-ins for features
 // that no longer exist (e.g. knowledge and plugins, which graduated in v2).
-func clearGraduatedOptIns() {
+func clearGraduatedOptIns(dryRun bool) {
 	state := lock.ReadGlobalState()
 	if len(state.Experimental) == 0 {
 		return
@@ -256,6 +259,12 @@ func clearGraduatedOptIns() {
 		return
 	}
 	dropped := len(state.Experimental) - len(kept)
+	// A dry run reports without touching the file: writing here made
+	// `mdm migrate --dry-run` modify mdm-state.json, breaking its contract.
+	if dryRun {
+		fmt.Printf("%sWould clear %d stale experimental opt-in(s) for graduated features.%s\n", ansiDim, dropped, ansiReset)
+		return
+	}
 	state.Experimental = kept
 	if err := lock.WriteGlobalState(state); err != nil {
 		ui.LogWarn(fmt.Sprintf("could not update the global state file: %v", err))

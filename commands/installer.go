@@ -367,10 +367,33 @@ func installSkillForHarness(s *skill.Skill, harnessName string, global bool, mod
 	}
 
 	if mode == InstallModeCopy {
-		// The harness's copy is the source. Copying would empty the source
-		// first, so report the install already in place.
+		// Copy mode still goes through the same front matter as the symlink
+		// path: it must refuse a skill an installed plugin owns (the refusal
+		// otherwise lived only in performSymlinkInstall, so --copy smuggled an
+		// impostor past it), and it materializes the canonical directory too, so
+		// copy mode is "the canonical directory plus a full copy per harness" as
+		// documented and doctor - which checks the canonical path - does not
+		// report the skill missing on disk.
+		if err := refuseIfPluginOwned(canonicalDir, global); err != nil {
+			return InstallResult{Success: false, Path: harnessDir, Mode: mode, Error: err.Error()}
+		}
+		if !sameExistingDir(s.Path, canonicalDir) {
+			if err := cleanAndCreateDir(canonicalDir); err != nil {
+				return InstallResult{Success: false, Path: harnessDir, Mode: mode, Error: err.Error()}
+			}
+			if err := copyDirectory(s.Path, canonicalDir); err != nil {
+				return InstallResult{Success: false, Path: harnessDir, Mode: mode, Error: err.Error()}
+			}
+		}
+		// A shared-dir harness at global scope reads the canonical directory
+		// itself; there is no separate per-harness copy to make.
+		if global && harness.UsesSharedSkillsDir(harnessName) {
+			return InstallResult{Success: true, Path: canonicalDir, CanonicalPath: canonicalDir, Mode: InstallModeCopy}
+		}
+		// The harness's copy is the source (mdm skills add . rediscovering it).
+		// Copying would empty the source first, so report the install in place.
 		if sameExistingDir(s.Path, harnessDir) {
-			return InstallResult{Success: true, Path: harnessDir, Mode: InstallModeCopy}
+			return InstallResult{Success: true, Path: harnessDir, CanonicalPath: canonicalDir, Mode: InstallModeCopy}
 		}
 		if err := cleanAndCreateDir(harnessDir); err != nil {
 			return InstallResult{Success: false, Path: harnessDir, Mode: mode, Error: err.Error()}
@@ -378,7 +401,7 @@ func installSkillForHarness(s *skill.Skill, harnessName string, global bool, mod
 		if err := copyDirectory(s.Path, harnessDir); err != nil {
 			return InstallResult{Success: false, Path: harnessDir, Mode: mode, Error: err.Error()}
 		}
-		return InstallResult{Success: true, Path: harnessDir, Mode: InstallModeCopy}
+		return InstallResult{Success: true, Path: harnessDir, CanonicalPath: canonicalDir, Mode: InstallModeCopy}
 	}
 
 	return performSymlinkInstall(canonicalDir, harnessDir, harnessName, s.Path, global, mode,
@@ -619,6 +642,13 @@ func findHarnessesForSkill(s *skill.Skill, dirName string, harnessesToCheck []st
 			continue
 		}
 		harnessBase := harnessDirForScope(harnessName, isGlobal, cwd)
+		// A shared-dir harness reads the shared .agents/skills directory, which
+		// is where the global install writes it too; its own GlobalSkillsDir
+		// stays empty, so probing that (the default) attributed the skill to no
+		// harness. Attribute by the shared directory the install actually used.
+		if isGlobal && harness.UsesSharedSkillsDir(harnessName) {
+			harnessBase = getCanonicalSkillsDir(isGlobal, cwd)
+		}
 		if harnessHasSkill(harnessBase, dirName, sName, s.Name) {
 			result = append(result, harnessName)
 		}
@@ -769,6 +799,15 @@ func linkInstalledSkillToHarness(skillName, harnessName string, global bool, cwd
 	}
 	if _, err := os.Stat(harnessDir); err == nil {
 		return true // already present
+	}
+	// Honor the scope's recorded install mode: adding a harness to a copy-mode
+	// scope must give it a real copy, not a symlink, or the new harness alone
+	// would disagree with every other skill in the scope.
+	if lock.GetInstallMode(global, cwd) == lock.InstallModeCopy {
+		if err := os.MkdirAll(harnessBase, 0755); err != nil {
+			return false
+		}
+		return copyDirectory(canonicalDir, harnessDir) == nil
 	}
 	if createSymlink(canonicalDir, harnessDir) {
 		return true
