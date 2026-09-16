@@ -5,6 +5,7 @@ package commands
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -454,14 +455,22 @@ func sameAgentSource(a, b lock.AgentLockEntry, cwd string) bool {
 // from a different source, or from a different file of the same source, is
 // a collision. An entry written before AgentPath was recorded for its source
 // cannot be compared by file and is compared by source alone.
-func agentSourceConflict(prior, incoming lock.AgentLockEntry, incomingPath, name, cwd string) string {
+func agentSourceConflict(prior, incoming lock.AgentLockEntry, incomingPath, name, rootDir, cwd string) string {
 	if !sameAgentSource(prior, incoming, cwd) {
 		return fmt.Sprintf("%s is already installed from %s (%s); installing %s from %s would replace it - remove it with `mdm agents remove %s` first, or pass --force to replace it",
 			name, prior.Source, prior.AgentPath, incomingPath, incoming.Source, name)
 	}
 	if prior.AgentPath != "" && incomingPath != "" && prior.AgentPath != incomingPath {
-		return fmt.Sprintf("%s is already installed from %s in %s; %s in the same source would replace it - remove it with `mdm agents remove %s` first, or pass --force to replace it",
-			name, prior.Source, prior.AgentPath, incomingPath, name)
+		// A definition that simply moved within the same source is a relocation,
+		// not a second definition of the same name: the old path is gone, so
+		// there is nothing ambiguous to refuse. Only refuse when the prior file
+		// still exists alongside the new one - then two files really do install
+		// as one name. rootDir is the fetched source; an empty one (no root to
+		// check) keeps the old refuse-always behavior.
+		if rootDir == "" || fileExists(filepath.Join(rootDir, filepath.FromSlash(prior.AgentPath))) {
+			return fmt.Sprintf("%s is already installed from %s in %s; %s in the same source would replace it - remove it with `mdm agents remove %s` first, or pass --force to replace it",
+				name, prior.Source, prior.AgentPath, incomingPath, name)
+		}
 	}
 	return ""
 }
@@ -507,6 +516,27 @@ func fileExists(path string) bool {
 	return err == nil
 }
 
+// discoveredFileIsMdmOwn reports whether a file `mdm agents add .` rediscovered
+// is one mdm already installed for the recorded entry: the canonical file, a
+// symlink into it, or a materialized harness copy (Copilot's .agent.md, Codex's
+// .toml). Such a file is not a new source, so reinstalling it - or worse,
+// treating its path as a conflicting source - is wrong. Only the same-file /
+// canonical case was caught before, so a materialized copy at its own path read
+// as a fresh source and stopped `add .` with a spurious conflict.
+func discoveredFileIsMdmOwn(a *agentfile.AgentFile, name string, entry lock.AgentLockEntry, global bool, cwd string) bool {
+	canonicalPath := agentCanonicalPath(name, agentCanonicalFormat(a), global, cwd)
+	if sameFileOnDisk(a.Path, canonicalPath) {
+		return true
+	}
+	for _, h := range agentInstalledIn(name, entry, global, cwd) {
+		target := agentHarnessPath(name, h, global, cwd)
+		if target != "" && sameFileOnDisk(a.Path, target) && mdmOwnsAgentFile(target, h, canonicalPath) {
+			return true
+		}
+	}
+	return false
+}
+
 // targetsFor returns the harnesses one definition goes to.
 func (r agentInstallRun) targetsFor(name string, harnesses []string) []string {
 	if override, ok := r.harnessesFor[name]; ok && len(override) > 0 {
@@ -534,11 +564,14 @@ func installAgents(agents []*agentfile.AgentFile, harnesses []string, global boo
 
 	for _, a := range agents {
 		name := agentDiskName(a.Name)
-		// `mdm agents add .` discovers mdm's own canonical files and the
-		// harness links into them. Installing one of those again would only
+		// `mdm agents add .` discovers mdm's own installed files - the canonical
+		// file, the harness symlinks into it, and materialized copies (Copilot's
+		// .agent.md, Codex's .toml). Installing one of those again would only
 		// rewrite its lock entry's source to the project itself, after which
-		// `agents update` can never find it upstream again.
-		if entry, ok := recorded[name]; ok && sameFileOnDisk(a.Path, agentCanonicalPath(name, agentCanonicalFormat(a), global, cwd)) {
+		// `agents update` can never find it upstream again, and rediscovering a
+		// materialized copy at a new path used to read as a source conflict that
+		// stopped `add .` outright.
+		if entry, ok := recorded[name]; ok && discoveredFileIsMdmOwn(a, name, entry, global, cwd) {
 			ui.LogInfo(fmt.Sprintf("%s: already installed from %s - to add a harness, run mdm agents add %s --harness <name>", a.Name, entry.Source, entry.Source))
 			outcome.alreadyInstalled++
 			continue
@@ -561,7 +594,7 @@ func installAgents(agents []*agentfile.AgentFile, harnesses []string, global boo
 		var priorHarnesses []string
 		if prior, ok := recorded[name]; ok {
 			priorHarnesses = agentHeldHarnesses(name, prior, global, cwd)
-			if conflict := agentSourceConflict(prior, baseEntry, agentPath, name, cwd); conflict != "" {
+			if conflict := agentSourceConflict(prior, baseEntry, agentPath, name, rootDir, cwd); conflict != "" {
 				if !run.force {
 					ui.LogError(fmt.Sprintf("%s: %s", a.Name, conflict))
 					outcome.refused++
