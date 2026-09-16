@@ -18,7 +18,7 @@ Managing markdown across multiple agentic coding tools is more painful than it s
 
 `mdm` is a fast, security-focused markdown management CLI written in Go, designed to solve exactly these problems:
 
-- **45 harnesses supported** out of the box, including Claude Code, Cursor, Cline, GitHub Copilot, Gemini CLI, Codex, and 39 more.
+- **43 harnesses supported** out of the box, including Claude Code, Cursor, Cline, GitHub Copilot, Gemini CLI, Codex, and 37 more.
 - **One source of truth for instruction files.** `mdm rules link` makes `AGENTS.md` the canonical file and symlinks each harness's expected filename to it.
 - **Skills from anywhere.** Install from GitHub, GitLab, arbitrary URLs, local paths, or the [skills.sh](https://skills.sh) registry.
 - **Reproducible installs.** Repos can commit an `mdm.lock` with their recommended skills, knowledge bundles, and plugins so new teammates run `mdm skills install` once and onboard with whatever harness they prefer.
@@ -62,7 +62,7 @@ mdm is published as a [Dev Container Feature](https://containers.dev/implementor
 }
 ```
 
-The feature installs the release binary for the container's architecture to `/usr/local/bin/mdm`, verified against the release checksums - no Go toolchain needed in the image. Pin a release with `{"version": "1.9.1"}`, and pair it with `"postCreateCommand": "mdm skills install"` to restore the skills in `mdm.lock` on create. See [src/mdm/README.md](src/mdm/README.md) for the full options.
+The feature installs the release binary for the container's architecture to `/usr/local/bin/mdm`, verified against the release checksums - no Go toolchain needed in the image. Pin a release with `{"version": "2.0.0"}`, and pair it with `"postCreateCommand": "mdm skills install"` to restore the skills in `mdm.lock` on create. See [src/mdm/README.md](src/mdm/README.md) for the full options.
 
 ## Usage
 
@@ -111,16 +111,15 @@ Run `mdm --help` for the full command reference. See [docs/rules.md](docs/rules.
 > use `mdm harnesses add <name>`. There is no alias, so an old script fails rather than
 > doing something else. `mdm.lock` written by the earlier build is read as before.
 
-> [!WARNING]
-> **`mdm harnesses remove openclaw` deletes `./skills/`.** Removing a harness cleans
-> up the skills directory that belongs to it, and OpenClaw's project skills
-> directory is `skills/` - the same place many projects keep hand-written
-> skills. mdm cannot tell your own work from an OpenClaw install, so anything in
-> there that is not a [cherry-picked fork](https://sethcarney.github.io/mdm/skills/cherry-pick/)
-> (those carry an `.mdm-origin.json` marker and are preserved) is deleted along
-> with it. Commit `./skills/` before removing harnesses, or keep hand-written skills
-> in a directory no harness claims. Every other harness uses a dot-prefixed or shared
-> directory. See [Troubleshooting](https://sethcarney.github.io/mdm/troubleshooting/).
+> [!NOTE]
+> **`mdm harnesses remove openclaw` and your `./skills/` directory.** OpenClaw's
+> project skills directory is `skills/` - the same place many projects keep
+> hand-written skills. Removing the harness deletes only what mdm installed
+> there: the skills its lock records and the symlinks it created. A
+> [cherry-picked fork](https://sethcarney.github.io/mdm/skills/cherry-pick/)
+> (which carries an `.mdm-origin.json` marker) and any hand-written skill the
+> lock does not record are left in place. Every other harness uses a
+> dot-prefixed or shared directory. See [Troubleshooting](https://sethcarney.github.io/mdm/troubleshooting/).
 
 Every install path - skills, agent definitions, knowledge bundles and plugins - runs a deterministic local hidden-character scan over markdown files before copying or symlinking content, and each exposes `--allow-hidden-chars` to override it deliberately. See [docs/security/hidden-character-scan.md](docs/security/hidden-character-scan.md) for the exact checks and bypass policy.
 

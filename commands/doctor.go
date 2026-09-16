@@ -63,7 +63,7 @@ func buildDoctorCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "doctor",
-		Short: "Check the health of installed skills",
+		Short: "Check installed skills, agent definitions, and project markdown for health issues",
 		Long: fmt.Sprintf(`Check installed skills for installation and content issues.
 
 Checks performed:

@@ -76,10 +76,10 @@ Install [slsa-verifier](https://github.com/slsa-framework/slsa-verifier#installa
 slsa-verifier verify-artifact mdm-linux-x64 \
   --provenance-path multiple.intoto.jsonl \
   --source-uri github.com/sethcarney/mdm \
-  --source-tag v1.0.2
+  --source-tag v2.0.0
 ```
 
-Replace `mdm-linux-x64` with your platform binary and `v1.0.2` with the release tag you downloaded.
+Replace `mdm-linux-x64` with your platform binary and `v2.0.0` with the release tag you downloaded.
 
 ### Verify with SHA-256 alone
 

@@ -48,7 +48,7 @@ To reinstall mdm after uninstalling, use the install script:
 curl -fsSL https://raw.githubusercontent.com/sethcarney/mdm/main/install.sh | bash
 
 # Windows (PowerShell)
-iwr https://raw.githubusercontent.com/sethcarney/mdm/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/sethcarney/mdm/main/install.ps1 | iex
 ```
 
 Or download a binary directly from the [releases page](https://github.com/sethcarney/mdm/releases/latest).

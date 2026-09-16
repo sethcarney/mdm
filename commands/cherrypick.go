@@ -72,7 +72,7 @@ find and warns when a source declares no license at all, but honouring the terms
   mdm skills cherry-pick owner/repo#v1.2.0 -s code-review
   mdm skills cherry-pick owner/repo -s code-review --as our-code-review
   mdm skills cherry-pick ./.agents/skills/code-review     # fork one you already installed
-  mdm skills cherry-pick owner/repo -s code-review --install -a claude-code
+  mdm skills cherry-pick owner/repo -s code-review --install --harness claude-code
   mdm skills cherry-pick --status`,
 			ansiBold, ansiReset, ansiBold, ansiReset, defaultForksDir,
 			ansiText, fork.OriginFileName, ansiReset,
