@@ -606,3 +606,59 @@ func TestFeatureREADMEDocumentsOptions(t *testing.T) {
 		t.Errorf("README.md does not document the dev container feature (%s)", wantRef)
 	}
 }
+
+// TestRootInstallersMatchTheReleaseArtifacts is for install.sh and install.ps1
+// what TestFeatureInstallTargetsTheReleaseArtifacts is for the feature's
+// installer: the connection to .goreleaser.yaml that nothing at build time
+// otherwise provides. Its absence is why both scripts spent several releases
+// fetching a per-binary "<asset>.bundle" that the signing config has never
+// produced - with cosign on PATH, `set -e` aborted the install on the 404 and
+// nobody got a binary.
+func TestRootInstallersMatchTheReleaseArtifacts(t *testing.T) {
+	var signs struct {
+		Signs []struct {
+			Artifacts string `yaml:"artifacts"`
+		} `yaml:"signs"`
+	}
+	if err := yaml.Unmarshal([]byte(readRepoFile(t, ".goreleaser.yaml")), &signs); err != nil {
+		t.Fatalf("parse .goreleaser.yaml: %v", err)
+	}
+	if len(signs.Signs) != 1 || signs.Signs[0].Artifacts != "checksum" {
+		t.Fatalf("expected one signs entry over %q; the installers verify the checksum manifest and must be updated to match", "checksum")
+	}
+	if !strings.Contains(readRepoFile(t, ".github/workflows/release.yml"), "tags:") {
+		t.Fatal("release.yml no longer triggers on tags; re-check the signing identity in the installers")
+	}
+
+	manifest := goreleaser(t).Checksum.NameTemplate
+	for _, path := range []string{"install.sh", "install.ps1"} {
+		script := readRepoFile(t, path)
+
+		// The signed artifact is the manifest, so that is what must be
+		// fetched and verified. Both scripts build the bundle name from the
+		// manifest name, so the suffix is what there is to check.
+		if !strings.Contains(script, manifest) || !strings.Contains(script, ".sigstore.json") {
+			t.Errorf("%s does not verify %s against its %s.sigstore.json signature", path, manifest, manifest)
+		}
+
+		// No release has ever attached a per-binary signature, so naming one
+		// means fetching a 404. ".sigstore" is stripped first: it appears in
+		// the manifest's own signature and in the cosign docs URL, and both
+		// contain ".sig" as a substring.
+		for _, line := range strings.Split(script, "\n") {
+			probe := strings.ReplaceAll(line, ".sigstore", "")
+			for _, ext := range []string{".bundle", ".sig", ".pem"} {
+				if strings.Contains(probe, ext) {
+					t.Errorf("%s references a per-binary %s artifact, which no release publishes:\n  %s",
+						path, ext, strings.TrimSpace(line))
+				}
+			}
+		}
+
+		// A tag-triggered workflow never signs under a branch ref, so an
+		// identity anchored to one can never match.
+		if !strings.Contains(script, `release\.yml@refs/tags/`) {
+			t.Errorf("%s does not anchor the cosign identity to refs/tags/, but release.yml is tag-triggered", path)
+		}
+	}
+}

@@ -644,3 +644,70 @@ func TestSkillsUpdateHintsAtPluginOwnedSkill(t *testing.T) {
 		t.Errorf("expected a hint pointing at mdm plugins update, got: %q", out)
 	}
 }
+
+// TestPluginsUpdateNeverStrandsMCPServers covers both ways an update used to
+// leave servers wired in the user's .mcp.json with no lock entry naming them,
+// after which nothing - `mdm plugins remove` included - could clean them.
+// Upstream dropping mcp.json must unwire; --skip-mcp must keep the record for
+// what it deliberately leaves wired.
+func TestPluginsUpdateNeverStrandsMCPServers(t *testing.T) {
+	mcpConfig := `{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "example": {"type": "stdio", "command": "./bin/serve"}
+  }
+}
+`
+	setup := func(t *testing.T) (dir string, env []string, src string) {
+		t.Helper()
+		dir = t.TempDir()
+		env = freshEnv(t)
+		src = writePluginSource(t, dir, "toolkit", "demo")
+		if err := os.WriteFile(filepath.Join(src, "mcp.json"), []byte(mcpConfig), 0644); err != nil {
+			t.Fatal(err)
+		}
+		mustRunPlugins(t, dir, env, "plugins", "add", src, "-y", "--harness", "claude-code")
+		if data, err := os.ReadFile(filepath.Join(dir, ".mcp.json")); err != nil || !strings.Contains(string(data), "toolkit--example") {
+			t.Fatalf("server was not wired on install (err=%v)", err)
+		}
+		return dir, env, src
+	}
+
+	t.Run("upstream drops mcp.json", func(t *testing.T) {
+		dir, env, src := setup(t)
+		if err := os.Remove(filepath.Join(src, "mcp.json")); err != nil {
+			t.Fatal(err)
+		}
+		mustRunPlugins(t, dir, env, "plugins", "update", "toolkit")
+
+		data, err := os.ReadFile(filepath.Join(dir, ".mcp.json"))
+		if err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(data), "toolkit--example") {
+			t.Fatalf("update left a server behind that the lock no longer records:\n%s", data)
+		}
+	})
+
+	t.Run("--skip-mcp keeps the record", func(t *testing.T) {
+		dir, env, _ := setup(t)
+		mustRunPlugins(t, dir, env, "plugins", "update", "toolkit", "--skip-mcp")
+
+		lockData, err := os.ReadFile(filepath.Join(dir, lockName))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(lockData), "toolkit--example") {
+			t.Fatalf("--skip-mcp dropped the record for a server it left wired:\n%s", lockData)
+		}
+		// The record is what remove cleans by, so prove it still works.
+		mustRunPlugins(t, dir, env, "plugins", "remove", "toolkit", "-y")
+		data, err := os.ReadFile(filepath.Join(dir, ".mcp.json"))
+		if err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(data), "toolkit--example") {
+			t.Fatalf("remove could not clean the server --skip-mcp left wired:\n%s", data)
+		}
+	})
+}

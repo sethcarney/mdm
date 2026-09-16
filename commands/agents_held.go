@@ -107,6 +107,21 @@ func agentRecordedHarnesses(entry lock.AgentLockEntry) []string {
 	return out
 }
 
+// agentHeldHarnesses returns, sorted, the harnesses a lock entry stands for:
+// its recorded list, or, for an entry that predates the list, the harnesses
+// whose file mdm can show it wrote. Unlike agentInstalledIn it keeps a
+// recorded harness whose file has gone missing, because the recorded list is
+// where the definition belongs rather than a reading of the disk. An add uses
+// it to answer "where else is this definition installed?" - reading
+// entry.Harnesses raw answers "nowhere" for every entry written before the
+// list existed, which are exactly the entries that need the inference.
+func agentHeldHarnesses(name string, entry lock.AgentLockEntry, global bool, cwd string) []string {
+	if recorded := agentRecordedHarnesses(entry); recorded != nil {
+		return recorded
+	}
+	return agentOwnedHarnesses(name, entry, global, cwd)
+}
+
 // agentInstalledIn returns, sorted, the harnesses holding the definition that
 // still have its file on disk: the lock's list when the entry records one,
 // with any harness whose file has gone missing dropped, and otherwise the

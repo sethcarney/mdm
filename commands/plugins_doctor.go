@@ -95,13 +95,19 @@ func diagnosePluginSkillLinks(name string, entry lock.PluginLockEntry, cwd strin
 
 // diagnosePluginMCP flags recorded server ids missing from a harness's MCP
 // config, and mdm-managed ids present in config but absent from the lock.
+//
+// It walks every harness mdm can wire, not only the ones the lock entry names.
+// An orphan is precisely a server the config still has and the entry does not,
+// so an entry with no MCP record at all is the case most worth checking.
 func diagnosePluginMCP(name string, entry lock.PluginLockEntry, cwd string) []doctorIssue {
 	var issues []doctorIssue
-	for _, harnessName := range sortedStringKeys(entry.MCP) {
-		target, ok := mcpwire.Targets[harnessName]
-		if !ok {
-			continue
-		}
+	harnessNames := make([]string, 0, len(mcpwire.Targets))
+	for harnessName := range mcpwire.Targets {
+		harnessNames = append(harnessNames, harnessName)
+	}
+	sort.Strings(harnessNames)
+	for _, harnessName := range harnessNames {
+		target := mcpwire.Targets[harnessName]
 		managed, err := target.ListManaged(cwd, name)
 		if err != nil {
 			issues = append(issues, doctorIssue{
@@ -156,13 +162,4 @@ func pluginsGitignoreHint(cwd string) *doctorIssue {
 		Level:   "warn",
 		Message: fmt.Sprintf("plugin data is machine-local state - add %s/ to .gitignore", rel),
 	}
-}
-
-func sortedStringKeys(m map[string][]string) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
 }

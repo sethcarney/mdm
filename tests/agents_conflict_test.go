@@ -65,4 +65,18 @@ func TestAgentsAddRefusesACrossRunNameCollisionUnlessForced(t *testing.T) {
 	if !strings.Contains(string(lockData), recordedB) || strings.Contains(string(lockData), recordedA) {
 		t.Errorf("lock does not point at the forced source %s:\n%s", recordedB, lockData)
 	}
+
+	// A refusal is a failure even when another definition in the same add
+	// went in: the exit code counted installs only, so a batch with one
+	// refused name read, to a script, like one where every name landed.
+	srcC := writeAgentSourceWith(t, "critic", "helper")
+	stdout, stderr, code = runMdmInDir(t, projectDir, env,
+		"agents", "add", srcC, "--harness", "claude-code", "--project", "-y")
+	combined = stdout + stderr
+	if code == 0 {
+		t.Errorf("an add that refused critic but installed helper exited 0:\n%s", combined)
+	}
+	if _, err := os.Lstat(filepath.Join(projectDir, ".claude", "agents", "helper.md")); err != nil {
+		t.Errorf("helper, which collided with nothing, was not installed: %v", err)
+	}
 }

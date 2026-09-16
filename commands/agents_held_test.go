@@ -131,7 +131,9 @@ func TestRemoveInfersOnlyOwnedFilesForAnEntryWithoutAHarnessList(t *testing.T) {
 }
 
 // A copy the user edited after the install is theirs. Remove leaves it and
-// says so; the lock entry still goes, since mdm no longer has anything there.
+// says so - and, because the definition is therefore still installed there,
+// keeps the canonical file and the lock entry rather than orphaning the file
+// it just declined to delete.
 func TestRemoveLeavesAnEditedCopyAloneWithANote(t *testing.T) {
 	cwd := t.TempDir()
 	installCriticTo(t, cwd, []string{"claude-code"})
@@ -151,8 +153,8 @@ func TestRemoveLeavesAnEditedCopyAloneWithANote(t *testing.T) {
 	if got, err := os.ReadFile(target); err != nil || string(got) != edited {
 		t.Errorf("the edited copy was deleted or changed (err=%v):\n%s", err, got)
 	}
-	if !res.fullyRemoved {
-		t.Error("fullyRemoved = false; nothing mdm owns is left")
+	if res.fullyRemoved {
+		t.Error("fullyRemoved = true although the edited copy still holds the definition")
 	}
 }
 

@@ -34,39 +34,79 @@ case "$OS" in
 esac
 
 BINARY_NAME="mdm-${TARGET}"
-DOWNLOAD_URL="https://github.com/${REPO}/releases/latest/download/${BINARY_NAME}"
+BASE_URL="https://github.com/${REPO}/releases/latest/download"
+
+# GoReleaser signs the checksum manifest, not each binary, so the chain of
+# trust runs: cosign verifies sha256sums.txt against its sigstore bundle, then
+# the binary is verified against sha256sums.txt. Verifying a per-binary
+# signature is not possible - no release has ever published one.
+CHECKSUM_FILE="sha256sums.txt"
+SIGNATURE_FILE="${CHECKSUM_FILE}.sigstore.json"
+
+WORK_DIR="$(mktemp -d)"
+cleanup() { rm -rf "$WORK_DIR"; }
+trap cleanup EXIT
 
 echo "Downloading mdm (${TARGET})..."
-curl -fsSL "$DOWNLOAD_URL" -o /tmp/mdm-install
+curl -fsSL "${BASE_URL}/${BINARY_NAME}" -o "${WORK_DIR}/${BINARY_NAME}"
+
+echo "Downloading ${CHECKSUM_FILE}..."
+curl -fsSL "${BASE_URL}/${CHECKSUM_FILE}" -o "${WORK_DIR}/${CHECKSUM_FILE}"
 
 if command -v cosign >/dev/null 2>&1; then
-  echo "Verifying cosign signature..."
-  BUNDLE_URL="https://github.com/${REPO}/releases/latest/download/${BINARY_NAME}.bundle"
-  curl -fsSL "$BUNDLE_URL" -o /tmp/mdm-install.bundle
-  cosign verify-blob /tmp/mdm-install \
-    --bundle /tmp/mdm-install.bundle \
-    --certificate-identity-regexp='^https://github\.com/sethcarney/mdm/\.github/workflows/release\.yml@refs/heads/main$' \
-    --certificate-oidc-issuer="https://token.actions.githubusercontent.com" || {
-    echo "Signature verification FAILED. The binary may be tampered. Aborting." >&2
-    rm -f /tmp/mdm-install /tmp/mdm-install.bundle
+  echo "Verifying the checksum manifest signature..."
+  curl -fsSL "${BASE_URL}/${SIGNATURE_FILE}" -o "${WORK_DIR}/${SIGNATURE_FILE}"
+  # The workflow is triggered by a tag push, so the signing identity always
+  # ends in refs/tags/<tag>; it is never a branch ref.
+  if ! cosign verify-blob "${WORK_DIR}/${CHECKSUM_FILE}" \
+    --bundle "${WORK_DIR}/${SIGNATURE_FILE}" \
+    --certificate-identity-regexp='^https://github\.com/sethcarney/mdm/\.github/workflows/release\.yml@refs/tags/.+$' \
+    --certificate-oidc-issuer="https://token.actions.githubusercontent.com"; then
+    echo "Signature verification FAILED for ${CHECKSUM_FILE}. Aborting." >&2
     exit 1
-  }
-  rm -f /tmp/mdm-install.bundle
-  echo "Signature verified!"
+  fi
+  echo "Signature verified."
 else
-  echo "cosign not found - skipping signature verification."
-  echo "Install cosign to verify: https://docs.sigstore.dev/cosign/system_config/installation/"
+  echo "cosign not found - skipping the signature check on ${CHECKSUM_FILE}."
+  echo "Install cosign to verify it: https://docs.sigstore.dev/cosign/system_config/installation/"
 fi
 
-chmod +x /tmp/mdm-install
+# Keep only this asset's line. A missing or duplicated entry means the manifest
+# is not what we expect, and checking against it would prove nothing.
+EXPECTED="$(grep -E "[[:space:]]\*?${BINARY_NAME}\$" "${WORK_DIR}/${CHECKSUM_FILE}" | awk '{print $1}')"
+if [ "$(printf '%s\n' "$EXPECTED" | grep -c .)" -ne 1 ]; then
+  echo "Expected exactly one checksum entry for ${BINARY_NAME} in ${CHECKSUM_FILE}. Aborting." >&2
+  exit 1
+fi
+
+# sha256sum is coreutils; macOS ships shasum instead.
+if command -v sha256sum >/dev/null 2>&1; then
+  ACTUAL="$(sha256sum "${WORK_DIR}/${BINARY_NAME}" | awk '{print $1}')"
+elif command -v shasum >/dev/null 2>&1; then
+  ACTUAL="$(shasum -a 256 "${WORK_DIR}/${BINARY_NAME}" | awk '{print $1}')"
+else
+  ACTUAL=""
+  echo "Neither sha256sum nor shasum found - cannot verify the download." >&2
+fi
+
+if [ -n "$ACTUAL" ]; then
+  echo "Verifying checksum..."
+  if [ "$ACTUAL" != "$EXPECTED" ]; then
+    echo "Checksum verification FAILED for ${BINARY_NAME}. The download may be corrupt or tampered. Aborting." >&2
+    exit 1
+  fi
+  echo "Checksum verified."
+fi
+
+chmod +x "${WORK_DIR}/${BINARY_NAME}"
 
 mkdir -p "$INSTALL_DIR"
 
 echo "Installing to ${INSTALL_DIR}/mdm..."
 if [ -w "$INSTALL_DIR" ]; then
-  mv /tmp/mdm-install "${INSTALL_DIR}/mdm"
+  mv "${WORK_DIR}/${BINARY_NAME}" "${INSTALL_DIR}/mdm"
 else
-  sudo mv /tmp/mdm-install "${INSTALL_DIR}/mdm"
+  sudo mv "${WORK_DIR}/${BINARY_NAME}" "${INSTALL_DIR}/mdm"
 fi
 
 echo ""
