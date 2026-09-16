@@ -419,6 +419,20 @@ func installAgentFile(a *agentfile.AgentFile, harnessName string, global bool, c
 		return InstallResult{Success: true, Path: harnessPath, CanonicalPath: canonicalPath, Mode: InstallModeCopy}
 	}
 
+	// `mdm agents add .` can discover a hand-written definition that lives in
+	// this harness's own directory - ConventionalDirs scans .claude/agents and
+	// .github/agents - so the source file IS harnessPath. It already serves the
+	// harness as a real file, and the canonical copy written above is what other
+	// harnesses and `mdm agents install` restore from. Replacing it with a
+	// symlink would delete a committed file - createSymlink os.RemoveAll's a
+	// real file at the link path - and leave only a link into the gitignored
+	// canonical directory, so a fresh clone loses the definition. Leave the real
+	// file where it is; the harness keeps reading it. This mirrors the same-file
+	// guard performSymlinkInstall applies on the skills side.
+	if sameFileOnDisk(a.Path, harnessPath) {
+		return InstallResult{Success: true, Path: harnessPath, CanonicalPath: canonicalPath, Mode: InstallModeSymlink}
+	}
+
 	// Symlink first, plain copy when the platform or filesystem cannot
 	// create the link, following performSymlinkInstall in installer.go.
 	if createSymlink(canonicalPath, harnessPath) {
