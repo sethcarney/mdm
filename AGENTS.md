@@ -426,7 +426,7 @@ mdm
 ├── knowledge                               # Manage OKF knowledge bundles
 │   ├── add <source>                        # Install an OKF bundle into ./knowledge/ and record it in mdm.lock (alias: a)
 │   ├── remove [bundles...]                 # Remove bundles and their lock entries (aliases: rm, r)
-│   ├── list                                # List installed bundles (alias: ls)
+│   ├── list                                # List installed bundles (alias: ls; --json)
 │   ├── update [bundles...]                 # Re-fetch bundles from their recorded source+ref
 │   ├── validate [path]                     # Check OKF conformance and link integrity (--json)
 │   ├── init [name]                         # Scaffold a minimal conformant bundle
@@ -434,7 +434,7 @@ mdm
 ├── plugins                                 # Manage Agent Plugins (agent-plugins.org)
 │   ├── add <source>                        # Install a plugin into .agents/plugins/, link its skills, wire MCP config (alias: a)
 │   ├── remove [plugins...]                 # Unwire MCP, unlink skills, delete plugin + lock entry (aliases: rm, r; --purge-data)
-│   ├── list                                # List installed plugins (alias: ls)
+│   ├── list                                # List installed plugins (alias: ls; --json)
 │   ├── update [plugins...]                 # Re-fetch plugins from their recorded source+ref (preserves data dir)
 │   ├── validate [path]                     # Check Agent Plugins spec conformance (--json)
 │   ├── init [name]                         # Scaffold a minimal conformant plugin (--with-mcp)
@@ -449,7 +449,7 @@ mdm
 │   └── remove [harnesses...]               # Remove harnesses and their unique skill/instruction files (aliases: rm, r)
 ├── agents                                  # Manage agent definitions - subagent persona files installed into a harness
 │   ├── add <source>                        # Install agent definitions from GitHub, a URL, or a local path (alias: a)
-│   ├── list                                # List installed agent definitions (alias: ls)
+│   ├── list                                # List installed agent definitions (alias: ls; --json)
 │   ├── remove [names...]                   # Remove installed agent definitions (aliases: rm, r)
 │   ├── update [names...]                   # Re-fetch definitions from their recorded source+ref
 │   └── install                             # Restore all agent definitions from mdm.lock (CI/onboarding)

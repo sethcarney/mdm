@@ -331,6 +331,7 @@ Distinct from `mdm harnesses` above, which manages the AI tools themselves.
 | --- | --- | --- |
 | `--global`, `-g` | `add` / `list` / `remove` / `update` | Operate on the global scope (`install` restores both scopes) |
 | `--project`, `-p` | `add` / `list` / `remove` / `update` | Force project scope |
+| `--json` | `list` | Output as a JSON array (name, scope, source, ref, canonicalMissing, installedIn, missingFrom) |
 | `--harness` | `add` / `remove` | Harnesses to target (repeatable, use `*` for all) |
 | `--agent`, `-a` | `add` / `remove` | Agent definition names to target (repeatable, use `*` for all) |
 | `--copy` / `--symlink` | `add` / `install` | Switch the scope's install mode (see [Install mode](agent-artifacts.md#install-mode)) |
@@ -368,6 +369,7 @@ Manage Open Knowledge Format (OKF) bundles.
 | `--dry-run` | `add` | Show what would be installed without writing anything |
 | `--yes`, `-y` | `add` / `remove` | Skip confirmation prompts (`add`: install every discovered bundle) |
 | `--json` | `validate` | Print the validation report as JSON |
+| `--json` | `list` | Output as a JSON array (name, source, ref, specVersion, installDir, documents, present) |
 | `--allow-hidden-chars` | `add` / `update` / `install` | Allow markdown files with hidden Unicode characters |
 
 [:octicons-arrow-right-24: Details](knowledge.md)
@@ -399,6 +401,7 @@ the vendor-neutral [agent-plugins.org](https://agent-plugins.org) standard.
 | `--with-mcp` | `init` | Also scaffold an example `mcp.json` |
 | `--yes`, `-y` | `add` / `remove` | Skip confirmation prompts (`add`: install every discovered plugin) |
 | `--json` | `validate` | Print the validation report as JSON |
+| `--json` | `list` | Output as a JSON array (name, version, source, ref, specVersion, installDir, skills, harnesses, mcpServers, valid) |
 | `--allow-hidden-chars` | `add` / `update` / `install` | Allow markdown files with hidden Unicode characters |
 
 [:octicons-arrow-right-24: Details](plugins.md)

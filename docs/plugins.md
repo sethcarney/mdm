@@ -18,7 +18,7 @@ history and the conformance rules.
 | Command | What it does |
 | --- | --- |
 | `mdm plugins add <source>` | Install a plugin, link its skills, and wire its MCP config. |
-| `mdm plugins list` | List installed plugins (alias: `ls`). |
+| `mdm plugins list` | List installed plugins (alias: `ls`; `--json` for machine output). |
 | `mdm plugins update [plugins...]` | Re-fetch plugins from their recorded source and ref (preserves the data dir). |
 | `mdm plugins remove [plugins...]` | Unwire MCP, unlink skills, delete the plugin and its lock entry (aliases: `rm`, `r`; `--purge-data` also removes its data dir). |
 | `mdm plugins validate [path]` | Check Agent Plugins spec conformance (`--json` for machine output). |
@@ -44,3 +44,38 @@ Every install runs the same hidden-character scan as skills; pass
 `--allow-hidden-chars` to override it deliberately. Removing a plugin unwires its
 MCP servers and unlinks its skills, but keeps its data directory unless you pass
 `--purge-data`.
+
+## JSON output
+
+`--json` prints a top-level array and nothing else - no prompts, no progress,
+no ANSI escapes - and prints `[]` with exit 0 when nothing is installed, so a
+caller can tell "nothing installed" apart from "the command failed". The field
+names are a public contract: a rename keeps the old key.
+
+```bash
+mdm plugins list --json
+```
+
+```json
+[
+  {
+    "name": "acme-pack",
+    "version": "1.2.0",
+    "source": "acme/plugins",
+    "ref": "main",
+    "specVersion": "1.0.0",
+    "installDir": ".agents/plugins/acme-pack",
+    "skills": ["lint-rules"],
+    "harnesses": ["claude-code"],
+    "mcpServers": 2,
+    "valid": true
+  }
+]
+```
+
+`harnesses` is the harnesses the plugin's skills were installed for, under the
+name the text output has always used for it - the lock's own key for the same
+list is `skillAgents`, from before the harness rename. `mcpServers` counts the
+servers wired into harness MCP configs, and `valid` is whether the manifest
+still loads from `installDir` - the text output prints "missing or invalid on
+disk" when it does not.

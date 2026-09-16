@@ -126,6 +126,7 @@ mdm agents add owner/repo --agent code-reviewer --agent test-writer
 ```bash
 mdm agents list
 mdm agents list -g
+mdm agents list --json
 ```
 
 Shows each installed definition's source, and which harnesses it is
@@ -136,6 +137,35 @@ that is not installed in any harness, is flagged.
 | --- | --- |
 | `--global, -g` | List global agent definitions |
 | `--project, -p` | List project agent definitions |
+| `--json` | Output as JSON |
+
+#### JSON output
+
+`--json` prints a top-level array and nothing else - no prompts, no progress,
+no ANSI escapes - and prints `[]` with exit 0 when nothing is installed, so a
+caller can tell "nothing installed" apart from "the command failed". The field
+names are a public contract: a rename keeps the old key.
+
+```json
+[
+  {
+    "name": "code-reviewer",
+    "scope": "project",
+    "source": "acme/agents",
+    "ref": "main",
+    "canonicalMissing": false,
+    "installedIn": ["claude-code"],
+    "missingFrom": []
+  }
+]
+```
+
+Two things differ from the text output. `scope` is a field rather than a
+grouping wrapper, so both scopes flatten into one array the way
+`mdm skills list --json` does, and `installedIn` / `missingFrom` carry
+canonical harness names rather than the display names the text output prints:
+the canonical name is the stable identifier, and a caller can map it to a
+display name itself.
 
 ### mdm agents remove [names...]
 

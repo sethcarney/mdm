@@ -15,7 +15,7 @@ import (
 )
 
 func buildAgentListCmd() *cobra.Command {
-	var globalFlag, projectFlag bool
+	var globalFlag, projectFlag, jsonMode bool
 
 	cmd := &cobra.Command{
 		Use:     "list",
@@ -25,16 +25,18 @@ func buildAgentListCmd() *cobra.Command {
 
 %sExamples:%s
   mdm agents list
-  mdm agents list -g`, ansiBold, ansiReset),
+  mdm agents list -g
+  mdm agents list --json`, ansiBold, ansiReset),
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
-			runAgentList(globalFlag, projectFlag)
+			runAgentList(globalFlag, projectFlag, jsonMode)
 		},
 	}
 
 	f := cmd.Flags()
 	f.BoolVarP(&globalFlag, "global", "g", false, "List global agent definitions")
 	f.BoolVarP(&projectFlag, "project", "p", false, "List project agent definitions")
+	f.BoolVar(&jsonMode, "json", false, "Output as JSON")
 
 	return cmd
 }
@@ -94,13 +96,68 @@ func harnessDisplayNames(names []string) []string {
 	return out
 }
 
-func runAgentList(globalFlag, projectFlag bool) {
-	cwd, _ := os.Getwd()
-	scopes := []bool{false, true}
+// agentListItem is one element of `mdm agents list --json`. Scope is a field
+// rather than a grouping wrapper, matching `mdm skills list --json`, and the
+// harness lists are canonical names rather than the display names the text
+// output prints: the canonical name is the stable identifier, and a caller
+// can map it to a display name itself. The field names are a public contract:
+// a rename keeps the old key.
+type agentListItem struct {
+	Name             string   `json:"name"`
+	Scope            string   `json:"scope"`
+	Source           string   `json:"source"`
+	Ref              string   `json:"ref,omitempty"`
+	CanonicalMissing bool     `json:"canonicalMissing"`
+	InstalledIn      []string `json:"installedIn"`
+	MissingFrom      []string `json:"missingFrom"`
+}
+
+// agentListScopes returns the scopes to list, as the globals each covers.
+func agentListScopes(globalFlag, projectFlag bool) []bool {
 	if globalFlag {
-		scopes = []bool{true}
-	} else if projectFlag {
-		scopes = []bool{false}
+		return []bool{true}
+	}
+	if projectFlag {
+		return []bool{false}
+	}
+	return []bool{false, true}
+}
+
+func scopeName(global bool) string {
+	if global {
+		return "global"
+	}
+	return "project"
+}
+
+func runAgentListJSON(scopes []bool, cwd string) {
+	items := []agentListItem{}
+	for _, global := range scopes {
+		names, agents := agentLockEntries(global, cwd)
+		for _, name := range names {
+			entry := agents[name]
+			st := agentStatusFor(name, entry, global, cwd)
+			items = append(items, agentListItem{
+				Name:             name,
+				Scope:            scopeName(global),
+				Source:           entry.Source,
+				Ref:              entry.Ref,
+				CanonicalMissing: st.CanonicalMissing,
+				InstalledIn:      emptyIfNil(st.InstalledIn),
+				MissingFrom:      emptyIfNil(st.MissingFrom),
+			})
+		}
+	}
+	printJSON(items)
+}
+
+func runAgentList(globalFlag, projectFlag, jsonMode bool) {
+	cwd, _ := os.Getwd()
+	scopes := agentListScopes(globalFlag, projectFlag)
+
+	if jsonMode {
+		runAgentListJSON(scopes, cwd)
+		return
 	}
 
 	fmt.Println()
@@ -111,10 +168,8 @@ func runAgentList(globalFlag, projectFlag bool) {
 			continue
 		}
 		total += len(names)
-		scopeTitle := "Project"
-		if global {
-			scopeTitle = "Global"
-		}
+		scope := scopeName(global)
+		scopeTitle := strings.ToUpper(scope[:1]) + scope[1:]
 		fmt.Printf("%s%s agent definitions:%s\n\n", ansiText, scopeTitle, ansiReset)
 		for _, name := range names {
 			entry := agents[name]

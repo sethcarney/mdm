@@ -17,7 +17,7 @@ for the history and the conformance rules.
 | Command | What it does |
 | --- | --- |
 | `mdm knowledge add <source>` | Install a bundle from GitHub, a URL, or a local path into `./knowledge/` and record it in `mdm.lock`. |
-| `mdm knowledge list` | List installed bundles (alias: `ls`). |
+| `mdm knowledge list` | List installed bundles (alias: `ls`; `--json` for machine output). |
 | `mdm knowledge update [bundles...]` | Re-fetch bundles from their recorded source and ref. |
 | `mdm knowledge remove [bundles...]` | Remove bundles and their lock entries (aliases: `rm`, `r`). |
 | `mdm knowledge validate [path]` | Check OKF conformance and link integrity (`--json` for machine output). |
@@ -42,3 +42,32 @@ mdm knowledge install
 Every install runs the same hidden-character scan as skills; pass
 `--allow-hidden-chars` to override it deliberately. `mdm doctor` reports on
 installed bundles alongside skills and agent definitions.
+
+## JSON output
+
+`--json` prints a top-level array and nothing else - no prompts, no progress,
+no ANSI escapes - and prints `[]` with exit 0 when nothing is installed, so a
+caller can tell "nothing installed" apart from "the command failed". The field
+names are a public contract: a rename keeps the old key.
+
+```bash
+mdm knowledge list --json
+```
+
+```json
+[
+  {
+    "name": "api-docs",
+    "source": "acme/knowledge",
+    "ref": "v2",
+    "specVersion": "1.0.0",
+    "installDir": "knowledge/api-docs",
+    "documents": 14,
+    "present": true
+  }
+]
+```
+
+`documents` is the bundle's document count, and `present` is whether the
+bundle loaded off the disk - the text output prints "missing on disk" when it
+did not, and a missing bundle reports `0` documents.
