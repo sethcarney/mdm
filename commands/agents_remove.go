@@ -194,6 +194,27 @@ var removeFileFn = os.Remove
 // real file it replaced, before the canonical file it points at can go.
 // Everything mdm wrote beside it - the canonical file, Codex's TOML, Copilot's
 // copy - goes with the rest.
+// addExplicitlyClearedHarnesses adds to cleared any harness the user named in
+// the filter whose file is already gone - deleted by hand. It is still one they
+// asked to remove, so it must come off the lock, or `list` keeps reporting the
+// definition missing from it and the next `agents install` reinstalls there.
+// With no filter this is a no-op: a missing file then belongs to an install
+// this removal was never asked about, and stays on the lock.
+func addExplicitlyClearedHarnesses(cleared map[string]bool, name string, harnessFilter []string, entry lock.AgentLockEntry, global bool, cwd string) {
+	if len(harnessFilter) == 0 {
+		return
+	}
+	filterSet := stringSet(harnessFilter)
+	for _, h := range agentRecordedHarnesses(entry) {
+		if !filterSet[h] {
+			continue
+		}
+		if target := agentHarnessPath(name, h, global, cwd); target != "" && !fileExists(target) {
+			cleared[h] = true
+		}
+	}
+}
+
 func removeAgentFromDisk(name string, harnessFilter []string, entry lock.AgentLockEntry, global bool, cwd string) (agentRemoval, error) {
 	held := agentInstalledIn(name, entry, global, cwd)
 	targets := held
@@ -213,22 +234,7 @@ func removeAgentFromDisk(name string, harnessFilter []string, entry lock.AgentLo
 	// cleared dropped the canonical file and the lock entry, leaving that
 	// file with nothing able to manage it afterwards.
 	cleared := stringSet(withoutHarnesses(targets, stringSet(res.foreignHarnesses)))
-	// A harness the user named explicitly whose file is already gone - deleted
-	// by hand - is still one they asked to remove. De-register it too, or `list`
-	// keeps reporting the definition missing from it and the next `agents
-	// install` reinstalls there. Without a filter this stays hands-off: a
-	// missing file then belongs to an install this removal was never asked about.
-	if len(harnessFilter) > 0 {
-		filterSet := stringSet(harnessFilter)
-		for _, h := range agentRecordedHarnesses(entry) {
-			if !filterSet[h] {
-				continue
-			}
-			if target := agentHarnessPath(name, h, global, cwd); target != "" && !fileExists(target) {
-				cleared[h] = true
-			}
-		}
-	}
+	addExplicitlyClearedHarnesses(cleared, name, harnessFilter, entry, global, cwd)
 	if remaining := withoutHarnesses(held, cleared); len(remaining) > 0 {
 		// The recorded list is where the definition belongs, and the lock,
 		// not the disk, is what it comes off. A harness the user deleted a

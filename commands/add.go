@@ -537,11 +537,18 @@ func runAddGitOrHub(parsed source.ParsedSource, opts AddOptions, cwd, sourceInpu
 		Ref:        lockRef,
 	}
 
-	if installSkillsForHarnesses(selectedSkills, harnesses, global, mode, baseLockEntry, cwd, tmpDir) == 0 {
-		os.Exit(1)
-	}
+	exitIfNothingInstalled(installSkillsForHarnesses(selectedSkills, harnesses, global, mode, baseLockEntry, cwd, tmpDir))
 
 	maybeShowFindPrompt(cwd)
+}
+
+// exitIfNothingInstalled ends the process non-zero when an install reached no
+// harness, so a failed `mdm skills add` is a failed command rather than a clean
+// exit with a warning. Kept as a helper so callers do not each carry the branch.
+func exitIfNothingInstalled(installed int) {
+	if installed == 0 {
+		os.Exit(1)
+	}
 }
 
 // ─── Blob fast install ─────────────────────────────────────────────────────────

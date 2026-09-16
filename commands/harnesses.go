@@ -343,21 +343,12 @@ func runHarnessesRemove(cmd *cobra.Command, args []string, global, yes bool) err
 		return fmt.Errorf("harness names are required when using --yes")
 	}
 
-	var toRemove []string
-	if len(args) > 0 {
-		// Match `harnesses add`: a name that is not a harness at all fails the
-		// command rather than exiting 0 as though it had removed something.
-		validated, ok := validateNamedHarnesses(args)
-		if !ok {
-			return fmt.Errorf("no valid harnesses specified")
-		}
-		toRemove = validated
-	} else {
-		picked, ok := pickHarnessesToRemove(configured)
-		if !ok {
-			return nil
-		}
-		toRemove = picked
+	toRemove, err := resolveHarnessesToRemove(args, configured)
+	if err != nil {
+		return err
+	}
+	if len(toRemove) == 0 {
+		return nil // picker cancelled
 	}
 
 	if !yes && !confirmHarnessesRemoval(toRemove) {
@@ -381,6 +372,26 @@ func runHarnessesRemove(cmd *cobra.Command, args []string, global, yes bool) err
 	fmt.Println()
 	cleanUpRemovedHarnessFiles(toRemove, global, cwd)
 	return nil
+}
+
+// resolveHarnessesToRemove returns the harnesses to remove from explicit args,
+// or via the interactive picker when none are given. A name that is not a
+// harness at all is an error - matching `harnesses add`, which fails rather than
+// exiting 0 as though it had done something. A cancelled picker returns no names
+// and no error, which the caller treats as "nothing to do".
+func resolveHarnessesToRemove(args, configured []string) ([]string, error) {
+	if len(args) > 0 {
+		validated, ok := validateNamedHarnesses(args)
+		if !ok {
+			return nil, fmt.Errorf("no valid harnesses specified")
+		}
+		return validated, nil
+	}
+	picked, ok := pickHarnessesToRemove(configured)
+	if !ok {
+		return nil, nil
+	}
+	return picked, nil
 }
 
 // confirmHarnessesRemoval shows a confirmation prompt listing the harnesses to be

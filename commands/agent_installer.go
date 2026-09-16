@@ -411,7 +411,14 @@ func installAgentFile(a *agentfile.AgentFile, harnessName string, global bool, c
 	if materializes(agentCanonicalFormat(a), harnessName) {
 		return copyMaterializedAgent(harnessDir, harnessPath, canonicalPath, mode)
 	}
+	return linkOrCopyAgentIntoHarness(a.Path, harnessDir, harnessPath, canonicalPath, mode)
+}
 
+// linkOrCopyAgentIntoHarness installs the canonical definition into a harness
+// that reads the canonical format directly: a real copy in copy mode, otherwise
+// a symlink with a plain-copy fallback. sourcePath is the file discovery handed
+// back, used to leave an in-place adoption untouched.
+func linkOrCopyAgentIntoHarness(sourcePath, harnessDir, harnessPath, canonicalPath string, mode InstallMode) InstallResult {
 	if mode == InstallModeCopy {
 		if err := copyAgentIntoHarness(canonicalPath, harnessDir, harnessPath); err != nil {
 			return InstallResult{Success: false, Path: harnessPath, Mode: mode, Error: err.Error()}
@@ -429,7 +436,7 @@ func installAgentFile(a *agentfile.AgentFile, harnessName string, global bool, c
 	// canonical directory, so a fresh clone loses the definition. Leave the real
 	// file where it is; the harness keeps reading it. This mirrors the same-file
 	// guard performSymlinkInstall applies on the skills side.
-	if sameFileOnDisk(a.Path, harnessPath) {
+	if sameFileOnDisk(sourcePath, harnessPath) {
 		return InstallResult{Success: true, Path: harnessPath, CanonicalPath: canonicalPath, Mode: InstallModeSymlink}
 	}
 

@@ -93,8 +93,8 @@ func TestAgentsRemoveHarnessDropsHandDeletedFromLock(t *testing.T) {
 	}
 
 	// Delete cursor's file by hand.
-	os.Remove(filepath.Join(dir, ".cursor", "rules", "critic.md"))
-	os.Remove(filepath.Join(dir, ".cursor", "agents", "critic.md"))
+	_ = os.Remove(filepath.Join(dir, ".cursor", "rules", "critic.md"))
+	_ = os.Remove(filepath.Join(dir, ".cursor", "agents", "critic.md"))
 
 	if _, stderr, code := runMdmInDir(t, dir, env, "agents", "remove", "critic", "--harness", "cursor", "--project", "-y"); code != 0 {
 		t.Fatalf("remove --harness cursor failed: %d %s", code, stderr)

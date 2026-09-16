@@ -27,9 +27,9 @@ func TestAgentsInstallReportsDefinitionMissingFromSource(t *testing.T) {
 
 	// Simulate a fresh clone: the gitignored install trees are gone, and the
 	// source no longer carries the definition the lock still records.
-	os.RemoveAll(filepath.Join(dir, ".agents"))
-	os.RemoveAll(filepath.Join(dir, ".claude"))
-	os.Remove(filepath.Join(src, "critic.md"))
+	_ = os.RemoveAll(filepath.Join(dir, ".agents"))
+	_ = os.RemoveAll(filepath.Join(dir, ".claude"))
+	_ = os.Remove(filepath.Join(src, "critic.md"))
 
 	stdout, stderr, code := runMdmInDir(t, dir, env, "agents", "install", "-y")
 	if code == 0 {
@@ -55,9 +55,9 @@ func TestSkillsInstallSurvivesAMissingSourceAndReportsIt(t *testing.T) {
 		}
 	}
 
-	os.RemoveAll(filepath.Join(dir, ".agents"))
-	os.RemoveAll(filepath.Join(dir, ".claude"))
-	os.RemoveAll(filepath.Join(dir, "srcB", "gone"))
+	_ = os.RemoveAll(filepath.Join(dir, ".agents"))
+	_ = os.RemoveAll(filepath.Join(dir, ".claude"))
+	_ = os.RemoveAll(filepath.Join(dir, "srcB", "gone"))
 
 	stdout, stderr, code := runMdmInDir(t, dir, env, "skills", "install", "-y")
 	if code == 0 {
