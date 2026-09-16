@@ -510,7 +510,13 @@ func installAgents(agents []*agentfile.AgentFile, harnesses []string, global boo
 
 		targets := run.targetsFor(name, harnesses)
 		agentPath := agentFileRepoPath(a.Path, rootDir)
+		// Where the definition is already installed, resolved before the
+		// canonical file is rewritten. An entry written before the harness
+		// list existed records none, and reading the field raw would answer
+		// "nowhere" for exactly the installs this has to protect.
+		var priorHarnesses []string
 		if prior, ok := recorded[name]; ok {
+			priorHarnesses = agentHeldHarnesses(name, prior, global, cwd)
 			if conflict := agentSourceConflict(prior, baseEntry, agentPath, name, cwd); conflict != "" {
 				if !run.force {
 					ui.LogError(fmt.Sprintf("%s: %s", a.Name, conflict))
@@ -521,7 +527,7 @@ func installAgents(agents []*agentfile.AgentFile, harnesses []string, global boo
 				// harnesses still serving the prior definition get the new
 				// one too, or the lock would name one source while some
 				// harness served another.
-				targets = unionHarnesses(targets, prior.Harnesses)
+				targets = unionHarnesses(targets, priorHarnesses)
 			}
 		}
 		installedTo := installOneAgent(a, name, targets, global, cwd, mode, &outcome)
@@ -542,7 +548,7 @@ func installAgents(agents []*agentfile.AgentFile, harnesses []string, global boo
 		// The list is what remove, update and install act on. A harness an
 		// earlier add of the same definition reached is still holding it, so
 		// this run's harnesses join that list rather than replacing it.
-		entry.Harnesses = unionHarnesses(recorded[name].Harnesses, installedTo)
+		entry.Harnesses = unionHarnesses(priorHarnesses, installedTo)
 		recordAgentEntry(name, entry, global, cwd)
 	}
 	return outcome
