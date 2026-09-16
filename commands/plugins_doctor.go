@@ -66,6 +66,7 @@ func diagnoseInstalledPlugin(name string, entry lock.PluginLockEntry, cwd string
 	}
 	issues = append(issues, diagnosePluginSkillLinks(name, entry, cwd)...)
 	issues = append(issues, diagnosePluginMCP(name, entry, cwd)...)
+	issues = append(issues, mcpPortabilityHint(name, entry, cwd)...)
 	return issues
 }
 
@@ -101,12 +102,7 @@ func diagnosePluginSkillLinks(name string, entry lock.PluginLockEntry, cwd strin
 // so an entry with no MCP record at all is the case most worth checking.
 func diagnosePluginMCP(name string, entry lock.PluginLockEntry, cwd string) []doctorIssue {
 	var issues []doctorIssue
-	harnessNames := make([]string, 0, len(mcpwire.Targets))
-	for harnessName := range mcpwire.Targets {
-		harnessNames = append(harnessNames, harnessName)
-	}
-	sort.Strings(harnessNames)
-	for _, harnessName := range harnessNames {
+	for _, harnessName := range sortedMCPHarnesses() {
 		target := mcpwire.Targets[harnessName]
 		managed, err := target.ListManaged(cwd, name)
 		if err != nil {
@@ -142,6 +138,36 @@ func diagnosePluginMCP(name string, entry lock.PluginLockEntry, cwd string) []do
 	return issues
 }
 
+// mcpPortabilityHint reports that a wired MCP config carries paths that only
+// resolve on this machine.
+//
+// There is no portable way to write them. A stdio server living inside the
+// repository has to be named by an absolute path: Claude Code expands only
+// environment variables it already has, and CLAUDE_PROJECT_DIR is set in the
+// server's environment rather than its own, so ${CLAUDE_PROJECT_DIR} in the
+// config reads as a missing variable. Cursor expands nothing. So the file is
+// generated output, like everything else under .agents, and the way to get it
+// on a teammate's machine is to regenerate it there.
+func mcpPortabilityHint(name string, entry lock.PluginLockEntry, cwd string) []doctorIssue {
+	var issues []doctorIssue
+	for _, harnessName := range sortedMCPHarnesses() {
+		ids := entry.MCP[harnessName]
+		if len(ids) == 0 {
+			continue
+		}
+		target := mcpwire.Targets[harnessName]
+		if _, err := os.Stat(filepath.Join(cwd, target.ConfigPath)); err != nil {
+			continue
+		}
+		issues = append(issues, doctorIssue{
+			Level: "warn",
+			Message: fmt.Sprintf("%s: %s holds absolute paths that only resolve on this machine - teammates should run `mdm plugins install` to regenerate it",
+				name, target.ConfigPath),
+		})
+	}
+	return issues
+}
+
 // pluginsGitignoreHint suggests ignoring the plugin data directory once it
 // holds anything, since its contents are machine-local state.
 func pluginsGitignoreHint(cwd string) *doctorIssue {
@@ -162,4 +188,15 @@ func pluginsGitignoreHint(cwd string) *doctorIssue {
 		Level:   "warn",
 		Message: fmt.Sprintf("plugin data is machine-local state - add %s/ to .gitignore", rel),
 	}
+}
+
+// sortedMCPHarnesses lists every harness mdm can wire MCP config for, in a
+// stable order so doctor output does not shuffle between runs.
+func sortedMCPHarnesses() []string {
+	names := make([]string, 0, len(mcpwire.Targets))
+	for name := range mcpwire.Targets {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }

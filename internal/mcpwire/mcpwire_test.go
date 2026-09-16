@@ -67,8 +67,10 @@ func TestRenderStdio(t *testing.T) {
 	if env["ROOTED"] != root+"/etc" || env["MODE"] != "fast" {
 		t.Errorf("env values should expand placeholders, got %v", env)
 	}
-	if out["cwd"] != root {
-		t.Errorf("omitted cwd should default to the plugin root, got %v", out["cwd"])
+	// Claude Code's stdio schema is command/args/env: a cwd it is handed is
+	// dropped, so writing one would only commit this machine's path.
+	if _, hasCwd := out["cwd"]; hasCwd {
+		t.Errorf("claude-code ignores cwd, so it should not be written, got %v", out["cwd"])
 	}
 }
 
