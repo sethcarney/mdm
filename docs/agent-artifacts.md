@@ -117,6 +117,7 @@ mdm agents add owner/repo --agent code-reviewer --agent test-writer
 | `--agent, -a` | Agent definition names to install (repeatable, use `*` for all) |
 | `--copy` | Copy files instead of symlinking (switches the scope to copy mode) |
 | `--symlink` | Symlink files from `.agents/agents` (the default; switches a scope back from copy mode) |
+| `--force` | Replace a definition already installed under the same name from another source |
 | `--allow-hidden-chars` | Allow markdown files with hidden Unicode characters |
 | `--yes, -y` | Skip confirmation prompts |
 
@@ -154,6 +155,23 @@ install, and is never deleted. After `mdm agents add .` adopted a hand-written
 `.claude/agents/critic.md`, `mdm agents remove critic` turns that link back into
 the real file, drops the lock entry, and says what it kept.
 
+#### Only files mdm wrote are removed
+
+Removal acts on the harnesses the lock records for the definition, and within
+those it touches only a file it can show is its own: a symlink resolving to the
+canonical file, or a real file whose content is what mdm would have written for
+that harness. Anything else at that path is reported and left in place.
+
+This matters because a harness's agent directory is an ordinary directory you
+may also write to by hand. If you keep your own `.claude/agents/critic.md` and
+separately install a definition that sanitizes to `critic` into Cursor only,
+removing it takes the Cursor copy and leaves your file alone.
+
+Entries written before the harness list existed (by a `v2.0.0-beta` build) carry
+no list. For those, removal falls back to looking for files it can show are its
+own, which is the same safety rule applied without the record. Running
+`mdm agents install` once rewrites those entries with a list.
+
 | Flag | Description |
 | --- | --- |
 | `--global, -g` | Remove from global scope |
@@ -175,6 +193,11 @@ repository and ref are re-fetched together, one clone per update run rather
 than one per definition. Every harness a definition is *currently* installed
 to is refreshed - not just the canonical copy - so a copy-mode harness
 install is kept in sync too, instead of going stale.
+
+Refreshing obeys the same rule as removal: within the harnesses the lock
+records, an update overwrites only a file it can show mdm wrote. A file you put
+at that path yourself is reported and left as it is, rather than being replaced
+with upstream content.
 
 | Flag | Description |
 | --- | --- |
@@ -428,3 +451,19 @@ definition sanitize to the same name, the second one to install is refused
 and the error names both files - accepting it would silently change which
 format that name's canonical file is in, and re-convert every harness that
 already has it.
+
+The same rule holds across separate runs. Installing a definition whose
+sanitized name is already recorded for a **different** source is refused, and
+the error names both sources. Without that, adding `owner/b` after `owner/a`
+would quietly repoint the canonical file and the lock entry at the second
+source, and every harness already holding the first one would start serving
+the second one's content without being asked. Re-adding the *same* source is
+not a conflict, so `mdm agents update` and `mdm agents install` are unaffected.
+Pass `--force` when replacing it is what you mean; the forced install also
+refreshes every harness that held the old definition, so none is left serving
+it.
+
+A definition whose name cannot be sanitized into anything (for example a name
+written entirely in a non-Latin script) gets a stable `unnamed-agent-<hash>`
+disk name derived from the raw name, so two such definitions do not collide on
+one lock key.
