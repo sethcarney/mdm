@@ -507,7 +507,7 @@ mdm
     ├── pathsafe/        # The one copy of the install path guard: IsSafeRelDir (lexical) + ResolvedContains (on-disk containment), applied by skill/ and agentfile/ to directories a source declares for itself
     ├── source/          # URL/path parsing into ParsedSource (GitHub, GitLab, local, well-known)
     ├── registry/        # Well-known registry fetching (.well-known/agent-skills standard)
-    ├── lock/            # mdm.lock read/write (skills, agents, knowledge, plugins sections; reads legacy v1 lock files as a fallback); tracks hashes, versions, timestamps, the per-scope installMode, and configuredHarnesses (still written under the `configuredAgents` JSON key for v1 readers)
+    ├── lock/            # mdm.lock read/write (skills, agents, knowledge, plugins sections; reads legacy v1 lock files as a fallback); tracks hashes, versions, timestamps, the per-scope installMode, and configuredHarnesses (written under the `configuredHarnesses` key; the legacy `configuredAgents` key is still read as a fallback for v1 files)
     ├── git/             # Shallow git clone; branch/ref handling
     ├── blob/            # GitHub API tree/blob queries for skill discovery
     ├── security/        # markdownscan: hidden-character / prompt-smuggling detection; embeds Unicode emoji-variation-sequences.txt
