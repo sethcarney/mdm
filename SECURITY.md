@@ -64,7 +64,7 @@ Both files are attached to each [GitHub release](https://github.com/sethcarney/m
 | macOS ARM64 | `mdm-macos-arm64`     |
 | Windows x64 | `mdm-windows-x64.exe` |
 
-`install.sh` and `install.ps1` perform both steps for you: they always verify the binary against `sha256sums.txt`, and additionally verify the manifest's signature when `cosign` is on your PATH.
+`install.sh` and `install.ps1` perform both steps for you, and additionally verify the manifest's signature when `cosign` is on your PATH. `install.ps1` always verifies the binary against `sha256sums.txt` (PowerShell has `Get-FileHash` built in). `install.sh` verifies it whenever a hashing tool is available - `sha256sum` (coreutils) or `shasum` (perl), which every mainstream Linux and macOS ships - and on the rare system with neither, it prints a warning and continues rather than blocking the install. To require verification everywhere, download the binary and check it against `sha256sums.txt` yourself.
 
 ### Verify SLSA provenance
 
