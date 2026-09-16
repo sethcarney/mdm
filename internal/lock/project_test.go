@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -226,7 +227,7 @@ func TestProjectLockAgentsSectionIsolatedFromSkills(t *testing.T) {
 		t.Fatal(err)
 	}
 	lk := ReadProjectLock(cwd)
-	if lk.Agents["critic"] != agentBefore {
+	if !reflect.DeepEqual(lk.Agents["critic"], agentBefore) {
 		t.Errorf("agent entry changed by a skills write: %+v", lk.Agents["critic"])
 	}
 
@@ -556,13 +557,108 @@ func TestProjectLockOldKeyDoesNotRoundTripAlongsideNewKey(t *testing.T) {
 	}
 }
 
-func TestProjectLockUnversionedStillReadsEmpty(t *testing.T) {
+// TestProjectLockUnversionedWithEntriesAborts pins the fail-loudly policy for
+// a lock that lost its version line to a hand edit or a bad merge. Reading it
+// as empty let the next write replace every entry with the newest one.
+func TestProjectLockUnversionedWithEntriesAborts(t *testing.T) {
 	cwd := t.TempDir()
-	if err := os.WriteFile(GetProjectLockPath(cwd), []byte(`{"skills":{"s":{"source":"o/r","sourceType":"github"}}}`), 0600); err != nil {
+	if err := os.WriteFile(GetProjectLockPath(cwd), []byte(`{"skills":{"keep":{"source":"o/r","sourceType":"github"}},"knowledge":{"kb":{"source":"o/kb","sourceType":"github"}}}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if len(ReadProjectLock(cwd).Skills) != 0 {
-		t.Error("a lock with no version key must still read as empty")
+	if _, err := readProjectLockE(cwd); err == nil || !strings.Contains(err.Error(), "no version field") {
+		t.Fatalf("expected an unversioned-lock error, got %v", err)
+	}
+	// And the write path the error protects: adding a skill must not run.
+	data, _ := os.ReadFile(GetProjectLockPath(cwd))
+	if !strings.Contains(string(data), "keep") || !strings.Contains(string(data), "kb") {
+		t.Fatalf("the unreadable lock was modified: %s", data)
+	}
+}
+
+func TestProjectLockBareObjectReadsEmpty(t *testing.T) {
+	cwd := t.TempDir()
+	if err := os.WriteFile(GetProjectLockPath(cwd), []byte(`{}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	lk, err := readProjectLockE(cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lk.Skills) != 0 {
+		t.Error("a bare {} must read as empty")
+	}
+}
+
+// TestEmptyWriteShadowsLegacyFiles covers removing the last entry from a
+// project that still has v1 lock files: mdm.lock must be written empty rather
+// than removed, or the next read falls back to the untouched v1 file and the
+// removed entry comes back.
+func TestEmptyWriteShadowsLegacyFiles(t *testing.T) {
+	cwd := t.TempDir()
+	legacy := `{"version":1,"skills":{"plain":{"source":"../sk/plain","sourceType":"local"}}}`
+	if err := os.WriteFile(filepath.Join(cwd, "skills-lock.json"), []byte(legacy), 0600); err != nil {
+		t.Fatal(err)
+	}
+	before, err := readProjectLockE(cwd)
+	if err != nil || len(before.Skills) != 1 {
+		t.Fatalf("legacy fallback should read one skill, got %v %v", before.Skills, err)
+	}
+	if err := RemoveSkillFromLocalLock("plain", cwd); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(GetProjectLockPath(cwd)); err != nil {
+		t.Fatalf("an empty mdm.lock must exist to shadow skills-lock.json: %v", err)
+	}
+	after, err := readProjectLockE(cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after.Skills) != 0 {
+		t.Fatalf("removed skill came back from the legacy file: %v", after.Skills)
+	}
+	// The v1 file is untouched: `mdm migrate` owns retiring it.
+	data, _ := os.ReadFile(filepath.Join(cwd, "skills-lock.json"))
+	if string(data) != legacy {
+		t.Fatalf("skills-lock.json was modified: %s", data)
+	}
+}
+
+func TestEmptyWriteRemovesFileWhenOnlyTombstoneRemains(t *testing.T) {
+	cwd := t.TempDir()
+	if err := os.WriteFile(filepath.Join(cwd, "skills-lock.json"), []byte(SkillsTombstone), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteProjectLock(EmptyProjectLock(), cwd); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(GetProjectLockPath(cwd)); !os.IsNotExist(err) {
+		t.Fatalf("a tombstone is not legacy data; mdm.lock should have been removed (stat err %v)", err)
+	}
+}
+
+// TestLegacyReadAcceptsTombstoneRewrittenByOldV1 covers a v1 release before
+// v1.93.0 running `skills add` after migration: it reads the tombstone as
+// empty and rewrites skills-lock.json at the tombstone's version with real
+// entries and no _moved marker. That file is v1 data, not a newer format.
+func TestLegacyReadAcceptsTombstoneRewrittenByOldV1(t *testing.T) {
+	cwd := t.TempDir()
+	rewritten := `{"version":2,"skills":{"s2":{"source":"./s2","sourceType":"local"}}}`
+	if err := os.WriteFile(filepath.Join(cwd, "skills-lock.json"), []byte(rewritten), 0600); err != nil {
+		t.Fatal(err)
+	}
+	lk, err := readProjectLockE(cwd)
+	if err != nil {
+		t.Fatalf("rewritten tombstone must read as v1 data, got %v", err)
+	}
+	if _, ok := lk.Skills["s2"]; !ok {
+		t.Fatalf("expected s2 from the rewritten tombstone, got %v", lk.Skills)
+	}
+	// A genuinely newer version still aborts.
+	if err := os.WriteFile(filepath.Join(cwd, "skills-lock.json"), []byte(`{"version":3,"skills":{}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readProjectLockE(cwd); err == nil {
+		t.Fatal("version 3 skills-lock.json must still abort")
 	}
 }
 

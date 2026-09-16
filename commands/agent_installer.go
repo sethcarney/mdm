@@ -1,6 +1,8 @@
 package commands
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -32,13 +34,49 @@ func lockedAgentFormat(entry lock.AgentLockEntry) agentfile.Format {
 	return agentfile.FormatMarkdown
 }
 
+// agentDiskNameMax is the longest disk name agentDiskName returns, in bytes.
+// sanitizeName caps at 255, which is NAME_MAX on most filesystems, but the
+// disk name is never the whole file name: a harness adds up to ".agent.md",
+// and replaceFilePath reserves a ".mdm-tmp-" sibling on top of that. A name
+// at the cap therefore installed on one harness and failed on the next.
+const agentDiskNameMax = 200
+
 // agentDiskName turns a definition's frontmatter name into the one name mdm
 // uses everywhere: the canonical file, every harness's own file, and the lock
 // key. Frontmatter is third-party text and often not a legal file name ("Code
 // Reviewer"), so it is sanitized the way installSkillForHarness sanitizes a
 // skill name. One function for all three keeps the file and the lock key in step.
+//
+// Two rules are specific to agent definitions. A name with no Latin letters
+// or digits at all sanitizes to sanitizeName's one fixed fallback, so two such
+// definitions shared one lock key and one file; the fallback carries a short
+// hash of the raw name instead, stable across runs so the key still finds its
+// file. And the result is capped at agentDiskNameMax bytes. Both rules keep
+// the function idempotent: agentDiskName(agentDiskName(x)) == agentDiskName(x),
+// which is what lets a lock key match itself through agentNameMatches.
 func agentDiskName(rawName string) string {
-	return sanitizeName(rawName)
+	name := sanitizeName(rawName)
+	if name == unnamedSkillFallback {
+		sum := sha256.Sum256([]byte(rawName))
+		name = "unnamed-agent-" + hex.EncodeToString(sum[:4])
+	}
+	if len(name) > agentDiskNameMax {
+		// sanitizeName's output is ASCII, so a byte cut never splits a rune.
+		name = strings.TrimRight(name[:agentDiskNameMax], ".-")
+	}
+	return name
+}
+
+// unnamedSkillFallback is what sanitizeName returns for a name with nothing
+// legal in it.
+const unnamedSkillFallback = "unnamed-skill"
+
+// agentNameMatches reports whether a definition or lock name matches a name
+// the user typed. It is skillNameMatches with agentDiskName in place of
+// sanitizeName: a lock key is a disk name, and only agentDiskName maps a raw
+// frontmatter name onto the same key.
+func agentNameMatches(name, filter string) bool {
+	return strings.EqualFold(name, filter) || agentDiskName(name) == agentDiskName(filter)
 }
 
 // agentCanonicalPath returns mdm's canonical file for one definition. name must

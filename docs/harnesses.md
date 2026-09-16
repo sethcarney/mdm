@@ -9,7 +9,7 @@ single source of truth for which harnesses skills are installed to. It is
 read whenever `mdm skills add` needs to know which harnesses to target and is
 updated automatically when you pick harnesses interactively.
 
-!!! note "Upgrading from an earlier v2 build"
+!!! note "Upgrading from v1 or an earlier v2 build"
     This command was `mdm agents`, and the flag that names a harness on the
     skills, plugins, rules and cherry-pick commands was `--agent` / `-a`. Both
     are now `--harness` and `mdm harnesses`; `mdm agents` installs agent

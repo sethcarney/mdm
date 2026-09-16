@@ -7,7 +7,7 @@
 | **Author** | Dakota Kim |
 | **Created** | 2026-07-06 |
 | **Tracking issue** | TBD |
-| **External spec** | [Open Knowledge Format v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf) |
+| **External spec** | [Open Knowledge Format v0.1](https://github.com/GoogleCloudPlatform/open-knowledge-format) |
 
 ## Summary
 

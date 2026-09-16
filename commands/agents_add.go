@@ -39,7 +39,17 @@ pass them space-separated after the flag or repeat the flag for each value:
   mdm agents add owner/repo --agent code-reviewer
   mdm agents add owner/repo --harness claude-code cursor
   mdm agents add ./my-agents`, ansiBold, ansiReset),
-		Args: cobra.ExactArgs(1),
+		// `mdm agents add claude-code cursor` was how harnesses were
+		// configured before this release. cobra's "accepts 1 arg(s),
+		// received 2" says nothing about where that went, so a list made
+		// only of harness names gets the hint instead.
+		Args: func(cmd *cobra.Command, args []string) error {
+			if allHarnessNames(args) {
+				printHarnessNamesHint(args, "add", "a source of agent definitions", "<source>", "installs")
+				os.Exit(1)
+			}
+			return cobra.ExactArgs(1)(cmd, args)
+		},
 		Run: func(cmd *cobra.Command, args []string) {
 			// Nothing installed anywhere is a failed run. The exit lives
 			// here, not in runAgentAdd, because the restore path calls
@@ -59,6 +69,7 @@ pass them space-separated after the flag or repeat the flag for each value:
 	f.BoolVar(&opts.AllowHiddenChars, "allow-hidden-chars", false, "Allow markdown files with hidden Unicode characters")
 	f.BoolVar(&opts.Copy, "copy", false, "Copy files instead of symlinking (switches the scope to copy mode)")
 	f.BoolVar(&opts.Symlink, "symlink", false, "Symlink files from .agents/agents (the default; switches a scope back from copy mode)")
+	f.BoolVar(&opts.Force, "force", false, "Replace a definition already installed under the same name from another source")
 	// The install mode is one switch with two settings, so asking for
 	// both is a contradiction rather than a precedence puzzle.
 	cmd.MarkFlagsMutuallyExclusive("copy", "symlink")
@@ -69,9 +80,12 @@ pass them space-separated after the flag or repeat the flag for each value:
 }
 
 // fetchAgentSource materializes sourceInput on disk and returns the directory
-// to search, the git clone root for AgentPath bookkeeping (empty for a local
-// path), and a cleanup func for any temp clone.
-func fetchAgentSource(parsed source.ParsedSource, verbose bool) (searchRoot, cloneDir string, cleanup func()) {
+// to search, the root AgentPath is recorded relative to - the git clone for a
+// remote source, the local directory itself for a local one - and a cleanup
+// func for any temp clone. A local install records the path too: it is what
+// lets `mdm agents remove` tell the one file `mdm agents add .` discovered
+// from the harness files mdm then wrote beside it.
+func fetchAgentSource(parsed source.ParsedSource, verbose bool) (searchRoot, rootDir string, cleanup func()) {
 	noop := func() {}
 	switch parsed.Type {
 	case source.SourceTypeLocal:
@@ -79,7 +93,7 @@ func fetchAgentSource(parsed source.ParsedSource, verbose bool) (searchRoot, clo
 			fmt.Fprintf(os.Stderr, "%sError:%s Path not found: %s\n", ansiText, ansiReset, parsed.LocalPath)
 			os.Exit(1)
 		}
-		return parsed.LocalPath, "", noop
+		return parsed.LocalPath, parsed.LocalPath, noop
 	case source.SourceTypeWellKnown:
 		fmt.Fprintf(os.Stderr, "%sError:%s well-known registries are not supported for agent definitions\n", ansiText, ansiReset)
 		os.Exit(1)
@@ -102,9 +116,7 @@ func runAgentAdd(sourceInput string, opts AgentOptions) bool {
 	// release. A bare harness name is never a source, so it would otherwise
 	// fail as a git clone of a repository called "cursor".
 	if harness.AllHarnesses[sourceInput] != nil {
-		fmt.Fprintf(os.Stderr, "%s%s is a harness, not a source of agent definitions.%s\n", ansiText, sourceInput, ansiReset)
-		fmt.Fprintf(os.Stderr, "Harness management moved to %smdm harnesses add %s%s in this release; %smdm agents add <source>%s installs agent definitions.\n",
-			ansiText, sourceInput, ansiReset, ansiText, ansiReset)
+		printHarnessNamesHint([]string{sourceInput}, "add", "a source of agent definitions", "<source>", "installs")
 		os.Exit(1)
 	}
 	parsed := source.ParseSource(sourceInput)
@@ -112,7 +124,7 @@ func runAgentAdd(sourceInput string, opts AgentOptions) bool {
 		sourceInput, parsed.Type, parsed.URL, parsed.Ref, parsed.Subpath)
 	fmt.Println()
 
-	searchRoot, cloneDir, cleanup := fetchAgentSource(parsed, verboseFlag)
+	searchRoot, rootDir, cleanup := fetchAgentSource(parsed, verboseFlag)
 	defer cleanup()
 
 	// Reported, not exited: the restore path calls this once per source
@@ -152,7 +164,7 @@ func runAgentAdd(sourceInput string, opts AgentOptions) bool {
 
 	baseEntry := agentLockEntry(parsed, sourceInput)
 	fmt.Println()
-	outcome := installAgentsForHarnesses(selected, harnesses, global, mode, baseEntry, cloneDir, cwd)
+	outcome := installAgents(selected, harnesses, global, mode, baseEntry, rootDir, cwd, agentInstallRun{harnessesFor: opts.HarnessesFor, force: opts.Force})
 	fmt.Println()
 	printAgentInstallSummary(outcome, global, mode)
 	// A definition mdm already owns is not a failure to install it.
@@ -274,13 +286,13 @@ func keepIn(names []string, set map[string]bool) []string {
 	return out
 }
 
-// filterAgentsByName keeps agents whose name matches one of names (by the
-// same case/sanitized rule skills use).
+// filterAgentsByName keeps agents whose name matches one of names, by the
+// disk-name rule agentNameMatches applies.
 func filterAgentsByName(agents []*agentfile.AgentFile, names []string) []*agentfile.AgentFile {
 	var filtered []*agentfile.AgentFile
 	for _, a := range agents {
 		for _, f := range names {
-			if skillNameMatches(a.Name, f) {
+			if agentNameMatches(a.Name, f) {
 				filtered = append(filtered, a)
 				break
 			}
@@ -338,16 +350,18 @@ func agentLockEntry(parsed source.ParsedSource, sourceInput string) lock.AgentLo
 	return entry
 }
 
-// agentFileRepoPath returns the repo-relative path to a discovered agent
-// definition file. cloneDir is the git clone root, empty for a local install.
-func agentFileRepoPath(agentPath, cloneDir string) string {
-	return repoRelPath(agentPath, cloneDir)
+// agentFileRepoPath returns the source-relative path to a discovered agent
+// definition file: relative to the git clone root for a remote source, and to
+// the local directory for a local one.
+func agentFileRepoPath(agentPath, rootDir string) string {
+	return repoRelPath(agentPath, rootDir)
 }
 
 // agentInstallOutcome is what an add run did. A definition can be skipped by
 // every harness it was aimed at and install nowhere.
 type agentInstallOutcome struct {
 	alreadyInstalled int      // definitions skipped because their file is the canonical copy the lock already records
+	refused          int      // definitions refused because the lock records their name from another source
 	installed        int      // definitions that reached at least one harness
 	harnesses        []string // harnesses that actually received something, in the order given
 	fallbacks        *symlinkFallbacks
@@ -400,11 +414,73 @@ func canonicalRollback(a *agentfile.AgentFile, name string, global bool, cwd str
 	return func() { _ = removeFileFn(path) }
 }
 
+// agentInstallRun is what one add run knows beyond the harness list it was
+// given: a per-definition override of that list, keyed by disk name, which
+// the restore path uses to put each definition back into exactly the
+// harnesses its lock entry names; and whether a definition the lock records
+// from another source may be replaced.
+type agentInstallRun struct {
+	harnessesFor map[string][]string
+	force        bool
+}
+
+// sameAgentSource reports whether two entries name the same source. A local
+// path is compared resolved, since the lock keeps it cwd-relative and a fresh
+// entry carries it absolute; a remote one by the URL it parses to, so
+// "owner/repo" and its https form agree. The ref is not compared: re-adding
+// at another ref re-pins the same definition.
+func sameAgentSource(a, b lock.AgentLockEntry, cwd string) bool {
+	if a.SourceType != b.SourceType {
+		return false
+	}
+	if a.SourceType == string(source.SourceTypeLocal) {
+		return resolveLocalAgentSourceAbs(a, cwd) == resolveLocalAgentSourceAbs(b, cwd)
+	}
+	au, bu := source.ParseSource(a.Source).URL, source.ParseSource(b.Source).URL
+	if au == "" || bu == "" {
+		return a.Source == b.Source
+	}
+	return au == bu
+}
+
+// agentSourceConflict explains why installing a definition as name would
+// silently replace the one the lock already records under it, or returns ""
+// when it would not. Two frontmatter names can sanitize to one disk name -
+// "critic" from one source and "Critic" from another - and the guard inside
+// one run (claimed) cannot see across runs. The lock can: a recorded entry
+// from a different source, or from a different file of the same source, is
+// a collision. An entry written before AgentPath was recorded for its source
+// cannot be compared by file and is compared by source alone.
+func agentSourceConflict(prior, incoming lock.AgentLockEntry, incomingPath, name, cwd string) string {
+	if !sameAgentSource(prior, incoming, cwd) {
+		return fmt.Sprintf("%s is already installed from %s (%s); installing %s from %s would replace it - remove it with `mdm agents remove %s` first, or pass --force to replace it",
+			name, prior.Source, prior.AgentPath, incomingPath, incoming.Source, name)
+	}
+	if prior.AgentPath != "" && incomingPath != "" && prior.AgentPath != incomingPath {
+		return fmt.Sprintf("%s is already installed from %s in %s; %s in the same source would replace it - remove it with `mdm agents remove %s` first, or pass --force to replace it",
+			name, prior.Source, prior.AgentPath, incomingPath, name)
+	}
+	return ""
+}
+
+// targetsFor returns the harnesses one definition goes to.
+func (r agentInstallRun) targetsFor(name string, harnesses []string) []string {
+	if override, ok := r.harnessesFor[name]; ok && len(override) > 0 {
+		return override
+	}
+	return harnesses
+}
+
 // installAgentsForHarnesses installs each selected definition into every
 // requested harness, and records it in the lock only when at least one harness
 // received it. A harness with no agent-definition directory recorded is a
 // skip with a reason. A definition no harness accepted leaves nothing behind.
-func installAgentsForHarnesses(agents []*agentfile.AgentFile, harnesses []string, global bool, mode InstallMode, baseEntry lock.AgentLockEntry, cloneDir, cwd string) agentInstallOutcome {
+func installAgentsForHarnesses(agents []*agentfile.AgentFile, harnesses []string, global bool, mode InstallMode, baseEntry lock.AgentLockEntry, rootDir, cwd string) agentInstallOutcome {
+	return installAgents(agents, harnesses, global, mode, baseEntry, rootDir, cwd, agentInstallRun{})
+}
+
+// installAgents is installAgentsForHarnesses with the run's extra knowledge.
+func installAgents(agents []*agentfile.AgentFile, harnesses []string, global bool, mode InstallMode, baseEntry lock.AgentLockEntry, rootDir, cwd string, run agentInstallRun) agentInstallOutcome {
 	fallbacks := symlinkFallbacks{noun: "agent definitions", group: "agents"}
 	var materialized materializedInstalls
 	outcome := agentInstallOutcome{fallbacks: &fallbacks, materialized: &materialized}
@@ -431,52 +507,87 @@ func installAgentsForHarnesses(agents []*agentfile.AgentFile, harnesses []string
 			continue
 		}
 		claimed[name] = a.Path
-		fmt.Printf("%sInstalling %s%s%s...\n", ansiDim, ansiText, a.Name, ansiReset)
-		warnAgentNamePattern(a.Name, harnesses)
-		rollback := canonicalRollback(a, name, global, cwd)
 
-		var failures agentFailures
-		var skipReasons []string
-		installedAny := false
-		for _, harnessName := range harnesses {
-			result := installAgentFile(a, harnessName, global, cwd, mode)
-			fallbacks.note(harnessName, result)
-			materialized.note(harnessName, result)
-			failures.note(harnessName, result)
-			switch {
-			case result.Success:
-				installedAny = true
-				if !received[harnessName] {
-					received[harnessName] = true
-					outcome.harnesses = append(outcome.harnesses, harnessName)
+		targets := run.targetsFor(name, harnesses)
+		agentPath := agentFileRepoPath(a.Path, rootDir)
+		if prior, ok := recorded[name]; ok {
+			if conflict := agentSourceConflict(prior, baseEntry, agentPath, name, cwd); conflict != "" {
+				if !run.force {
+					ui.LogError(fmt.Sprintf("%s: %s", a.Name, conflict))
+					outcome.refused++
+					continue
 				}
-			case result.Skipped:
-				skipReasons = append(skipReasons, result.Error)
+				// A forced replacement is a replacement everywhere: the
+				// harnesses still serving the prior definition get the new
+				// one too, or the lock would name one source while some
+				// harness served another.
+				targets = unionHarnesses(targets, prior.Harnesses)
+			}
+		}
+		installedTo := installOneAgent(a, name, targets, global, cwd, mode, &outcome)
+		if len(installedTo) == 0 {
+			continue
+		}
+		outcome.installed++
+		for _, harnessName := range installedTo {
+			if !received[harnessName] {
+				received[harnessName] = true
+				outcome.harnesses = append(outcome.harnesses, harnessName)
 			}
 		}
 
-		for _, reason := range skipReasons {
-			ui.LogInfo(fmt.Sprintf("%s: skipped - %s", a.Name, reason))
-		}
-
-		if !installedAny {
-			rollback()
-			reportAgentFailure(a.Name, &failures)
-			continue
-		}
-		if failures.any() {
-			reportAgentFailure(a.Name, &failures)
-		} else {
-			ui.LogSuccess(a.Name)
-		}
-		outcome.installed++
-
 		entry := baseEntry
-		entry.AgentPath = agentFileRepoPath(a.Path, cloneDir)
+		entry.AgentPath = agentPath
 		entry.Format = string(agentCanonicalFormat(a))
+		// The list is what remove, update and install act on. A harness an
+		// earlier add of the same definition reached is still holding it, so
+		// this run's harnesses join that list rather than replacing it.
+		entry.Harnesses = unionHarnesses(recorded[name].Harnesses, installedTo)
 		recordAgentEntry(name, entry, global, cwd)
 	}
 	return outcome
+}
+
+// installOneAgent installs one definition into each of harnesses, prints its
+// per-definition lines, and returns the harnesses that received it, in the
+// order given. A definition no harness accepted has its canonical write
+// rolled back and returns nothing.
+func installOneAgent(a *agentfile.AgentFile, name string, harnesses []string, global bool, cwd string, mode InstallMode, outcome *agentInstallOutcome) []string {
+	fmt.Printf("%sInstalling %s%s%s...\n", ansiDim, ansiText, a.Name, ansiReset)
+	warnAgentNamePattern(a.Name, harnesses)
+	rollback := canonicalRollback(a, name, global, cwd)
+
+	var failures agentFailures
+	var skipReasons []string
+	var installedTo []string
+	for _, harnessName := range harnesses {
+		result := installAgentFile(a, harnessName, global, cwd, mode)
+		outcome.fallbacks.note(harnessName, result)
+		outcome.materialized.note(harnessName, result)
+		failures.note(harnessName, result)
+		switch {
+		case result.Success:
+			installedTo = append(installedTo, harnessName)
+		case result.Skipped:
+			skipReasons = append(skipReasons, result.Error)
+		}
+	}
+
+	for _, reason := range skipReasons {
+		ui.LogInfo(fmt.Sprintf("%s: skipped - %s", a.Name, reason))
+	}
+
+	if len(installedTo) == 0 {
+		rollback()
+		reportAgentFailure(a.Name, &failures)
+		return nil
+	}
+	if failures.any() {
+		reportAgentFailure(a.Name, &failures)
+	} else {
+		ui.LogSuccess(a.Name)
+	}
+	return installedTo
 }
 
 // printAgentInstallSummary is printInstallSummary's counterpart for agent

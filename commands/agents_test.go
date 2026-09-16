@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -29,6 +30,17 @@ func installCriticTo(t *testing.T, cwd string, harnesses []string) {
 	if _, ok := lock.ReadProjectLock(cwd).Agents["critic"]; !ok {
 		t.Fatal("setup: install did not record a lock entry")
 	}
+}
+
+// criticEntry reads critic's project lock entry, which the remove and status
+// helpers take in place of re-reading the lock themselves.
+func criticEntry(t *testing.T, cwd string) lock.AgentLockEntry {
+	t.Helper()
+	entry, ok := lock.ReadProjectLock(cwd).Agents["critic"]
+	if !ok {
+		t.Fatal("no lock entry for critic")
+	}
+	return entry
 }
 
 func agentHarnessTarget(harnessName, cwd string) string {
@@ -222,11 +234,11 @@ func TestRemoveAgentScopedToHarnessLeavesOtherHarnessAndLockIntact(t *testing.T)
 	cwd := t.TempDir()
 	installCriticTo(t, cwd, []string{"claude-code", "cursor"})
 
-	fullyRemoved, _, err := removeAgentFromDisk("critic", []string{"claude-code"}, agentfile.FormatMarkdown, false, cwd)
+	res, err := removeAgentFromDisk("critic", []string{"claude-code"}, criticEntry(t, cwd), false, cwd)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if fullyRemoved {
+	if res.fullyRemoved {
 		t.Error("fullyRemoved = true; cursor still has a copy, so this must be false")
 	}
 
@@ -251,11 +263,11 @@ func TestRemoveAgentWithNoFilterRemovesEverything(t *testing.T) {
 	cwd := t.TempDir()
 	installCriticTo(t, cwd, []string{"claude-code", "cursor"})
 
-	fullyRemoved, _, err := removeAgentFromDisk("critic", nil, agentfile.FormatMarkdown, false, cwd)
+	res, err := removeAgentFromDisk("critic", nil, criticEntry(t, cwd), false, cwd)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !fullyRemoved {
+	if !res.fullyRemoved {
 		t.Error("fullyRemoved = false; nothing should be left installed anywhere")
 	}
 	for _, h := range []string{"claude-code", "cursor"} {
@@ -290,11 +302,11 @@ func TestRemoveAgentDeletionFailureKeepsLockEntry(t *testing.T) {
 	}
 	defer func() { removeFileFn = orig }()
 
-	fullyRemoved, _, err := removeAgentFromDisk("critic", []string{"claude-code"}, agentfile.FormatMarkdown, false, cwd)
+	res, err := removeAgentFromDisk("critic", []string{"claude-code"}, criticEntry(t, cwd), false, cwd)
 	if err == nil {
 		t.Fatal("expected an error when the per-harness deletion fails")
 	}
-	if fullyRemoved {
+	if res.fullyRemoved {
 		t.Error("fullyRemoved = true despite a deletion failure")
 	}
 	if _, ok := lock.ReadProjectLock(cwd).Agents["critic"]; !ok {
@@ -314,7 +326,7 @@ func TestAgentStatusForFlagsMissingCanonical(t *testing.T) {
 	if err := lock.AddAgentToLocalLock("critic", lock.AgentLockEntry{Source: "o/r", SourceType: "github", AgentPath: "a.md"}, cwd); err != nil {
 		t.Fatal(err)
 	}
-	st := agentStatusFor("critic", agentfile.FormatMarkdown, false, cwd)
+	st := agentStatusFor("critic", criticEntry(t, cwd), false, cwd)
 	if !st.CanonicalMissing {
 		t.Error("CanonicalMissing = false; no canonical file exists on disk")
 	}
@@ -334,7 +346,7 @@ func TestAgentStatusForReportsPerHarnessBreakage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	st := agentStatusFor("critic", agentfile.FormatMarkdown, false, cwd)
+	st := agentStatusFor("critic", criticEntry(t, cwd), false, cwd)
 	if st.CanonicalMissing {
 		t.Error("canonical file untouched by this scenario; CanonicalMissing must be false")
 	}
@@ -530,8 +542,8 @@ func setupUpdateWithEveryHarnessBroken(t *testing.T) (cwd, sourceDir, agentPath,
 	// Confirm the swap still reads as "installed" (Lstat-based), so the
 	// test actually exercises the new guard and not the pre-existing
 	// "not installed anywhere" early exit.
-	if got := agentInstalledHarnesses("critic", false, cwd); len(got) != 1 || got[0] != "claude-code" {
-		t.Fatalf("setup: expected agentInstalledHarnesses to still report claude-code, got %v", got)
+	if got := agentInstalledIn("critic", entryBefore, false, cwd); len(got) != 1 || got[0] != "claude-code" {
+		t.Fatalf("setup: expected agentInstalledIn to still report claude-code, got %v", got)
 	}
 
 	return cwd, sourceDir, agentPath, lockPath, infoBefore, entryBefore
@@ -556,7 +568,7 @@ func TestAgentsUpdateLeavesLockUnchangedWhenEveryHarnessInstallFails(t *testing.
 	if !ok {
 		t.Fatal("lock entry disappeared entirely")
 	}
-	if entryAfter != entryBefore {
+	if !reflect.DeepEqual(entryAfter, entryBefore) {
 		t.Errorf("lock entry changed despite every harness install failing: before=%+v after=%+v", entryBefore, entryAfter)
 	}
 
@@ -873,17 +885,15 @@ func TestLockEntryWithoutFormatResolvesTheMarkdownCanonical(t *testing.T) {
 	if err := lock.AddAgentToLocalLock("critic", entry, cwd); err != nil {
 		t.Fatal(err)
 	}
-	format := lockedAgentFormat(entry)
-
-	if st := agentStatusFor("critic", format, false, cwd); st.CanonicalMissing {
+	if st := agentStatusFor("critic", entry, false, cwd); st.CanonicalMissing {
 		t.Error("a lock entry with no format reports its canonical file missing")
 	}
 
-	fullyRemoved, _, err := removeAgentFromDisk("critic", nil, format, false, cwd)
+	res, err := removeAgentFromDisk("critic", nil, entry, false, cwd)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !fullyRemoved {
+	if !res.fullyRemoved {
 		t.Error("removal did not complete for a lock entry with no format")
 	}
 	canonical := filepath.Join(harness.CanonicalAgentsDir(false, cwd), "critic.md")

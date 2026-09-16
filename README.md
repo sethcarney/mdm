@@ -23,7 +23,7 @@ Managing markdown across multiple agentic coding tools is more painful than it s
 - **Skills from anywhere.** Install from GitHub, GitLab, arbitrary URLs, local paths, or the [skills.sh](https://skills.sh) registry.
 - **Reproducible installs.** Repos can commit an `mdm.lock` with their recommended skills, knowledge bundles, and plugins so new teammates run `mdm skills install` once and onboard with whatever harness they prefer.
 - **Security-focused by default.** Every install runs a deterministic local scan for hidden characters and prompt-smuggling patterns, and `mdm skills audit` checks for updates and OSV security advisories.
-- **Knowledge bundles.** `mdm knowledge` installs, validates, and updates [Open Knowledge Format (OKF)](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf) bundles for AI harnesses.
+- **Knowledge bundles.** `mdm knowledge` installs, validates, and updates [Open Knowledge Format (OKF)](https://github.com/GoogleCloudPlatform/open-knowledge-format) bundles for AI harnesses.
 - **Agent Plugins.** `mdm plugins` installs, validates, and updates [Agent Plugins](https://agent-plugins.org) - portable packages of skills and MCP servers - and wires their MCP servers into each harness's config.
 - **Agent definitions.** `mdm agents` installs subagent persona files (e.g. Claude Code subagents) into each harness that supports them.
 - **No telemetry, fully open source.**
@@ -104,7 +104,7 @@ mdm upgrade                Upgrade the mdm CLI binary
 Run `mdm --help` for the full command reference. See [docs/rules.md](docs/rules.md) for a detailed walkthrough of the `mdm rules` flow.
 
 > [!NOTE]
-> **Upgrading from an earlier v2 build:** the AI tool is now a *harness*. `mdm agents`
+> **Upgrading from v1 or an earlier v2 build:** the AI tool is now a *harness*. `mdm agents`
 > (which managed the configured tool list) is `mdm harnesses`, and `--agent` / `-a` on
 > the skills, plugins, rules and cherry-pick commands is `--harness`. `mdm agents` now
 > installs agent definitions, and `mdm agents add <name>` no longer configures a tool:

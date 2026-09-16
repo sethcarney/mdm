@@ -5,6 +5,7 @@ package commands
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -65,6 +66,29 @@ func restoreAgentsFromLock(opts restoreOptions) {
 	}
 }
 
+// restoreTargets decides where each entry goes back: the harness list the
+// entry records, or, for an entry written before the list existed, the
+// harnesses whose file for it mdm can show it wrote. Entries with neither are
+// returned in unlisted for the caller to ask about. Restoring an old entry
+// into every capable harness instead would write into directories the user
+// never chose, .github/agents among them, which is committed.
+func restoreTargets(entries map[string]lock.AgentLockEntry, global bool, cwd string) (harnessesFor map[string][]string, unlisted []string) {
+	harnessesFor = make(map[string][]string, len(entries))
+	for name, e := range entries {
+		targets := agentRecordedHarnesses(e)
+		if targets == nil {
+			targets = agentOwnedHarnesses(name, e, global, cwd)
+		}
+		if len(targets) == 0 {
+			unlisted = append(unlisted, name)
+			continue
+		}
+		harnessesFor[name] = targets
+	}
+	sort.Strings(unlisted)
+	return harnessesFor, unlisted
+}
+
 // restoreAgentsMap groups entries by source and calls runAgentAdd once per
 // group, so a repo holding many definitions is cloned once per restore.
 func restoreAgentsMap(entries map[string]lock.AgentLockEntry, global bool, opts restoreOptions, cwd string) {
@@ -76,20 +100,36 @@ func restoreAgentsMap(entries map[string]lock.AgentLockEntry, global bool, opts 
 	}
 	groups := groupBySourceRef(refs)
 
-	baseOpts := AgentOptions{Yes: opts.yes, AllowHiddenChars: opts.allowHiddenChars, Copy: opts.copy, Symlink: opts.symlink}
+	// Force: a restore reinstalls the lock's own entries, so the recorded
+	// source is by definition the one each definition belongs to, even when
+	// that source has since moved the file.
+	baseOpts := AgentOptions{Yes: opts.yes, AllowHiddenChars: opts.allowHiddenChars, Copy: opts.copy, Symlink: opts.symlink, Force: true}
 	if global {
 		baseOpts.Global = true
 	} else {
 		baseOpts.Project = true
 	}
 
-	// Resolve harnesses once so the user is not prompted for each source group.
-	harnesses, ok := promptAgentHarnesses(baseOpts, global, cwd)
-	if !ok {
-		fmt.Println("Cancelled.")
-		return
+	// Each definition goes back into the harnesses its lock entry names. Only
+	// an entry with no list, and no file mdm can vouch for on disk, needs the
+	// user asked, and then once for all such entries rather than per group.
+	harnessesFor, unlisted := restoreTargets(entries, global, cwd)
+	if len(unlisted) > 0 {
+		harnesses, ok := promptAgentHarnesses(baseOpts, global, cwd)
+		if !ok {
+			fmt.Println("Cancelled.")
+			return
+		}
+		for _, name := range unlisted {
+			harnessesFor[name] = harnesses
+		}
 	}
-	baseOpts.Harnesses = harnesses
+	baseOpts.HarnessesFor = harnessesFor
+	var all [][]string
+	for _, list := range harnessesFor {
+		all = append(all, list)
+	}
+	baseOpts.Harnesses = unionHarnesses(all...)
 
 	vlog(verboseFlag, "grouped %d agent definition(s) into %d source group(s)", len(entries), len(groups))
 	for _, group := range groups {

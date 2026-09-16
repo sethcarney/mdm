@@ -9,7 +9,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/sethcarney/mdm/internal/agentfile"
 	"github.com/sethcarney/mdm/internal/harness"
 	"github.com/sethcarney/mdm/internal/lock"
 	"github.com/sethcarney/mdm/internal/source"
@@ -56,49 +55,41 @@ func agentLockEntries(global bool, cwd string) ([]string, map[string]lock.AgentL
 	return names, m
 }
 
-// agentInstalledHarnesses returns, sorted, every harness with an
-// agent-definition directory recorded for this scope that has a file on disk
-// for this definition. A harness copy can go missing while the canonical file
-// stays untouched.
-func agentInstalledHarnesses(name string, global bool, cwd string) []string {
-	var found []string
-	for harnessName := range harness.AllHarnesses {
-		target := agentHarnessPath(name, harnessName, global, cwd)
-		if target == "" {
-			continue
-		}
-		if _, err := os.Lstat(target); err == nil {
-			found = append(found, harnessName)
-		}
-	}
-	sort.Strings(found)
-	return found
-}
-
 // agentEntryStatus is the on-disk health of one lock entry, checked against
-// both the canonical file and every harness's own copy.
+// the canonical file and the harnesses the entry says hold the definition.
 type agentEntryStatus struct {
 	CanonicalMissing bool
 	InstalledIn      []string // harness names, sorted; empty means installed nowhere
+	MissingFrom      []string // harnesses the lock names whose file has gone; sorted
 }
 
-func agentStatusFor(name string, format agentfile.Format, global bool, cwd string) agentEntryStatus {
-	canonical := agentCanonicalPath(name, format, global, cwd)
+// agentStatusFor reads the entry's harnesses off the disk. An entry written
+// before the lock recorded a harness list is inferred from the files mdm can
+// show it wrote, so a hand-written definition of the same name in some other
+// harness is not reported as an install.
+func agentStatusFor(name string, entry lock.AgentLockEntry, global bool, cwd string) agentEntryStatus {
+	canonical := agentCanonicalPath(name, lockedAgentFormat(entry), global, cwd)
 	_, err := os.Stat(canonical)
 	return agentEntryStatus{
 		CanonicalMissing: err != nil,
-		InstalledIn:      agentInstalledHarnesses(name, global, cwd),
+		InstalledIn:      agentInstalledIn(name, entry, global, cwd),
+		MissingFrom:      agentMissingFrom(name, entry, global, cwd),
 	}
+}
+
+// harnessDisplayName returns the harness's display name, or the name itself
+// when it is not a known harness.
+func harnessDisplayName(name string) string {
+	if cfg := harness.AllHarnesses[name]; cfg != nil {
+		return cfg.DisplayName
+	}
+	return name
 }
 
 func harnessDisplayNames(names []string) []string {
 	var out []string
 	for _, n := range names {
-		if cfg := harness.AllHarnesses[n]; cfg != nil {
-			out = append(out, cfg.DisplayName)
-		} else {
-			out = append(out, n)
-		}
+		out = append(out, harnessDisplayName(n))
 	}
 	return out
 }
@@ -127,7 +118,7 @@ func runAgentList(globalFlag, projectFlag bool) {
 		fmt.Printf("%s%s agent definitions:%s\n\n", ansiText, scopeTitle, ansiReset)
 		for _, name := range names {
 			entry := agents[name]
-			st := agentStatusFor(name, lockedAgentFormat(entry), global, cwd)
+			st := agentStatusFor(name, entry, global, cwd)
 
 			var problems []string
 			if st.CanonicalMissing {
@@ -135,6 +126,8 @@ func runAgentList(globalFlag, projectFlag bool) {
 			}
 			if len(st.InstalledIn) == 0 {
 				problems = append(problems, "not installed in any harness")
+			} else if len(st.MissingFrom) > 0 {
+				problems = append(problems, "missing from "+strings.Join(harnessDisplayNames(st.MissingFrom), ", "))
 			}
 			status := ""
 			if len(problems) > 0 {

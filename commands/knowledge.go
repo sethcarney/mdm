@@ -8,7 +8,7 @@ import (
 
 // knowledgeSpecVersion is the OKF spec revision this build implements.
 // See docs/specs/knowledge.md and the upstream spec:
-// https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf
+// https://github.com/GoogleCloudPlatform/open-knowledge-format
 const knowledgeSpecVersion = "0.1"
 
 func buildKnowledgeCmd() *cobra.Command {

@@ -603,8 +603,10 @@ func TestAgentsAddRecordsARelativeLocalSourceAndDoesNotReclaimItsOwnInstalls(t *
 
 // `agents add` exits 1 when nothing landed; `agents remove` logged a failed
 // deletion and exited 0, so a script read a definition still on disk and in
-// the lock as removed. A non-empty directory where the harness file should
-// be is a deletion os.Remove cannot perform on any platform.
+// the lock as removed. A non-empty directory where mdm's own canonical file
+// should be is a deletion os.Remove cannot perform on any platform. (A
+// harness path is no longer the place to block: something there that is not
+// the file mdm wrote is the user's, and remove leaves it alone by design.)
 func TestAgentsRemoveExitsNonZeroWhenADeletionFails(t *testing.T) {
 	projectDir := t.TempDir()
 	stateDir := t.TempDir()
@@ -614,11 +616,11 @@ func TestAgentsRemoveExitsNonZeroWhenADeletionFails(t *testing.T) {
 		"agents", "add", src, "--harness", "claude-code", "--project", "-y"); code != 0 {
 		t.Fatalf("setup install exited %d:\n%s%s", code, stdout, stderr)
 	}
-	harnessFile := filepath.Join(projectDir, ".claude", "agents", "critic.md")
-	if err := os.Remove(harnessFile); err != nil {
+	canonical := filepath.Join(projectDir, ".agents", "agents", "critic.md")
+	if err := os.Remove(canonical); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(harnessFile, "blocker"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(canonical, "blocker"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 

@@ -109,7 +109,7 @@ func warnAgentNamesNotInSource(requested []string, selected []*agentfile.AgentFi
 	for _, filterName := range requested {
 		matched := false
 		for _, a := range selected {
-			if skillNameMatches(a.Name, filterName) {
+			if agentNameMatches(a.Name, filterName) {
 				matched = true
 				break
 			}
@@ -153,12 +153,84 @@ func recordAgentEntry(name string, entry lock.AgentLockEntry, global bool, cwd s
 	}
 }
 
+// refreshableHarnesses splits the harnesses holding a definition into the
+// ones an update may overwrite and the ones it must not. A harness file is
+// refreshed only when mdmOwnsAgentFile can show mdm wrote it from the
+// canonical file as it stands before the update; a hand-edited copy is the
+// user's, and the update leaves it and says so.
+func refreshableHarnesses(name string, held []string, canonicalPath string, global bool, cwd string) (targets, foreign []string) {
+	for _, harnessName := range held {
+		if mdmOwnsAgentFile(agentHarnessPath(name, harnessName, global, cwd), harnessName, canonicalPath) {
+			targets = append(targets, harnessName)
+		} else {
+			foreign = append(foreign, harnessName)
+		}
+	}
+	return targets, foreign
+}
+
+// updateOneAgent reinstalls one fetched definition into every harness that
+// holds it and records the result. It returns true when the lock entry was
+// refreshed.
+func updateOneAgent(a *agentfile.AgentFile, name string, entry lock.AgentLockEntry, baseEntry lock.AgentLockEntry, rootDir string, global bool, cwd string, mode InstallMode) bool {
+	held := agentInstalledIn(name, entry, global, cwd)
+	if len(held) == 0 {
+		ui.LogWarn(fmt.Sprintf("%s: not installed in any harness, skipping", a.Name))
+		return false
+	}
+	canonicalPath := agentCanonicalPath(name, agentCanonicalFormat(a), global, cwd)
+	targets, foreign := refreshableHarnesses(name, held, canonicalPath, global, cwd)
+	for _, harnessName := range foreign {
+		ui.LogInfo(fmt.Sprintf("%s: left %s alone: the file there is not the one mdm wrote", a.Name, harnessDisplayName(harnessName)))
+	}
+	if len(targets) == 0 {
+		ui.LogWarn(fmt.Sprintf("%s: no harness copy mdm wrote is left to refresh - lock entry left unchanged", a.Name))
+		return false
+	}
+
+	// installAgentFile writes the canonical file before the first harness
+	// write. If no harness then takes the new version, the previous bytes go
+	// back, so the canonical file never runs ahead of the lock and of every
+	// harness copy.
+	previous := readCanonicalAgent(name, a, global, cwd)
+	installedAny, failedHarnesses := reinstallAgentIntoHarnesses(a, targets, global, cwd, mode)
+
+	// The lock must describe the disk. When no harness took the new version,
+	// every harness copy still holds the version the entry already names, so
+	// the entry stays and the canonical file is restored to match it.
+	if !installedAny {
+		ui.LogWarn(fmt.Sprintf("%s: update failed for every installed harness (%s) - lock entry left unchanged", a.Name, strings.Join(failedHarnesses, ", ")))
+		restoreCanonicalAgent(name, a, previous, global, cwd)
+		return false
+	}
+	if len(failedHarnesses) == 0 {
+		ui.LogSuccess(a.Name)
+	} else {
+		ui.LogWarn(fmt.Sprintf("%s (failed for: %s)", a.Name, strings.Join(failedHarnesses, ", ")))
+	}
+
+	fresh := baseEntry
+	fresh.AgentPath = agentFileRepoPath(a.Path, rootDir)
+	fresh.Format = string(agentCanonicalFormat(a))
+	// An entry with a list keeps it: a harness whose file went missing is
+	// still where the lock says the definition belongs. One without a list
+	// gets the harnesses this update found holding it, so the inference is
+	// never needed for it again.
+	fresh.Harnesses = agentRecordedHarnesses(entry)
+	if fresh.Harnesses == nil {
+		fresh.Harnesses = held
+	}
+	recordAgentEntry(name, fresh, global, cwd)
+	return true
+}
+
 // runAgentUpdateGroups re-fetches each group once and reinstalls every selected
-// definition into every harness it is currently installed to, per
-// agentInstalledHarnesses. The scope's configured-harness list can differ.
+// definition into every harness its lock entry says holds it, per
+// agentInstalledIn. The scope's configured-harness list can differ.
 func runAgentUpdateGroups(groups []updateGroup, global bool, cwd string, allowHiddenChars bool, stats *updateStats) {
 	mode := currentInstallMode(global, cwd)
 	claimed := map[string]string{} // disk name -> the source that claimed it
+	_, entries := agentLockEntries(global, cwd)
 	for _, g := range groups {
 		if len(g.skills) > 1 {
 			fmt.Printf("%sFetching %d agent definition(s) from %s in one pass...%s\n", ansiDim, len(g.skills), g.source, ansiReset)
@@ -166,7 +238,7 @@ func runAgentUpdateGroups(groups []updateGroup, global bool, cwd string, allowHi
 		vlog(verboseFlag, "updating agent definition(s) from %q: %v", g.source, g.names)
 
 		parsed := source.ParseSource(g.source)
-		searchRoot, cloneDir, cleanup := fetchAgentSource(parsed, verboseFlag)
+		searchRoot, rootDir, cleanup := fetchAgentSource(parsed, verboseFlag)
 
 		found, err := agentfile.DiscoverAgentFiles(searchRoot, parsed.Subpath)
 		if err != nil {
@@ -197,39 +269,9 @@ func runAgentUpdateGroups(groups []updateGroup, global bool, cwd string, allowHi
 				continue
 			}
 			claimed[name] = a.Path
-			installedHarnesses := agentInstalledHarnesses(name, global, cwd)
-			if len(installedHarnesses) == 0 {
-				ui.LogWarn(fmt.Sprintf("%s: not installed in any harness, skipping", a.Name))
-				continue
+			if updateOneAgent(a, name, entries[name], baseEntry, rootDir, global, cwd, mode) {
+				stats.updated++
 			}
-
-			// installAgentFile writes the canonical file before the first
-			// harness write. If no harness then takes the new version, the
-			// previous bytes go back, so the canonical file never runs ahead
-			// of the lock and of every harness copy.
-			previous := readCanonicalAgent(name, a, global, cwd)
-			installedAny, failedHarnesses := reinstallAgentIntoHarnesses(a, installedHarnesses, global, cwd, mode)
-
-			// The lock must describe the disk. When no harness took the new
-			// version, every harness copy still holds the version the entry
-			// already names, so the entry stays and the canonical file is
-			// restored to match it.
-			if !installedAny {
-				ui.LogWarn(fmt.Sprintf("%s: update failed for every installed harness (%s) - lock entry left unchanged", a.Name, strings.Join(failedHarnesses, ", ")))
-				restoreCanonicalAgent(name, a, previous, global, cwd)
-				continue
-			}
-			if len(failedHarnesses) == 0 {
-				ui.LogSuccess(a.Name)
-			} else {
-				ui.LogWarn(fmt.Sprintf("%s (failed for: %s)", a.Name, strings.Join(failedHarnesses, ", ")))
-			}
-
-			entry := baseEntry
-			entry.AgentPath = agentFileRepoPath(a.Path, cloneDir)
-			entry.Format = string(agentCanonicalFormat(a))
-			recordAgentEntry(name, entry, global, cwd)
-			stats.updated++
 		}
 		cleanup()
 	}

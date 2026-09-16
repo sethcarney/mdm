@@ -6,9 +6,47 @@ package commands
 
 import (
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/sethcarney/mdm/internal/harness"
 )
+
+// allHarnessNames reports whether names is non-empty and every entry is a key
+// of harness.AllHarnesses - the shape of a v1 `mdm agents add claude-code
+// cursor`, which configured harnesses before this release.
+func allHarnessNames(names []string) bool {
+	if len(names) == 0 {
+		return false
+	}
+	for _, n := range names {
+		if harness.AllHarnesses[n] == nil {
+			return false
+		}
+	}
+	return true
+}
+
+// printHarnessNamesHint explains that names are harnesses, which `mdm agents`
+// no longer manages, and points at the `mdm harnesses` subcommand that does.
+// verb is the agents subcommand the user ran, and the rest completes the
+// sentence "<names> is a harness, not <noun>. ... `mdm agents <verb>
+// <placeholder>` <does> agent definitions." A bare harness name is never a
+// source and never a lock key, so without this the same v1 muscle memory
+// failed as a git clone of a repository called "cursor", or as a removal that
+// found nothing and exited 0.
+func printHarnessNamesHint(names []string, verb, noun, placeholder, does string) {
+	list := strings.Join(names, " ")
+	are := "is a harness"
+	if len(names) > 1 {
+		are = "are harnesses"
+	}
+	fmt.Fprintf(os.Stderr, "%s%s %s, not %s.%s\n", ansiText, list, are, noun, ansiReset)
+	fmt.Fprintf(os.Stderr, "Harness management moved to %smdm harnesses %s %s%s in this release; %smdm agents %s %s%s %s agent definitions.\n",
+		ansiText, verb, list, ansiReset, ansiText, verb, placeholder, ansiReset, does)
+}
 
 func buildAgentArtifactsCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -49,6 +87,15 @@ type AgentOptions struct {
 	AllowHiddenChars bool
 	Copy             bool
 	Symlink          bool
+	// Force lets an add replace a definition the lock already records from
+	// a different source, or from a different file of the same source.
+	// Without it such an add is refused, since two names that sanitize to
+	// one disk name would otherwise silently swap what every harness serves.
+	Force bool
+	// HarnessesFor overrides Harnesses per definition, keyed by disk name.
+	// The restore path sets it so each definition goes back into exactly
+	// the harnesses its lock entry names; the flags never do.
+	HarnessesFor map[string][]string
 }
 
 // asAddOptions adapts AgentOptions to the AddOptions fields

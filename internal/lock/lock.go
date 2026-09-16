@@ -13,6 +13,13 @@ import (
 
 const localLockVersion = 1
 
+// tombstoneLockVersion is the version v2's migration tombstone carries in
+// skills-lock.json. v1.93.0 and later refuse it; older v1 releases read it as
+// an empty lock and, on their next `skills add`, rewrite the file at that same
+// version with real entries and without the _moved marker. Such a file is v1
+// data wearing the tombstone's version, so both readers below accept it.
+const tombstoneLockVersion = 2
+
 type LocalSkillLockEntry struct {
 	Source     string `json:"source"`
 	Ref        string `json:"ref,omitempty"`
@@ -27,13 +34,18 @@ type LocalSkillLockEntry struct {
 // to refresh. Format is the shape of the canonical file, which mirrors the
 // source, so the canonical file's extension need never be guessed. It is
 // omitempty, and absent means markdown: every canonical file written before
-// this field existed is a .md.
+// this field existed is a .md. Harnesses names the harnesses mdm wrote the
+// definition into, so remove, update, install and list act on those files and
+// no others: a same-named file in a harness the user never asked for is the
+// user's. It is omitempty because entries written before it existed have no
+// list, and the commands fall back to inferring one from the disk for those.
 type AgentLockEntry struct {
-	Source     string `json:"source"`
-	SourceType string `json:"sourceType"`
-	Ref        string `json:"ref,omitempty"`
-	AgentPath  string `json:"agentPath"`
-	Format     string `json:"format,omitempty"`
+	Source     string   `json:"source"`
+	SourceType string   `json:"sourceType"`
+	Ref        string   `json:"ref,omitempty"`
+	AgentPath  string   `json:"agentPath"`
+	Format     string   `json:"format,omitempty"`
+	Harnesses  []string `json:"harnesses,omitempty"`
 }
 
 // LocalSkillLockFile is a view of the skills section of the project lock.
@@ -78,7 +90,7 @@ func readLegacySkillsLockE(cwd string) (LocalSkillLockFile, error) {
 	if err := json.Unmarshal(data, &lock); err != nil {
 		return EmptyLocalLock(), errUnreadableLock(path, err)
 	}
-	if lock.Version > localLockVersion {
+	if lock.Version > localLockVersion && lock.Version != tombstoneLockVersion {
 		return EmptyLocalLock(), errNewerLock(path, lock.Version, localLockVersion)
 	}
 	if lock.Skills == nil || lock.Version < localLockVersion {
