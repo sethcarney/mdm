@@ -466,6 +466,47 @@ func agentSourceConflict(prior, incoming lock.AgentLockEntry, incomingPath, name
 	return ""
 }
 
+// foreignAgentTargets splits a definition's target harnesses into those safe to
+// write and those already holding a file mdm did not create. A target is safe
+// when the lock already records the definition there (priorHarnesses - mdm's
+// own install), when nothing is on disk yet, when the file present is one mdm
+// wrote (a symlink to the canonical file or a copy of its bytes), or when the
+// source file IS the destination (an in-place adoption of a hand-written file,
+// which installAgentFile leaves untouched). Anything else on disk is the user's
+// own hand-written file, and `mdm agents add` must not silently overwrite it -
+// doing so replaced a committed .claude/agents/<name>.md with a symlink into the
+// gitignored canonical directory, losing it on the next clone. canonicalPath is
+// read as it stands before this run rewrites it, so a definition mdm already
+// owns still matches while a foreign file does not.
+func foreignAgentTargets(a *agentfile.AgentFile, name string, targets, priorHarnesses []string, global bool, cwd string) (safe, blocked []string) {
+	prior := stringSet(priorHarnesses)
+	canonicalPath := agentCanonicalPath(name, agentCanonicalFormat(a), global, cwd)
+	for _, h := range targets {
+		target := agentHarnessPath(name, h, global, cwd)
+		switch {
+		case prior[h], target == "":
+			// Recorded by the lock, or no directory to write into (a skip
+			// installAgentFile reports on its own). Either way, not a foreign file.
+			safe = append(safe, h)
+		case !fileExists(target):
+			safe = append(safe, h)
+		case sameFileOnDisk(a.Path, target):
+			safe = append(safe, h) // adopting the source file in place
+		case mdmOwnsAgentFile(target, h, canonicalPath):
+			safe = append(safe, h) // mdm's own file from an earlier run
+		default:
+			blocked = append(blocked, h)
+		}
+	}
+	return safe, blocked
+}
+
+// fileExists reports whether a file or symlink (even a dangling one) is at path.
+func fileExists(path string) bool {
+	_, err := os.Lstat(path)
+	return err == nil
+}
+
 // targetsFor returns the harnesses one definition goes to.
 func (r agentInstallRun) targetsFor(name string, harnesses []string) []string {
 	if override, ok := r.harnessesFor[name]; ok && len(override) > 0 {
@@ -533,6 +574,26 @@ func installAgents(agents []*agentfile.AgentFile, harnesses []string, global boo
 				targets = unionHarnesses(targets, priorHarnesses)
 			}
 		}
+		// Never silently overwrite a harness file mdm did not write. --force is
+		// the opt-in to replace it, matching agentSourceConflict above; without
+		// it, a foreign file blocks that harness and the definition still lands
+		// in the others.
+		if !run.force {
+			safe, blocked := foreignAgentTargets(a, name, targets, priorHarnesses, global, cwd)
+			if len(blocked) > 0 {
+				var paths []string
+				for _, h := range blocked {
+					paths = append(paths, shortenPath(agentHarnessPath(name, h, global, cwd), cwd))
+				}
+				ui.LogError(fmt.Sprintf("%s: %s already exists and was not written by mdm - remove it or pass --force to replace it", a.Name, strings.Join(paths, ", ")))
+				outcome.refused++
+				targets = safe
+			}
+		}
+		if len(targets) == 0 {
+			continue
+		}
+
 		installedTo := installOneAgent(a, name, targets, global, cwd, mode, &outcome)
 		if len(installedTo) == 0 {
 			continue
