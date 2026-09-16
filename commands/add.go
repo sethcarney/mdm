@@ -37,6 +37,13 @@ type AddOptions struct {
 	FailOnAudit       bool
 	AllowHiddenChars  bool
 	Verbose           bool
+	// RestoreMode marks a call made by `mdm skills install` restoring the lock,
+	// one source group at a time. A restore must survive a group whose source
+	// no longer yields the recorded skill, so the empty-source and
+	// nothing-installed paths return instead of exiting the process, which would
+	// abandon every later group. The caller checks the disk afterwards and
+	// reports whatever did not come back.
+	RestoreMode bool
 }
 
 func buildAddCmd(ver string) *cobra.Command {
@@ -316,6 +323,9 @@ func runAddLocal(parsed source.ParsedSource, opts AddOptions, cwd string) {
 	skills := discoverSkillsInDir(localPath, opts.FullDepth, "")
 	if len(skills) == 0 {
 		fmt.Fprintf(os.Stderr, "%sNo skills found in %s%s\n", ansiText, localPath, ansiReset)
+		if opts.RestoreMode {
+			return
+		}
 		os.Exit(1)
 	}
 
@@ -355,7 +365,7 @@ func runAddLocal(parsed source.ParsedSource, opts AddOptions, cwd string) {
 		Source:     localPath,
 		SourceType: string(source.SourceTypeLocal),
 		SourceURL:  localPath,
-	}, cwd, "") == 0 {
+	}, cwd, "") == 0 && !opts.RestoreMode {
 		os.Exit(1)
 	}
 	// Said after the install, not before: the install itself is fine. It is the
