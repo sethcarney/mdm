@@ -101,6 +101,8 @@ nav:
       - Rules - instruction files: rules.md
       - Harnesses: harnesses.md
       - Agent definitions: agent-artifacts.md
+      - Knowledge bundles: knowledge.md
+      - Agent Plugins: plugins.md
       - Doctor: doctor.md
       - Experimental features: experimental.md
       - Troubleshooting: troubleshooting.md
@@ -117,8 +119,9 @@ nav:
       - init: skills/init.md
       - install: skills/install.md
       - sync: skills/sync.md
-  - Knowledge: specs/knowledge.md
-  - Plugins: specs/plugins.md
+  - Design specs:
+      - Knowledge (OKF): specs/knowledge.md
+      - Plugins: specs/plugins.md
   - Security:
       - Hidden-character scan: security/hidden-character-scan.md
       - Git transport restrictions: security/git-transport-restrictions.md
