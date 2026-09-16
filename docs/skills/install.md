@@ -30,6 +30,35 @@ Restores happen in whatever mode the scope's lock records. A project installed w
 
 Agent definitions restore after skills, using the same scope and lock resolution - a plain `mdm skills install` (or the `postCreateCommand: mdm skills install` pattern in a dev container) is enough to get both back. A project with no agent definitions produces no extra output for that step. To restore agent definitions only, use [`mdm agents install`](../agent-artifacts.md#mdm-agents-install) directly.
 
+## Local sources and team setup
+
+The project lock is meant to set a teammate up from a fresh clone, so a local
+source is recorded relative to the project root rather than as the absolute path
+you typed. `mdm skills add /home/you/work/app/skills/review` and
+`mdm skills add ./skills/review` both record `./skills/review`, which resolves
+from whatever directory the clone lands in. The same holds for agent
+definitions, knowledge bundles and plugins.
+
+A source *outside* the project has no project-relative form that travels with
+the repository, so `mdm skills add ../shared/review` records `../shared/review`
+and warns you at install time. On a teammate's machine that path usually does
+not exist. A restore then names the entry, installs everything else it can, and
+exits non-zero:
+
+```
+  ! review: recorded from ../shared/review, a local path outside this project,
+    so it is not part of the repository and is missing here
+  ✗ 1 skill(s) could not be restored on this machine: review
+```
+
+To share such a skill, vendor it into the repository with
+[`mdm skills cherry-pick`](cherry-pick.md), or re-add it from a source your team
+can reach.
+
+The global state file keeps absolute paths. It is per-machine by definition, and
+nothing about the directory you happen to be in when you add a global skill
+should decide where it is restored from.
+
 ## Flags
 
 | Flag | Description |

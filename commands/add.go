@@ -356,6 +356,13 @@ func runAddLocal(parsed source.ParsedSource, opts AddOptions, cwd string) {
 		SourceType: string(source.SourceTypeLocal),
 		SourceURL:  localPath,
 	}, cwd, "")
+	// Said after the install, not before: the install itself is fine. It is the
+	// lock entry it just wrote that no teammate can use, because a path outside
+	// the project is not part of the repository they clone.
+	if !global {
+		warnIfLocalSourceEscapesProject(localPath, cwd,
+			"To share it, vendor it into the repository with `mdm skills cherry-pick`.")
+	}
 	maybeShowFindPrompt(cwd)
 }
 

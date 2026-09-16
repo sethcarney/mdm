@@ -92,7 +92,7 @@ func runKnowledgeAdd(sourceInput string, opts KnowledgeAddOptions) {
 		os.Exit(1)
 	}
 
-	baseEntry := knowledgeLockEntry(parsed, sourceInput)
+	baseEntry := knowledgeLockEntry(parsed, sourceInput, cwd)
 	installed := 0
 	for _, c := range selected {
 		if installKnowledgeCandidate(c, baseEntry, opts, cwd) {
@@ -228,7 +228,7 @@ func scanKnowledgeCandidates(selected []knowledgeCandidate, allow bool) bool {
 
 // knowledgeLockEntry builds the source-level part of the lock entry shared by
 // every bundle installed from this invocation.
-func knowledgeLockEntry(parsed source.ParsedSource, sourceInput string) lock.KnowledgeLockEntry {
+func knowledgeLockEntry(parsed source.ParsedSource, sourceInput, cwd string) lock.KnowledgeLockEntry {
 	entry := lock.KnowledgeLockEntry{
 		Source:      stripSourceRef(sourceInput),
 		SourceType:  string(parsed.Type),
@@ -237,7 +237,11 @@ func knowledgeLockEntry(parsed source.ParsedSource, sourceInput string) lock.Kno
 		SpecVersion: knowledgeSpecVersion,
 	}
 	if parsed.Type == source.SourceTypeLocal {
-		entry.Source = parsed.LocalPath
+		// ParseSource resolves a local path to an absolute one, which is a fact
+		// about one machine. The lock is meant to set a teammate up from a
+		// fresh clone, so it records the cwd-relative form skills and agent
+		// definitions already use.
+		entry.Source = toRelSourcePath(parsed.LocalPath, cwd)
 		entry.SourceURL = ""
 	} else {
 		entry.Ref = parsed.Ref

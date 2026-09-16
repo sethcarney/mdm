@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/sethcarney/mdm/internal/lock"
+	"github.com/sethcarney/mdm/internal/ui"
 )
 
 func buildAgentsInstallCmd() *cobra.Command {
@@ -22,6 +23,9 @@ func buildAgentsInstallCmd() *cobra.Command {
 		Args:  cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			restoreAgentsFromLock(opts)
+			if restoreFailed {
+				os.Exit(1)
+			}
 		},
 	}
 
@@ -132,8 +136,18 @@ func restoreAgentsMap(entries map[string]lock.AgentLockEntry, global bool, opts 
 	baseOpts.Harnesses = unionHarnesses(all...)
 
 	vlog(verboseFlag, "grouped %d agent definition(s) into %d source group(s)", len(entries), len(groups))
+	var unrestorable []string
 	for _, group := range groups {
 		vlog(verboseFlag, "restoring agent definitions from %q (ref=%q): %v", group.source, group.ref, group.names)
+		// Same reasoning as the skills restore: fetching a missing local path
+		// exits the process, which would abandon every later definition.
+		if why := unreachableLocalSource(group.source, cwd); why != "" {
+			for _, name := range group.names {
+				ui.LogWarn(fmt.Sprintf("%s: %s", name, why))
+				unrestorable = append(unrestorable, name)
+			}
+			continue
+		}
 		fmt.Printf("%sInstalling from %s...%s\n", ansiDim, group.source, ansiReset)
 		groupOpts := baseOpts
 		groupOpts.Agents = group.names
@@ -144,5 +158,6 @@ func restoreAgentsMap(entries map[string]lock.AgentLockEntry, global bool, opts 
 		_ = runAgentAdd(src, groupOpts)
 	}
 
+	reportUnrestorable(unrestorable, "agent definition")
 	fmt.Printf("%sDone.%s\n\n", ansiText, ansiReset)
 }

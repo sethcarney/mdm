@@ -118,7 +118,7 @@ func runPluginsAdd(sourceInput string, opts PluginsAddOptions) {
 		os.Exit(1)
 	}
 
-	baseEntry := pluginLockEntry(parsed, sourceInput)
+	baseEntry := pluginLockEntry(parsed, sourceInput, cwd)
 	installed := 0
 	for _, c := range selected {
 		if installPluginCandidate(c, baseEntry, opts, harnesses, cwd) {
@@ -287,7 +287,7 @@ func resolvePluginHarnesses(opts PluginsAddOptions, cwd string) ([]string, bool)
 
 // pluginLockEntry builds the source-level part of the lock entry shared by
 // every plugin installed from this invocation.
-func pluginLockEntry(parsed source.ParsedSource, sourceInput string) lock.PluginLockEntry {
+func pluginLockEntry(parsed source.ParsedSource, sourceInput, cwd string) lock.PluginLockEntry {
 	entry := lock.PluginLockEntry{
 		Source:      stripSourceRef(sourceInput),
 		SourceType:  string(parsed.Type),
@@ -296,7 +296,9 @@ func pluginLockEntry(parsed source.ParsedSource, sourceInput string) lock.Plugin
 		SpecVersion: pluginsSpecVersion,
 	}
 	if parsed.Type == source.SourceTypeLocal {
-		entry.Source = parsed.LocalPath
+		// Recorded relative to the project for the same reason as knowledge
+		// bundles: an absolute path only restores on the machine that wrote it.
+		entry.Source = toRelSourcePath(parsed.LocalPath, cwd)
 		entry.SourceURL = ""
 	} else {
 		entry.Ref = parsed.Ref
