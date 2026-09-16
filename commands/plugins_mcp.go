@@ -15,9 +15,28 @@ import (
 // Harnesses without an MCP config descriptor are skipped silently - skills
 // still install for them, matching the spec's incremental-adoption rule.
 func wirePluginMCP(c pluginCandidate, destDir, dataDir string, harnesses []string, opts PluginsAddOptions, cwd string) map[string][]string {
+	prev, hadPrev := lock.ReadPluginsLock(cwd).Plugins[c.Name]
+
+	// --skip-mcp leaves the MCP config alone, so whatever a previous install
+	// wired stays both on disk and in the lock entry. Returning nil here would
+	// strand it: `mdm plugins remove` cleans the ids the lock names, and it
+	// would name none.
 	if opts.SkipMCP {
+		if hadPrev {
+			return prev.MCP
+		}
 		return nil
 	}
+
+	// Every path below replaces this plugin's wiring, so the previous entries
+	// come out first - before the early returns, not after them. An update
+	// whose new mcp.json is gone or unreadable still has to take the old
+	// servers out of the user's config, because the entry that recorded them is
+	// about to be overwritten and nothing could clean them afterwards.
+	if hadPrev {
+		unwirePluginMCP(c.Name, prev, cwd)
+	}
+
 	cfg, _, err := plugin.LoadMCPConfig(destDir)
 	if errors.Is(err, plugin.ErrMCPDisabled) {
 		ui.LogWarn(fmt.Sprintf("%s: mcp.json is invalid - MCP disabled, skills still installed (run 'mdm plugins validate')", c.Name))
@@ -25,11 +44,6 @@ func wirePluginMCP(c pluginCandidate, destDir, dataDir string, harnesses []strin
 	}
 	if cfg == nil || len(cfg.Servers) == 0 {
 		return nil
-	}
-
-	// Re-wiring an update must not leave ids from a removed server behind.
-	if prev, ok := lock.ReadPluginsLock(cwd).Plugins[c.Name]; ok {
-		unwirePluginMCP(c.Name, prev, cwd)
 	}
 
 	result := map[string][]string{}

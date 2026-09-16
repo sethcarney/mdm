@@ -644,3 +644,84 @@ func TestSkillsUpdateHintsAtPluginOwnedSkill(t *testing.T) {
 		t.Errorf("expected a hint pointing at mdm plugins update, got: %q", out)
 	}
 }
+
+// writePluginMCPConfig gives a plugin source an mcp.json with one stdio server.
+func writePluginMCPConfig(t *testing.T, src string) {
+	t.Helper()
+	cfg := `{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "example": {"type": "stdio", "command": "./bin/serve"}
+  }
+}
+`
+	if err := os.WriteFile(filepath.Join(src, "mcp.json"), []byte(cfg), 0644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestPluginsUpdateUnwiresWhenUpstreamDropsMCP covers the case where an update
+// finds no MCP config where the installed version had one. The servers the
+// first install wired have to come out of .mcp.json, because the lock entry
+// that recorded them is about to be replaced with one that names none - after
+// which nothing could ever clean them, `mdm plugins remove` included.
+func TestPluginsUpdateUnwiresWhenUpstreamDropsMCP(t *testing.T) {
+	dir := t.TempDir()
+	env := freshEnv(t)
+	src := writePluginSource(t, dir, "toolkit", "demo")
+	writePluginMCPConfig(t, src)
+
+	mustRunPlugins(t, dir, env, "plugins", "add", src, "-y", "--harness", "claude-code")
+	mcpPath := filepath.Join(dir, ".mcp.json")
+	data, err := os.ReadFile(mcpPath)
+	if err != nil {
+		t.Fatalf("expected .mcp.json after add: %v", err)
+	}
+	if !strings.Contains(string(data), "toolkit--example") {
+		t.Fatalf("server was not wired on install:\n%s", data)
+	}
+
+	// Upstream drops mcp.json, then the user updates.
+	if err := os.Remove(filepath.Join(src, "mcp.json")); err != nil {
+		t.Fatal(err)
+	}
+	mustRunPlugins(t, dir, env, "plugins", "update", "toolkit")
+
+	data, err = os.ReadFile(mcpPath)
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "toolkit--example") {
+		t.Fatalf("update left an orphaned server behind; the lock no longer records it, so remove can never clean it:\n%s", data)
+	}
+}
+
+// TestPluginsSkipMCPKeepsTheRecord covers --skip-mcp on an update: the servers
+// stay wired, so the lock has to keep naming them or `mdm plugins remove`
+// would leave them behind.
+func TestPluginsSkipMCPKeepsTheRecord(t *testing.T) {
+	dir := t.TempDir()
+	env := freshEnv(t)
+	src := writePluginSource(t, dir, "toolkit", "demo")
+	writePluginMCPConfig(t, src)
+
+	mustRunPlugins(t, dir, env, "plugins", "add", src, "-y", "--harness", "claude-code")
+	mustRunPlugins(t, dir, env, "plugins", "update", "toolkit", "--skip-mcp")
+
+	lockData, err := os.ReadFile(filepath.Join(dir, lockName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(lockData), "toolkit--example") {
+		t.Fatalf("--skip-mcp dropped the MCP record while leaving the server wired:\n%s", lockData)
+	}
+
+	mustRunPlugins(t, dir, env, "plugins", "remove", "toolkit", "-y")
+	data, err := os.ReadFile(filepath.Join(dir, ".mcp.json"))
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "toolkit--example") {
+		t.Fatalf("remove could not clean a server that --skip-mcp left wired:\n%s", data)
+	}
+}
