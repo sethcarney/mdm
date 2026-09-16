@@ -332,8 +332,14 @@ Distinct from `mdm harnesses` above, which manages the AI tools themselves.
 | `--harness` | `add` / `remove` | Harnesses to target (repeatable, use `*` for all) |
 | `--agent`, `-a` | `add` / `remove` | Agent definition names to target (repeatable, use `*` for all) |
 | `--copy` / `--symlink` | `add` / `install` | Switch the scope's install mode (see [Install mode](agent-artifacts.md#install-mode)) |
+| `--force` | `add` | Replace a definition already installed under the same name from another source |
 | `--allow-hidden-chars` | `add` / `update` / `install` | Allow markdown files with hidden Unicode characters |
 | `--yes`, `-y` | `add` / `remove` / `update` / `install` | Skip confirmation prompts |
+
+`remove` and `update` act on the harnesses the lock records for a definition,
+and within those touch only files mdm wrote: a file you placed at the same path
+yourself is reported and left alone. See
+[Only files mdm wrote are removed](agent-artifacts.md#only-files-mdm-wrote-are-removed).
 
 [:octicons-arrow-right-24: Details](agent-artifacts.md)
 
