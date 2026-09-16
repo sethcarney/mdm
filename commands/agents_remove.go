@@ -213,6 +213,22 @@ func removeAgentFromDisk(name string, harnessFilter []string, entry lock.AgentLo
 	// cleared dropped the canonical file and the lock entry, leaving that
 	// file with nothing able to manage it afterwards.
 	cleared := stringSet(withoutHarnesses(targets, stringSet(res.foreignHarnesses)))
+	// A harness the user named explicitly whose file is already gone - deleted
+	// by hand - is still one they asked to remove. De-register it too, or `list`
+	// keeps reporting the definition missing from it and the next `agents
+	// install` reinstalls there. Without a filter this stays hands-off: a
+	// missing file then belongs to an install this removal was never asked about.
+	if len(harnessFilter) > 0 {
+		filterSet := stringSet(harnessFilter)
+		for _, h := range agentRecordedHarnesses(entry) {
+			if !filterSet[h] {
+				continue
+			}
+			if target := agentHarnessPath(name, h, global, cwd); target != "" && !fileExists(target) {
+				cleared[h] = true
+			}
+		}
+	}
 	if remaining := withoutHarnesses(held, cleared); len(remaining) > 0 {
 		// The recorded list is where the definition belongs, and the lock,
 		// not the disk, is what it comes off. A harness the user deleted a
@@ -416,8 +432,18 @@ func removeOneAgent(name string, harnessFilter []string, entry lock.AgentLockEnt
 	case err != nil:
 		ui.LogError(fmt.Sprintf("%s: %v", name, err))
 	case len(res.foreign) > 0:
-		ui.LogWarn(fmt.Sprintf("%s: not removed - the file in %s is not the one mdm wrote, so the definition is still installed there; keeping it and its lock entry so it can still be managed",
-			name, strings.Join(harnessDisplayNames(res.foreignHarnesses), ", ")))
+		// mdm proves it wrote a harness copy by comparing it to the canonical
+		// file. When that file is gone, every copy fails the check and looks
+		// foreign, though the real problem is the missing canonical - so say
+		// that, and point at the restore, rather than blaming the user's files.
+		canonicalPath := agentCanonicalPath(name, lockedAgentFormat(entry), global, cwd)
+		if !fileExists(canonicalPath) {
+			ui.LogWarn(fmt.Sprintf("%s: not removed - its canonical file (%s) is missing, so mdm cannot tell whether the copies in %s are the ones it wrote. Run `mdm agents install` to restore the canonical file, then remove again.",
+				name, shortenPath(canonicalPath, cwd), strings.Join(harnessDisplayNames(res.foreignHarnesses), ", ")))
+		} else {
+			ui.LogWarn(fmt.Sprintf("%s: not removed - the file in %s is not the one mdm wrote, so the definition is still installed there; keeping it and its lock entry so it can still be managed",
+				name, strings.Join(harnessDisplayNames(res.foreignHarnesses), ", ")))
+		}
 	case res.fullyRemoved:
 		ui.LogSuccess("Removed " + name)
 	default:

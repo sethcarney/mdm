@@ -793,6 +793,15 @@ func linkInstalledSkillToHarness(skillName, harnessName string, global bool, cwd
 	if _, err := os.Stat(harnessDir); err == nil {
 		return true // already present
 	}
+	// Honor the scope's recorded install mode: adding a harness to a copy-mode
+	// scope must give it a real copy, not a symlink, or the new harness alone
+	// would disagree with every other skill in the scope.
+	if lock.GetInstallMode(global, cwd) == lock.InstallModeCopy {
+		if err := os.MkdirAll(harnessBase, 0755); err != nil {
+			return false
+		}
+		return copyDirectory(canonicalDir, harnessDir) == nil
+	}
 	if createSymlink(canonicalDir, harnessDir) {
 		return true
 	}
