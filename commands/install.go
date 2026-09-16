@@ -36,6 +36,12 @@ get everything back without remembering each package source.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			showLogo(ver)
 			runInstallFromLock(opts)
+			// A restore that could not install everything the lock describes
+			// has to say so in its exit code, or CI treats a half-provisioned
+			// checkout as a good one.
+			if restoreFailed {
+				os.Exit(1)
+			}
 		},
 	}
 
@@ -237,9 +243,22 @@ func restoreSkills(entries map[string]sourceRef, baseOpts AddOptions) {
 		baseOpts.Harnesses = harnesses
 	}
 
+	cwd, _ := os.Getwd()
 	vlog(verboseFlag, "grouped %d skill(s) into %d source group(s)", len(entries), len(groups))
+	var unrestorable []string
 	for _, group := range groups {
 		vlog(verboseFlag, "restoring from %q (ref=%q): %v", group.source, group.ref, group.names)
+		// A source this machine cannot reach is reported and skipped. The
+		// install path exits the process on a missing local path, which would
+		// take every other skill in the lock down with it - the opposite of
+		// what a restore is for.
+		if why := unreachableLocalSource(group.source, cwd); why != "" {
+			for _, name := range group.names {
+				ui.LogWarn(fmt.Sprintf("%s: %s", name, why))
+				unrestorable = append(unrestorable, name)
+			}
+			continue
+		}
 		fmt.Printf("%sInstalling from %s...%s\n", ansiDim, group.source, ansiReset)
 		opts := baseOpts
 		opts.Skills = group.names
@@ -250,5 +269,26 @@ func restoreSkills(entries map[string]sourceRef, baseOpts AddOptions) {
 		runAdd(src, opts)
 	}
 
+	reportUnrestorable(unrestorable, "skill",
+		"Vendor it with `mdm skills cherry-pick`, or re-add it from a source your team can reach.")
 	fmt.Printf("%sDone.%s\n\n", ansiText, ansiReset)
 }
+
+// reportUnrestorable closes a restore that skipped entries, and marks the run
+// failed. A restore that silently returns 0 having installed less than the lock
+// describes is the thing CI cannot notice.
+func reportUnrestorable(names []string, noun, hint string) {
+	if len(names) == 0 {
+		return
+	}
+	sort.Strings(names)
+	fmt.Println()
+	ui.LogError(fmt.Sprintf("%d %s(s) could not be restored on this machine: %s",
+		len(names), noun, strings.Join(names, ", ")))
+	fmt.Printf("%s  A local source outside the project is not part of the repository. %s%s\n", ansiDim, hint, ansiReset)
+	restoreFailed = true
+}
+
+// restoreFailed records that a restore skipped something, so the command can
+// exit non-zero after finishing the entries it could install.
+var restoreFailed bool

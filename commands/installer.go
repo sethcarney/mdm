@@ -12,6 +12,8 @@ import (
 	"github.com/sethcarney/mdm/internal/lock"
 	"github.com/sethcarney/mdm/internal/registry"
 	"github.com/sethcarney/mdm/internal/skill"
+	"github.com/sethcarney/mdm/internal/source"
+	"github.com/sethcarney/mdm/internal/ui"
 )
 
 type InstallMode string
@@ -775,4 +777,68 @@ func linkInstalledSkillToHarness(skillName, harnessName string, global bool, cwd
 		return false
 	}
 	return copyDirectory(canonicalDir, harnessDir) == nil
+}
+
+// unreachableLocalSource reports why a recorded source cannot be restored on
+// this machine, or "" when it can.
+//
+// A lock entry is meant to set a teammate up from a fresh clone. A local source
+// that lives inside the project travels with the repository and restores
+// anywhere; one outside it does not exist on anyone else's disk, and the
+// recorded path resolves, if at all, somewhere arbitrary. Catching that here
+// means a restore can say which skill it is and why, and carry on with the
+// rest, instead of the install path exiting the process on the first one.
+func unreachableLocalSource(src, cwd string) string {
+	parsed := source.ParseSource(src)
+	if parsed.Type != source.SourceTypeLocal {
+		return ""
+	}
+	path := parsed.LocalPath
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(cwd, path)
+	}
+	if _, err := os.Stat(path); err == nil {
+		return ""
+	}
+	if localSourceEscapesProject(src, cwd) {
+		return fmt.Sprintf("recorded from %s, a local path outside this project, so it is not part of the repository and is missing here", src)
+	}
+	return fmt.Sprintf("recorded from %s, which is missing here", src)
+}
+
+// localSourceEscapesProject reports whether a local source resolves outside
+// cwd. Such a source cannot be committed with the project, so its lock entry
+// only ever restores on the machine that created it.
+func localSourceEscapesProject(src, cwd string) bool {
+	parsed := source.ParseSource(src)
+	if parsed.Type != source.SourceTypeLocal {
+		return false
+	}
+	path := parsed.LocalPath
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(cwd, path)
+	}
+	rel, err := filepath.Rel(cwd, filepath.Clean(path))
+	if err != nil {
+		return true
+	}
+	return rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// warnIfLocalSourceEscapesProject tells the user when an install has just
+// recorded a lock entry no teammate can restore, and points at the command
+// that would vendor the content into the repository instead.
+func warnIfLocalSourceEscapesProject(src, cwd, vendorHint string) {
+	if !localSourceEscapesProject(src, cwd) {
+		return
+	}
+	// Shown the way the lock records it, so the warning and the file agree.
+	recorded := src
+	if parsed := source.ParseSource(src); parsed.Type == source.SourceTypeLocal {
+		recorded = toRelSourcePath(parsed.LocalPath, cwd)
+	}
+	ui.LogWarn(fmt.Sprintf("%s is outside this project, so the lock entry records a path that only resolves from your own checkout - teammates running a restore will not find it", recorded))
+	if vendorHint != "" {
+		fmt.Printf("%s  %s%s\n", ansiDim, vendorHint, ansiReset)
+	}
 }
