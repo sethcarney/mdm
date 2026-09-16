@@ -85,18 +85,21 @@ if command -v sha256sum >/dev/null 2>&1; then
 elif command -v shasum >/dev/null 2>&1; then
   ACTUAL="$(shasum -a 256 "${WORK_DIR}/${BINARY_NAME}" | awk '{print $1}')"
 else
-  ACTUAL=""
-  echo "Neither sha256sum nor shasum found - cannot verify the download." >&2
+  # Fail closed: SECURITY.md promises the binary is always verified against
+  # sha256sums.txt, so a machine with no way to hash it must stop rather than
+  # install unverified. Every mainstream Unix ships one of these (sha256sum in
+  # coreutils on Linux, shasum via perl on macOS).
+  echo "Neither sha256sum nor shasum found - cannot verify the download. Aborting." >&2
+  echo "Install coreutils (sha256sum) or perl (shasum) and re-run, or download and verify the binary manually." >&2
+  exit 1
 fi
 
-if [ -n "$ACTUAL" ]; then
-  echo "Verifying checksum..."
-  if [ "$ACTUAL" != "$EXPECTED" ]; then
-    echo "Checksum verification FAILED for ${BINARY_NAME}. The download may be corrupt or tampered. Aborting." >&2
-    exit 1
-  fi
-  echo "Checksum verified."
+echo "Verifying checksum..."
+if [ "$ACTUAL" != "$EXPECTED" ]; then
+  echo "Checksum verification FAILED for ${BINARY_NAME}. The download may be corrupt or tampered. Aborting." >&2
+  exit 1
 fi
+echo "Checksum verified."
 
 chmod +x "${WORK_DIR}/${BINARY_NAME}"
 
