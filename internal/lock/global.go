@@ -157,6 +157,14 @@ func legacyGlobalLockPath() string {
 	return filepath.Join(home, harness.SharedRootDir, "skills-lock.json")
 }
 
+// isEmpty reports whether the state carries nothing worth preserving. It mirrors
+// ProjectLockFile.isEmpty: an unversioned file with any of these is damaged data
+// the reader must not silently drop, not a bare `{}` it may treat as empty.
+func (s GlobalState) isEmpty() bool {
+	return len(s.Skills) == 0 && len(s.Agents) == 0 && len(s.ConfiguredHarnesses) == 0 &&
+		len(s.Experimental) == 0 && len(s.extra) == 0 && s.InstallMode == ""
+}
+
 // ReadGlobalState reads mdm-state.json, falling back to the legacy v1
 // skills-lock.json when it does not exist. Missing state reads as empty; state
 // this binary cannot understand aborts the process.
@@ -193,6 +201,14 @@ func readGlobalStateE() (GlobalState, error) {
 		s.Version = globalStateVersion
 	}
 	if s.Version < globalStateVersion {
+		// No version at all. A bare `{}` is harmless, but a file that still
+		// carries skills, agents, or configured harnesses lost its version line
+		// to a hand edit or a bad merge. Reading it as empty would let the next
+		// write replace it with only the newest entry, so it aborts like the
+		// project reader does rather than silently dropping the records.
+		if !s.isEmpty() {
+			return EmptyGlobalState(), errUnversionedLock(path)
+		}
 		return EmptyGlobalState(), nil
 	}
 	if s.Skills == nil {
