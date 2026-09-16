@@ -305,6 +305,6 @@ func runAgentsUpdateWithOpts(filter []string, opts UpdateOptions) {
 		fmt.Printf("%sNo agent definitions to update.%s\n", ansiDim, ansiReset)
 		return
 	}
-	fmt.Printf("%sUpdate complete:%s %d updated, %d already up to date\n", ansiText, ansiReset, stats.updated, stats.skipped)
+	fmt.Printf("%sUpdate complete:%s %d updated, %d unchanged\n", ansiText, ansiReset, stats.updated, stats.skipped)
 	fmt.Println()
 }
