@@ -343,9 +343,21 @@ func runHarnessesRemove(cmd *cobra.Command, args []string, global, yes bool) err
 		return fmt.Errorf("harness names are required when using --yes")
 	}
 
-	toRemove, ok := resolveHarnessesToRemove(args, configured)
-	if !ok {
-		return nil
+	var toRemove []string
+	if len(args) > 0 {
+		// Match `harnesses add`: a name that is not a harness at all fails the
+		// command rather than exiting 0 as though it had removed something.
+		validated, ok := validateNamedHarnesses(args)
+		if !ok {
+			return fmt.Errorf("no valid harnesses specified")
+		}
+		toRemove = validated
+	} else {
+		picked, ok := pickHarnessesToRemove(configured)
+		if !ok {
+			return nil
+		}
+		toRemove = picked
 	}
 
 	if !yes && !confirmHarnessesRemoval(toRemove) {
@@ -369,19 +381,6 @@ func runHarnessesRemove(cmd *cobra.Command, args []string, global, yes bool) err
 	fmt.Println()
 	cleanUpRemovedHarnessFiles(toRemove, global, cwd)
 	return nil
-}
-
-// resolveHarnessesToRemove returns harnesses from explicit args or via interactive
-// picker when no args are provided.
-func resolveHarnessesToRemove(args []string, configured []string) ([]string, bool) {
-	if len(args) > 0 {
-		validated, ok := validateNamedHarnesses(args)
-		if !ok {
-			return nil, false
-		}
-		return validated, true
-	}
-	return pickHarnessesToRemove(configured)
 }
 
 // confirmHarnessesRemoval shows a confirmation prompt listing the harnesses to be

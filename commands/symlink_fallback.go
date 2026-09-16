@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/sethcarney/mdm/internal/agentfile"
 	"github.com/sethcarney/mdm/internal/harness"
 )
 
@@ -108,7 +109,16 @@ func materializeReason(harnessName string) string {
 	if h.AgentAlwaysMaterialize {
 		return "its agents directory is committed to the repository"
 	}
-	return "it reads " + strings.ToUpper(string(harness.AgentFormat(harnessName)))
+	return "it reads " + agentFormatLabel(harness.AgentFormat(harnessName))
+}
+
+// agentFormatLabel renders a format for a user-facing sentence: TOML is an
+// acronym and stays uppercase, Markdown is an ordinary word and is not shouted.
+func agentFormatLabel(f agentfile.Format) string {
+	if f == agentfile.FormatTOML {
+		return "TOML"
+	}
+	return "Markdown"
 }
 
 // explain prints the one-per-run note. Nothing went wrong, so it offers no
