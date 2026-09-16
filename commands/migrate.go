@@ -64,8 +64,8 @@ func runMigrate(dryRun, yes, noTombstone, force bool) error {
 	}
 
 	if !plan.Needed() && !gplan.Needed() {
-		clearGraduatedOptIns()
 		fmt.Printf("\n%sNothing to migrate - no v1 lock files found.%s\n\n", ansiDim, ansiReset)
+		clearGraduatedOptIns(dryRun)
 		return nil
 	}
 
@@ -234,14 +234,14 @@ func executeMigration(cwd string, plan lock.ProjectMigration, gplan lock.GlobalM
 			fmt.Printf("%s✓%s Global state migrated to %s.\n", ansiGreen, ansiReset, lock.GetGlobalStatePath())
 		}
 	}
-	clearGraduatedOptIns()
+	clearGraduatedOptIns(false)
 	fmt.Println()
 	return nil
 }
 
 // clearGraduatedOptIns drops persisted experimental opt-ins for features
 // that no longer exist (e.g. knowledge and plugins, which graduated in v2).
-func clearGraduatedOptIns() {
+func clearGraduatedOptIns(dryRun bool) {
 	state := lock.ReadGlobalState()
 	if len(state.Experimental) == 0 {
 		return
@@ -256,6 +256,12 @@ func clearGraduatedOptIns() {
 		return
 	}
 	dropped := len(state.Experimental) - len(kept)
+	// A dry run reports without touching the file: writing here made
+	// `mdm migrate --dry-run` modify mdm-state.json, breaking its contract.
+	if dryRun {
+		fmt.Printf("%sWould clear %d stale experimental opt-in(s) for graduated features.%s\n", ansiDim, dropped, ansiReset)
+		return
+	}
 	state.Experimental = kept
 	if err := lock.WriteGlobalState(state); err != nil {
 		ui.LogWarn(fmt.Sprintf("could not update the global state file: %v", err))
