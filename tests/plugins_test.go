@@ -369,8 +369,8 @@ func readServers(t *testing.T, path, serversKey string) (map[string]json.RawMess
 }
 
 // assertWiredStdioServer checks the claude-code entry for toolkit--api:
-// absolute command inside the installed plugin, expanded args, injected
-// env, defaulted cwd.
+// absolute command inside the installed plugin, expanded args, injected env,
+// and no cwd, which Claude Code's stdio schema does not read.
 func assertWiredStdioServer(t *testing.T, servers map[string]json.RawMessage) {
 	t.Helper()
 	var stdio struct {
@@ -389,8 +389,8 @@ func assertWiredStdioServer(t *testing.T, servers map[string]json.RawMessage) {
 	if !filepath.IsAbs(stdio.Args[1]) || !strings.Contains(stdio.Args[1], "plugins-data") {
 		t.Errorf("args should expand PLUGIN_DATA to the data dir: %+v", stdio.Args)
 	}
-	if stdio.Env["PLUGIN_ROOT"] == "" || stdio.Env["PLUGIN_DATA"] == "" || stdio.Cwd == "" {
-		t.Errorf("env must inject PLUGIN_ROOT/PLUGIN_DATA and cwd must default: %+v", stdio)
+	if stdio.Env["PLUGIN_ROOT"] == "" || stdio.Env["PLUGIN_DATA"] == "" || stdio.Cwd != "" {
+		t.Errorf("env must inject PLUGIN_ROOT/PLUGIN_DATA, and claude-code takes no cwd: %+v", stdio)
 	}
 }
 
@@ -710,4 +710,50 @@ func TestPluginsUpdateNeverStrandsMCPServers(t *testing.T) {
 			t.Fatalf("remove could not clean the server --skip-mcp left wired:\n%s", data)
 		}
 	})
+}
+
+// TestPluginsAddWritesNoCwdForClaudeCode pins the one absolute path that could
+// be removed from a committed MCP config. Claude Code's stdio schema is
+// command/args/env, so a cwd it is handed is dropped rather than applied:
+// writing one only put this machine's path into the file. The remaining
+// absolute paths cannot be made portable, so doctor flags the file instead.
+func TestPluginsAddWritesNoCwdForClaudeCode(t *testing.T) {
+	dir := t.TempDir()
+	env := freshEnv(t)
+	src := writePluginSource(t, dir, "toolkit", "demo")
+	cfg := `{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "example": {"type": "stdio", "command": "./bin/serve"}
+  }
+}
+`
+	if err := os.WriteFile(filepath.Join(src, "mcp.json"), []byte(cfg), 0644); err != nil {
+		t.Fatal(err)
+	}
+	mustRunPlugins(t, dir, env, "plugins", "add", src, "-y", "--harness", "claude-code")
+
+	data, err := os.ReadFile(filepath.Join(dir, ".mcp.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parsed struct {
+		Servers map[string]map[string]any `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatal(err)
+	}
+	server, ok := parsed.Servers["toolkit--example"]
+	if !ok {
+		t.Fatalf("server was not wired:\n%s", data)
+	}
+	if _, hasCwd := server["cwd"]; hasCwd {
+		t.Errorf("claude-code ignores cwd, so it should not be written: %v", server["cwd"])
+	}
+
+	// The paths that remain are machine-local, so doctor has to say so.
+	out := mustRunPlugins(t, dir, env, "doctor", "-p")
+	if !strings.Contains(out, "only resolve on this machine") {
+		t.Errorf("doctor should flag the wired config as machine-local, got:\n%s", out)
+	}
 }

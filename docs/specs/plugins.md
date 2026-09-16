@@ -127,8 +127,25 @@ sequences harnesses use for MCP tool-name mangling.
 Because mdm writes config rather than launching servers, everything the spec
 requires of the launcher is baked in at install time: `${PLUGIN_ROOT}` and
 `${PLUGIN_DATA}` become absolute paths, both variables are injected into the
-server's `env`, `./`-prefixed commands resolve inside the plugin root (with
-containment re-checked), and an omitted `cwd` is written as the plugin root.
+server's `env`, and `./`-prefixed commands resolve inside the plugin root (with
+containment re-checked).
+
+`cwd` is written only for a harness that reads one. Claude Code does not: its
+stdio schema is `command`, `args` and `env`, and a configured `cwd` is dropped
+rather than applied, so writing one put this machine's absolute path into a
+committed file and changed nothing. A plugin that declares a `cwd` for such a
+harness is told its server will start in the project root.
+
+**The written config is machine-local.** The absolute paths above cannot be
+made portable: Claude Code expands `${VAR}` in `.mcp.json` only from variables
+it already holds, and `CLAUDE_PROJECT_DIR` is set in the *server's*
+environment rather than its own, so `${CLAUDE_PROJECT_DIR}` in the config reads
+as a missing variable; Cursor expands nothing. A stdio server living inside the
+repository therefore has to be named by an absolute path. Treat the MCP config
+the way `.agents/` is already treated - generated output regenerated from
+`mdm.lock` by `mdm plugins install` - rather than a file whose contents travel
+between machines. `mdm doctor` says so once a plugin has wired servers into
+it.
 Config merges preserve every key mdm does not own; removal deletes exactly the
 recorded ids and never the file.
 

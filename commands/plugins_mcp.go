@@ -59,6 +59,12 @@ func wirePluginMCP(c pluginCandidate, destDir, dataDir string, harnesses []strin
 				ui.LogWarn(fmt.Sprintf("%s: server %q skipped for %s: %v", c.Name, s.ID, harnessName, err))
 				continue
 			}
+			// A declared cwd that the harness does not read is dropped. Saying
+			// so beats letting the author wonder why the server started in the
+			// project root instead.
+			if s.Cwd != "" && !target.SupportsCwd() {
+				ui.LogWarn(fmt.Sprintf("%s: %s ignores a server's cwd, so %q starts in the project root", c.Name, harnessName, s.ID))
+			}
 			entries[mcpwire.NamespacedID(c.Name, s.ID)] = rendered
 		}
 		ids, err := target.Install(cwd, entries)

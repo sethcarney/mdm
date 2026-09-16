@@ -51,7 +51,13 @@ func (t MCPTarget) renderStdio(s plugin.Server, rootAbs, dataAbs string) (map[st
 	env["PLUGIN_ROOT"] = rootAbs
 	env["PLUGIN_DATA"] = dataAbs
 
-	out := map[string]any{"command": command, "env": env, "cwd": cwd}
+	out := map[string]any{"command": command, "env": env}
+	// cwd is written only for a harness that reads it. Claude Code does not,
+	// so writing one there added this machine's absolute path to a committed
+	// file and changed nothing about how the server ran.
+	if t.honorsCwd {
+		out["cwd"] = cwd
+	}
 	if t.style == styleTyped {
 		out["type"] = "stdio"
 	}

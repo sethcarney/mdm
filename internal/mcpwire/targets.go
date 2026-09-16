@@ -27,13 +27,25 @@ type MCPTarget struct {
 	ConfigPath  string // project-relative config file path
 	ServersKey  string // top-level key holding the server map
 	style       renderStyle
+	// honorsCwd reports whether the harness reads a "cwd" field on a stdio
+	// server. Claude Code does not: its schema is command/args/env, and
+	// `claude mcp get` shows a configured cwd dropped rather than applied.
+	// Writing one there would only put this machine's absolute path into a
+	// file the team commits, so the field is omitted for targets that ignore
+	// it, and SupportsCwd lets the caller say so.
+	honorsCwd bool
 }
 
 // Targets maps harness names to their project-scope MCP config descriptors.
 var Targets = map[string]MCPTarget{
-	"claude-code": {HarnessName: "claude-code", ConfigPath: ".mcp.json", ServersKey: "mcpServers", style: styleTyped},
-	"cursor":      {HarnessName: "cursor", ConfigPath: ".cursor/mcp.json", ServersKey: "mcpServers", style: styleBare},
+	"claude-code": {HarnessName: "claude-code", ConfigPath: ".mcp.json", ServersKey: "mcpServers", style: styleTyped, honorsCwd: false},
+	"cursor":      {HarnessName: "cursor", ConfigPath: ".cursor/mcp.json", ServersKey: "mcpServers", style: styleBare, honorsCwd: true},
 }
+
+// SupportsCwd reports whether this target's harness honors a stdio server's
+// cwd. A plugin that declares one for a harness that does not is told, rather
+// than left to wonder why its server started somewhere else.
+func (t MCPTarget) SupportsCwd() bool { return t.honorsCwd }
 
 // idSeparator joins plugin and server names. The spec forbids consecutive
 // hyphens inside plugin names, so the split is unambiguous, and it avoids
