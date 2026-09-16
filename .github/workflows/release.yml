@@ -35,6 +35,27 @@ jobs:
       - name: Install Syft (for SBOM generation)
         uses: anchore/sbom-action/download-syft@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
 
+      # Release notes track stable-to-stable changes. GoReleaser otherwise picks
+      # the previous tag by semver, which lands on a prerelease when one sits
+      # just below the release being cut - v2.0.0-beta below v2.0.0 - so the
+      # notes would start at the prerelease and omit everything back to the last
+      # stable. Pin the previous tag to the most recent stable ancestor (no
+      # prerelease suffix), skipping any -beta / -rc tags. A prerelease build
+      # then gets cumulative notes from the last stable, and a stable build gets
+      # exactly the stable-to-stable range. If none is found (the very first
+      # tag), fall through to GoReleaser's own detection.
+      - name: Pin the changelog to the previous stable tag
+        run: |
+          prev=$(git tag --list 'v*' --merged HEAD --sort=-version:refname \
+            | awk -v cur="$GITHUB_REF_NAME" '!/-/ && $0 != cur' \
+            | head -n1)
+          if [ -n "$prev" ]; then
+            echo "GORELEASER_PREVIOUS_TAG=$prev" >> "$GITHUB_ENV"
+            echo "Changelog spans from previous stable tag: $prev"
+          else
+            echo "No previous stable tag found; using GoReleaser's default detection."
+          fi
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
