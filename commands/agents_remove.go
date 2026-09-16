@@ -29,6 +29,10 @@ type agentRemoval struct {
 	// hand-written definition, or a copy edited since - left alone, as
 	// "<harness>: <path>".
 	foreign []string
+	// foreignHarnesses names the same harnesses, for the arithmetic: a
+	// harness whose file was left alone was not cleared, so it still holds
+	// the definition.
+	foreignHarnesses []string
 }
 
 // sameLinkOnDisk reports whether two paths name the same directory entry
@@ -93,6 +97,7 @@ func removeAgentHarnessCopies(name string, harnesses []string, isSource func(str
 		}
 		if !mdmOwnsAgentFile(target, harnessName, canonicalPath) {
 			res.foreign = append(res.foreign, harnessDisplayName(harnessName)+": "+target)
+			res.foreignHarnesses = append(res.foreignHarnesses, harnessName)
 			continue
 		}
 		if rmErr := removeFileFn(target); rmErr != nil && !os.IsNotExist(rmErr) {
@@ -177,9 +182,10 @@ var removeFileFn = os.Remove
 // harnesses hold it is the lock entry's list, or, for an entry written before
 // the list existed, the harnesses whose file mdm can show it wrote; a
 // same-named file anywhere else is the user's and is never looked at. It drops
-// the canonical file and the lock entry only once no harness outside the
-// filter still holds a copy, and otherwise takes the cleared harnesses off the
-// entry's list, so the lock keeps describing the disk.
+// the canonical file and the lock entry only once nothing holds a copy: neither
+// a harness outside the filter, nor one inside it whose file mdm could not show
+// it wrote and therefore left in place. Otherwise it takes the harnesses it did
+// clear off the entry's list, so the lock keeps describing the disk.
 //
 // The file the definition was discovered from in a local source is the user's
 // own and is never deleted; it is returned in kept. `mdm agents add .` adopts
@@ -202,9 +208,18 @@ func removeAgentFromDisk(name string, harnessFilter []string, entry lock.AgentLo
 	if len(failed) > 0 {
 		return res, fmt.Errorf("could not remove from %s", strings.Join(failed, ", "))
 	}
-	if remaining := withoutHarnesses(held, stringSet(targets)); len(remaining) > 0 {
-		if agentRecordedHarnesses(entry) != nil {
-			entry.Harnesses = remaining
+	// A harness whose file mdm could not show it wrote was left alone, so it
+	// still holds the definition: only the rest were cleared. Counting it as
+	// cleared dropped the canonical file and the lock entry, leaving that
+	// file with nothing able to manage it afterwards.
+	cleared := stringSet(withoutHarnesses(targets, stringSet(res.foreignHarnesses)))
+	if remaining := withoutHarnesses(held, cleared); len(remaining) > 0 {
+		// The recorded list is where the definition belongs, and the lock,
+		// not the disk, is what it comes off. A harness the user deleted a
+		// file from by hand is not on `held`, and de-registering it here
+		// would forget an install this removal was never asked about.
+		if recorded := agentRecordedHarnesses(entry); recorded != nil {
+			entry.Harnesses = withoutHarnesses(recorded, cleared)
 			if err := writeAgentEntry(name, entry, global, cwd); err != nil {
 				return res, fmt.Errorf("could not update lock file: %w", err)
 			}
@@ -391,12 +406,18 @@ func runAgentRemove(positional []string, opts AgentOptions) bool {
 }
 
 // removeOneAgent removes one definition, prints its lines, and reports
-// whether the removal succeeded.
+// whether the removal succeeded. A harness file mdm could not show it wrote
+// is left where it is, which means the definition is still installed there:
+// that is a removal that did not complete, and it must not read as one that
+// did - the lines below say so and the command exits non-zero.
 func removeOneAgent(name string, harnessFilter []string, entry lock.AgentLockEntry, global bool, cwd string) bool {
 	res, err := removeAgentFromDisk(name, harnessFilter, entry, global, cwd)
 	switch {
 	case err != nil:
 		ui.LogError(fmt.Sprintf("%s: %v", name, err))
+	case len(res.foreign) > 0:
+		ui.LogWarn(fmt.Sprintf("%s: not removed - the file in %s is not the one mdm wrote, so the definition is still installed there; keeping it and its lock entry so it can still be managed",
+			name, strings.Join(harnessDisplayNames(res.foreignHarnesses), ", ")))
 	case res.fullyRemoved:
 		ui.LogSuccess("Removed " + name)
 	default:
@@ -408,5 +429,5 @@ func removeOneAgent(name string, harnessFilter []string, entry lock.AgentLockEnt
 	for _, f := range res.foreign {
 		ui.LogInfo(fmt.Sprintf("%s: left %s alone: not the file mdm wrote there", name, f))
 	}
-	return err == nil
+	return err == nil && len(res.foreign) == 0
 }
