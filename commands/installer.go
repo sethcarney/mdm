@@ -642,6 +642,13 @@ func findHarnessesForSkill(s *skill.Skill, dirName string, harnessesToCheck []st
 			continue
 		}
 		harnessBase := harnessDirForScope(harnessName, isGlobal, cwd)
+		// A shared-dir harness reads the shared .agents/skills directory, which
+		// is where the global install writes it too; its own GlobalSkillsDir
+		// stays empty, so probing that (the default) attributed the skill to no
+		// harness. Attribute by the shared directory the install actually used.
+		if isGlobal && harness.UsesSharedSkillsDir(harnessName) {
+			harnessBase = getCanonicalSkillsDir(isGlobal, cwd)
+		}
 		if harnessHasSkill(harnessBase, dirName, sName, s.Name) {
 			result = append(result, harnessName)
 		}

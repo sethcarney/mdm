@@ -31,6 +31,34 @@ func TestHarnessesAddHonorsCopyMode(t *testing.T) {
 	}
 }
 
+// S6: a skill installed globally for a shared-dir harness lands in the shared
+// ~/.agents/skills directory; list must attribute it to that harness, not show
+// it owned by nobody because it probed the harness's empty per-harness dir.
+func TestSkillsListGlobalAttributesSharedDirHarness(t *testing.T) {
+	home := t.TempDir()
+	stateDir := t.TempDir()
+	env := isolatedEnv(home, stateDir)
+	// A separate cwd for the source; the install is global.
+	proj := t.TempDir()
+	writeLocalSkill(t, proj, "src", "myskill", "hi")
+
+	if _, stderr, code := runMdmInDir(t, proj, env, "skills", "add", "./src", "-g", "--harness", "cursor", "-y"); code != 0 {
+		t.Fatalf("global install failed: %d %s", code, stderr)
+	}
+	// Cursor must be detected for list to check it at all.
+	if err := os.MkdirAll(filepath.Join(home, ".cursor"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, stderr, code := runMdmInDir(t, proj, env, "skills", "list", "-g")
+	if code != 0 {
+		t.Fatalf("list -g failed: %d %s", code, stderr)
+	}
+	if !strings.Contains(stdout, "Cursor") {
+		t.Errorf("global list should attribute the skill to Cursor:\n%s", stdout)
+	}
+}
+
 // A7: `agents remove --harness X` when X's file was deleted by hand must still
 // drop X from the lock's harness list, or list keeps reporting it missing and
 // the next install reinstalls there.
