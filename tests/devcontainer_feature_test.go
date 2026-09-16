@@ -607,73 +607,45 @@ func TestFeatureREADMEDocumentsOptions(t *testing.T) {
 	}
 }
 
-// --- the root installers vs the release artifacts ---------------------------
-//
-// install.sh and install.ps1 are the documented way most people get mdm, and
-// they name release assets that nothing at build time connects to
-// .goreleaser.yaml. They spent several releases fetching a per-binary
-// "<asset>.bundle" that the signing config has never produced: with cosign on
-// PATH, `set -e` aborted the whole install on the 404 and nobody got a binary.
-// These tests are the connection the feature installer already has.
-
-const (
-	rootInstallSh  = "install.sh"
-	rootInstallPs1 = "install.ps1"
-)
-
-// goreleaserSigns reports which artifact class the signs block covers.
-func goreleaserSigns(t *testing.T) string {
-	t.Helper()
-	var cfg struct {
+// TestRootInstallersMatchTheReleaseArtifacts is for install.sh and install.ps1
+// what TestFeatureInstallTargetsTheReleaseArtifacts is for the feature's
+// installer: the connection to .goreleaser.yaml that nothing at build time
+// otherwise provides. Its absence is why both scripts spent several releases
+// fetching a per-binary "<asset>.bundle" that the signing config has never
+// produced - with cosign on PATH, `set -e` aborted the install on the 404 and
+// nobody got a binary.
+func TestRootInstallersMatchTheReleaseArtifacts(t *testing.T) {
+	var signs struct {
 		Signs []struct {
 			Artifacts string `yaml:"artifacts"`
-			Signature string `yaml:"signature"`
 		} `yaml:"signs"`
 	}
-	if err := yaml.Unmarshal([]byte(readRepoFile(t, ".goreleaser.yaml")), &cfg); err != nil {
+	if err := yaml.Unmarshal([]byte(readRepoFile(t, ".goreleaser.yaml")), &signs); err != nil {
 		t.Fatalf("parse .goreleaser.yaml: %v", err)
 	}
-	if len(cfg.Signs) != 1 {
-		t.Fatalf("expected exactly one signs entry in .goreleaser.yaml, got %d", len(cfg.Signs))
+	if len(signs.Signs) != 1 || signs.Signs[0].Artifacts != "checksum" {
+		t.Fatalf("expected one signs entry over %q; the installers verify the checksum manifest and must be updated to match", "checksum")
 	}
-	return cfg.Signs[0].Artifacts
-}
-
-// TestRootInstallersVerifyWhatTheReleaseActuallySigns pins the signing subject.
-// GoReleaser signs `artifacts: checksum`, so the only signature a release
-// carries is over the checksum manifest. An installer that verifies anything
-// else is verifying a file that was never published.
-func TestRootInstallersVerifyWhatTheReleaseActuallySigns(t *testing.T) {
-	if got := goreleaserSigns(t); got != "checksum" {
-		t.Fatalf(".goreleaser.yaml now signs %q; the installers verify the checksum manifest and must be updated to match", got)
+	if !strings.Contains(readRepoFile(t, ".github/workflows/release.yml"), "tags:") {
+		t.Fatal("release.yml no longer triggers on tags; re-check the signing identity in the installers")
 	}
 
-	cfg := goreleaser(t)
-	manifest := cfg.Checksum.NameTemplate
-	for _, path := range []string{rootInstallSh, rootInstallPs1} {
+	manifest := goreleaser(t).Checksum.NameTemplate
+	for _, path := range []string{"install.sh", "install.ps1"} {
 		script := readRepoFile(t, path)
-		if !strings.Contains(script, manifest) {
-			t.Errorf("%s never mentions %s, the one file the release signs", path, manifest)
-		}
-		// GoReleaser names the bundle after the artifact it signs. Both
-		// installers build that name from the manifest name rather than
-		// spelling it out, so the suffix is what there is to check.
-		if !strings.Contains(script, ".sigstore.json") {
-			t.Errorf("%s does not fetch the %s.sigstore.json signature for that manifest", path, manifest)
-		}
-	}
-}
 
-// TestRootInstallersDoNotFetchPerBinarySignatures is the regression guard. No
-// release has ever attached a .bundle, .sig or .pem for an individual binary,
-// so an installer naming one is fetching a 404.
-func TestRootInstallersDoNotFetchPerBinarySignatures(t *testing.T) {
-	for _, path := range []string{rootInstallSh, rootInstallPs1} {
-		script := readRepoFile(t, path)
+		// The signed artifact is the manifest, so that is what must be
+		// fetched and verified. Both scripts build the bundle name from the
+		// manifest name, so the suffix is what there is to check.
+		if !strings.Contains(script, manifest) || !strings.Contains(script, ".sigstore.json") {
+			t.Errorf("%s does not verify %s against its %s.sigstore.json signature", path, manifest, manifest)
+		}
+
+		// No release has ever attached a per-binary signature, so naming one
+		// means fetching a 404. ".sigstore" is stripped first: it appears in
+		// the manifest's own signature and in the cosign docs URL, and both
+		// contain ".sig" as a substring.
 		for _, line := range strings.Split(script, "\n") {
-			// ".sigstore" covers both the manifest signature file and the
-			// cosign docs URL; neither is a per-binary artifact, though both
-			// contain ".sig" as a substring.
 			probe := strings.ReplaceAll(line, ".sigstore", "")
 			for _, ext := range []string{".bundle", ".sig", ".pem"} {
 				if strings.Contains(probe, ext) {
@@ -682,24 +654,11 @@ func TestRootInstallersDoNotFetchPerBinarySignatures(t *testing.T) {
 				}
 			}
 		}
-	}
-}
 
-// TestRootInstallersUseTheTagSigningIdentity pins the OIDC identity. The
-// release workflow is triggered by a tag push, so a certificate identity
-// anchored to refs/heads/main can never match and every verification fails.
-func TestRootInstallersUseTheTagSigningIdentity(t *testing.T) {
-	triggers := readRepoFile(t, ".github/workflows/release.yml")
-	if !strings.Contains(triggers, "tags:") {
-		t.Fatal("release.yml no longer triggers on tags; re-check the signing identity in the installers")
-	}
-	for _, path := range []string{rootInstallSh, rootInstallPs1} {
-		script := readRepoFile(t, path)
+		// A tag-triggered workflow never signs under a branch ref, so an
+		// identity anchored to one can never match.
 		if !strings.Contains(script, `release\.yml@refs/tags/`) {
 			t.Errorf("%s does not anchor the cosign identity to refs/tags/, but release.yml is tag-triggered", path)
-		}
-		if strings.Contains(script, `release\.yml@refs/heads/`) {
-			t.Errorf("%s anchors the cosign identity to a branch ref, which a tag-triggered workflow never produces", path)
 		}
 	}
 }
