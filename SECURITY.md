@@ -31,42 +31,40 @@ for the full allow/deny list and rationale.
 
 ## Release Verification
 
-All release binaries are signed with [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) keyless signing via Sigstore and accompanied by a `sha256sums.txt` checksum file. Each release includes `.sig`, `.pem`, and `.bundle` files for every binary.
+Every release attaches a `sha256sums.txt` covering all five binaries, and that manifest is signed with [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) keyless signing via Sigstore. The signature is `sha256sums.txt.sigstore.json`.
+
+Verification therefore runs in two steps: check the manifest's signature, then check your binary against the manifest. There are no per-binary signature files, so a binary is verified through the manifest rather than directly.
 
 ### Verify with cosign
 
-The signature is tied to the official GitHub Actions OIDC identity - no GPG keys or secrets required.
-
-**Using the `.sig` + `.pem` files:**
+The signature is tied to the official GitHub Actions OIDC identity - no GPG keys or secrets required. The release workflow is triggered by a tag push, so the identity always ends in `refs/tags/<tag>`.
 
 ```bash
-cosign verify-blob mdm-linux-x64 \
-  --signature mdm-linux-x64.sig \
-  --certificate mdm-linux-x64.pem \
-  --certificate-identity-regexp='^https://github\.com/sethcarney/mdm/\.github/workflows/release\.yml@refs/heads/main$' \
+cosign verify-blob sha256sums.txt \
+  --bundle sha256sums.txt.sigstore.json \
+  --certificate-identity-regexp='^https://github\.com/sethcarney/mdm/\.github/workflows/release\.yml@refs/tags/.+$' \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
 ```
 
-**Using the `.bundle` file:**
+Once the manifest is verified, check the binary you downloaded against it:
 
 ```bash
-cosign verify-blob mdm-linux-x64 \
-  --bundle mdm-linux-x64.bundle \
-  --certificate-identity-regexp='^https://github\.com/sethcarney/mdm/\.github/workflows/release\.yml@refs/heads/main$' \
-  --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
+sha256sum -c sha256sums.txt --ignore-missing
 ```
 
-Replace `mdm-linux-x64` with the appropriate filename for your platform:
+On macOS, `shasum -a 256` replaces `sha256sum`.
 
-| Platform    | Binary                | Signature                 | Certificate               |
-| ----------- | --------------------- | ------------------------- | ------------------------- |
-| Linux x64   | `mdm-linux-x64`       | `mdm-linux-x64.sig`       | `mdm-linux-x64.pem`       |
-| Linux ARM64 | `mdm-linux-arm64`     | `mdm-linux-arm64.sig`     | `mdm-linux-arm64.pem`     |
-| macOS x64   | `mdm-macos-x64`       | `mdm-macos-x64.sig`       | `mdm-macos-x64.pem`       |
-| macOS ARM64 | `mdm-macos-arm64`     | `mdm-macos-arm64.sig`     | `mdm-macos-arm64.pem`     |
-| Windows x64 | `mdm-windows-x64.exe` | `mdm-windows-x64.exe.sig` | `mdm-windows-x64.exe.pem` |
+Both files are attached to each [GitHub release](https://github.com/sethcarney/mdm/releases), alongside the binaries:
 
-All verification files are attached to each [GitHub release](https://github.com/sethcarney/mdm/releases).
+| Platform    | Binary                |
+| ----------- | --------------------- |
+| Linux x64   | `mdm-linux-x64`       |
+| Linux ARM64 | `mdm-linux-arm64`     |
+| macOS x64   | `mdm-macos-x64`       |
+| macOS ARM64 | `mdm-macos-arm64`     |
+| Windows x64 | `mdm-windows-x64.exe` |
+
+`install.sh` and `install.ps1` perform both steps for you: they always verify the binary against `sha256sums.txt`, and additionally verify the manifest's signature when `cosign` is on your PATH.
 
 ### Verify SLSA provenance
 
@@ -83,7 +81,10 @@ slsa-verifier verify-artifact mdm-linux-x64 \
 
 Replace `mdm-linux-x64` with your platform binary and `v1.0.2` with the release tag you downloaded.
 
-### Verify with SHA-256
+### Verify with SHA-256 alone
+
+Without cosign installed, the checksum manifest still detects a corrupted or
+substituted download, though it cannot prove who produced it:
 
 ```bash
 sha256sum -c sha256sums.txt --ignore-missing
