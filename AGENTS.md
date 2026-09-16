@@ -572,7 +572,7 @@ specifically:
   printed reason, not a failure - but a run that installed nothing anywhere
   prints no success line and exits non-zero.
 
-`mdm skills cherry-pick` → `cherrypick.go` reuses steps 1–3, then diverges:
+`mdm skills cherry-pick` → `cherrypick.go` reuses steps 1-3, then diverges:
 
 4. The skill directory is copied into `./skills/<name>` - the project's own tree,
    not a harness's
