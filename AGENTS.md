@@ -442,8 +442,8 @@ mdm
 │   └── disable <feature>                   # Remove a persisted opt-in
 ├── harnesses                               # Manage the configured harness list used as default install targets
 │   ├── list                                # Show configured harnesses for the current scope (alias: ls)
-│   ├── add [harnesses...]                  # Add harnesses to the configured list (interactive picker with no args)
-│   └── remove [harnesses...]               # Remove harnesses and their unique skill/instruction files
+│   ├── add [harnesses...]                  # Add harnesses to the configured list (interactive picker with no args) (alias: a)
+│   └── remove [harnesses...]               # Remove harnesses and their unique skill/instruction files (aliases: rm, r)
 ├── agents                                  # Manage agent definitions - subagent persona files installed into a harness
 │   ├── add <source>                        # Install agent definitions from GitHub, a URL, or a local path (alias: a)
 │   ├── list                                # List installed agent definitions (alias: ls)
@@ -482,6 +482,7 @@ mdm
 │   ├── agents_remove.go # `mdm agents remove`: harness copies, then canonical file + lock entry once nothing holds it
 │   ├── agents_install.go # `mdm agents install`: restore definitions from the lock
 │   ├── agents_update.go # `mdm agents update`: re-fetch by source+ref, refresh every harness install
+│   ├── agents_held.go   # Which harnesses hold a definition, and which of their files mdm may touch (mdmOwnsAgentFile)
 │   ├── agent_installer.go # Installs one definition into one harness; agentDiskName, the canonical/harness path pair
 │   ├── rules.go         # `mdm rules` group: link/status/unlink harness instruction files
 │   ├── selfupdate.go    # `mdm upgrade`: downloads and replaces the mdm binary from GitHub releases

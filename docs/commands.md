@@ -128,6 +128,8 @@ mdm skills cherry-pick [source]
 | `--list`, `-l` | List the skills available at the source without forking |
 | `--status` | Show this project's forks and whether they have been edited |
 | `--no-attribution` | Do not write `ATTRIBUTION.md` |
+| `--full-depth` | Search all subdirectories for skills |
+| `--allow-hidden-chars` | Allow markdown files with hidden Unicode characters |
 | `--global`, `-g` / `--project`, `-p` | Scope for `--install` (global, or this project only) |
 | `--copy` / `--symlink` | Install mode for `--install`; switches the scope's mode like `skills add` |
 | `--yes`, `-y` | Skip confirmation prompts |
@@ -561,3 +563,20 @@ Generate a shell completion script.
 mdm completion [bash|zsh|fish|powershell]
 mdm completion install     # write completion into your shell rc file
 ```
+
+---
+
+## Files and locations
+
+mdm keeps project state in the repository and per-user state under your home
+directory. Nothing is written outside these paths.
+
+| Path | Scope | Holds |
+| --- | --- | --- |
+| `mdm.lock` | project | Installed skills, agent definitions, knowledge bundles, plugins, the configured harness list, and the scope's install mode. Commit it. |
+| `.agents/skills/`, `.agents/agents/`, `.agents/plugins/` | project | The canonical copies mdm installs; each harness's own directory links to or copies from here. Usually gitignored. |
+| `$XDG_STATE_HOME/mdm/state.json` | global | The per-user equivalent of `mdm.lock`. |
+| `~/.agents/mdm-state.json` | global | The same file when `XDG_STATE_HOME` is unset (the default). |
+
+`INSTALL_DIR` (used by the install scripts) chooses where the `mdm` binary lands;
+see [Installation](installation.md).
