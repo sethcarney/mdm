@@ -167,8 +167,11 @@ func runAgentAdd(sourceInput string, opts AgentOptions) bool {
 	outcome := installAgents(selected, harnesses, global, mode, baseEntry, rootDir, cwd, agentInstallRun{harnessesFor: opts.HarnessesFor, force: opts.Force})
 	fmt.Println()
 	printAgentInstallSummary(outcome, global, mode)
-	// A definition mdm already owns is not a failure to install it.
-	return outcome.installed > 0 || outcome.alreadyInstalled > 0
+	// A definition mdm already owns is not a failure to install it. A refused
+	// one is, even alongside definitions that landed: a batch where a name
+	// was refused must not read, to a script, like one where every name went
+	// in.
+	return outcome.refused == 0 && (outcome.installed > 0 || outcome.alreadyInstalled > 0)
 }
 
 // promptAgentScopeAndHarnesses resolves the scope the way promptScopeAndHarnesses
