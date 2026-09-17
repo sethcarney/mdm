@@ -75,7 +75,17 @@ func mdmOwnsAgentFile(harnessPath, harnessName, canonicalPath string) bool {
 	if err != nil || encoded == nil {
 		return false
 	}
-	return bytes.Equal(got, encoded)
+	if bytes.Equal(got, encoded) {
+		return true
+	}
+	// Older releases passed every Markdown frontmatter key through to Codex.
+	// Recognize those exact bytes so update/remove can repair those installs,
+	// while still refusing files the user has edited.
+	if harnessName == "codex" && agentCanonicalFormat(a) == agentfile.FormatMarkdown {
+		legacy, err := agentfile.Encode(a, agentfile.FormatTOML)
+		return err == nil && bytes.Equal(got, legacy)
+	}
+	return false
 }
 
 // agentOwnedHarnesses returns, sorted, every harness with an agent-definition
