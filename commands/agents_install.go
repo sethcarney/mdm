@@ -62,12 +62,24 @@ func restoreAgentsFromLock(opts restoreOptions) {
 			fmt.Println("Cancelled.")
 			return
 		}
-		if global {
-			restoreAgentsMap(globalAgents, true, opts, cwd)
-		} else {
-			restoreAgentsMap(localAgents, false, opts, cwd)
-		}
+		restoreAgentsInScope(global, opts, cwd)
 	}
+}
+
+// restoreAgentsInScope restores every agent definition one already-resolved
+// scope records, the agents-side twin of restoreSkillsInScope. `mdm install`
+// calls it with the scope it decided from the working directory; the prompt in
+// restoreAgentsFromLock is what `mdm agents install` layers on top of it. A
+// scope recording none is a normal outcome, not something to announce.
+func restoreAgentsInScope(global bool, opts restoreOptions, cwd string) {
+	entries := lock.ReadProjectLock(cwd).Agents
+	if global {
+		entries = lock.ReadGlobalState().Agents
+	}
+	if len(entries) == 0 {
+		return
+	}
+	restoreAgentsMap(entries, global, opts, cwd)
 }
 
 // restoreTargets decides where each entry goes back: the harness list the

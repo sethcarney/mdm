@@ -41,7 +41,10 @@ func buildInstallFromLockCmd(ver string) *cobra.Command {
 		Long: `Restore every skill recorded in ` + lockName + `, then every agent
 definition recorded there too, each re-fetched from its original source
 and ref. Intended for CI and onboarding - run it after cloning a repo to
-get everything back without remembering each package source.`,
+get everything back without remembering each package source.
+
+This does not restore knowledge bundles or plugins. To restore every
+section the lock records, use 'mdm install'.`,
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			showLogo(ver)
@@ -65,13 +68,24 @@ get everything back without remembering each package source.`,
 	return cmd
 }
 
-// hintPluginsInstall points at `mdm plugins install` when the project has a
-// plugin section in its lock - plugin restore is a separate command.
-func hintPluginsInstall(cwd string) {
-	if len(lock.ReadPluginsLock(cwd).Plugins) == 0 {
+// hintOtherSections points at `mdm install` when the lock records sections
+// this command does not restore. It restores skills and agent definitions, so
+// the sections at stake are knowledge bundles and plugins - each has its own
+// command, and this pointer is the only place that names them together.
+func hintOtherSections(cwd string) {
+	pl := lock.ReadProjectLock(cwd)
+	var have []string
+	if n := len(pl.Knowledge); n > 0 {
+		have = append(have, fmt.Sprintf("%d knowledge bundle(s)", n))
+	}
+	if n := len(pl.Plugins); n > 0 {
+		have = append(have, fmt.Sprintf("%d plugin(s)", n))
+	}
+	if len(have) == 0 {
 		return
 	}
-	fmt.Printf("%sThis project also has plugins - restore them with 'mdm plugins install'.%s\n", ansiDim, ansiReset)
+	fmt.Printf("\n%sThis project also has %s - restore everything with 'mdm install'.%s\n",
+		ansiDim, strings.Join(have, ", "), ansiReset)
 }
 
 // restoreSkillsHook and restoreAgentsHook are runInstallFromLock's two restore
@@ -84,30 +98,37 @@ var (
 
 func runInstallFromLock(opts restoreOptions) {
 	cwd, _ := os.Getwd()
-	hintPluginsInstall(cwd)
+	hintOtherSections(cwd)
 
 	restoreSkillsHook(opts, cwd)
 	restoreAgentsHook(opts)
 }
 
-// restoreSkillsFromCurrentLock is `mdm install`'s skill-restore step:
+// restoreSkillsFromCurrentLock is `mdm skills install`'s skill-restore step:
 // local-vs-global resolution, and the "which lock file" prompt when both are
 // populated.
 func restoreSkillsFromCurrentLock(opts restoreOptions, cwd string) {
 	localL := lock.ReadLocalLock(cwd)
 	globalL := lock.ReadGlobalState()
+	pl := lock.ReadProjectLock(cwd)
 
 	hasLocal := len(localL.Skills) > 0
 	hasGlobal := len(globalL.Skills) > 0
-	hasAgents := len(lock.ReadProjectLock(cwd).Agents) > 0 || len(globalL.Agents) > 0
+	// A lock recording any other section is still a lock, whichever section
+	// that is. Agent definitions are reported by the restore step that follows
+	// this one; knowledge bundles and plugins by hintOtherSections. Either way
+	// something has already spoken for them, so the "no lock at all" message
+	// below would be wrong.
+	hasOther := len(pl.Agents) > 0 || len(globalL.Agents) > 0 ||
+		len(pl.Knowledge) > 0 || len(pl.Plugins) > 0
 	vlog(verboseFlag, "install from lock: local=%d skill(s) global=%d skill(s)", len(localL.Skills), len(globalL.Skills))
 
 	switch {
 	case !hasLocal && !hasGlobal:
-		// A lock holding only agent definitions is still a lock. The agent
-		// restore step reports those, so announcing there is none here - and
-		// pointing at `mdm skills add` - would be wrong.
-		if hasAgents {
+		// Something else has already named what the lock does hold, so
+		// announcing there is none here - and pointing at `mdm skills add` -
+		// would be wrong.
+		if hasOther {
 			return
 		}
 		fmt.Printf("\n%sNo %s found.%s\n\n", ansiDim, lockName, ansiReset)
@@ -119,12 +140,20 @@ func restoreSkillsFromCurrentLock(opts restoreOptions, cwd string) {
 			fmt.Println("Cancelled.")
 			return
 		}
-		if global {
-			restoreFromGlobalLock(globalL, opts)
-		} else {
-			restoreFromLocalLock(localL, opts)
-		}
+		restoreSkillsInScope(global, opts, cwd)
 	}
+}
+
+// restoreSkillsInScope restores every skill one already-resolved scope records.
+// It is the step `mdm install` calls, having decided the scope itself from the
+// working directory; the prompt in restoreSkillsFromCurrentLock is what
+// `mdm skills install` layers on top of it.
+func restoreSkillsInScope(global bool, opts restoreOptions, cwd string) {
+	if global {
+		restoreFromGlobalLock(lock.ReadGlobalState(), opts)
+		return
+	}
+	restoreFromLocalLock(lock.ReadLocalLock(cwd), opts)
 }
 
 // chooseRestoreScope decides which lock a restore reads when at least one of

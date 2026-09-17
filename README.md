@@ -21,7 +21,7 @@ Managing markdown across multiple agentic coding tools is more painful than it s
 - **43 harnesses supported** out of the box, including Claude Code, Cursor, Cline, GitHub Copilot, Gemini CLI, Codex, and 37 more.
 - **One source of truth for instruction files.** `mdm rules link` makes `AGENTS.md` the canonical file and symlinks each harness's expected filename to it.
 - **Skills from anywhere.** Install from GitHub, GitLab, arbitrary URLs, local paths, or the [skills.sh](https://skills.sh) registry.
-- **Reproducible installs.** Repos can commit an `mdm.lock` with their recommended skills, knowledge bundles, and plugins so new teammates run `mdm skills install` once and onboard with whatever harness they prefer.
+- **Reproducible installs.** Repos can commit an `mdm.lock` with their recommended skills, agent definitions, knowledge bundles, and plugins so new teammates run `mdm install` once and onboard with whatever harness they prefer.
 - **Security-focused by default.** Every install runs a deterministic local scan for hidden characters and prompt-smuggling patterns, and `mdm skills audit` checks for updates and OSV security advisories.
 - **Knowledge bundles.** `mdm knowledge` installs, validates, and updates [Open Knowledge Format (OKF)](https://github.com/GoogleCloudPlatform/open-knowledge-format) bundles for AI harnesses.
 - **Agent Plugins.** `mdm plugins` installs, validates, and updates [Agent Plugins](https://agent-plugins.org) - portable packages of skills and MCP servers - and wires their MCP servers into each harness's config.
@@ -62,11 +62,13 @@ mdm is published as a [Dev Container Feature](https://containers.dev/implementor
 }
 ```
 
-The feature installs the release binary for the container's architecture to `/usr/local/bin/mdm`, verified against the release checksums - no Go toolchain needed in the image. Pin a release with `{"version": "2.0.0"}`, and pair it with `"postCreateCommand": "mdm skills install"` to restore the skills in `mdm.lock` on create. See [src/mdm/README.md](src/mdm/README.md) for the full options.
+The feature installs the release binary for the container's architecture to `/usr/local/bin/mdm`, verified against the release checksums - no Go toolchain needed in the image. Pin a release with `{"version": "2.0.0"}`, and pair it with `"postCreateCommand": "mdm install -y"` to restore everything in `mdm.lock` on create. See [src/mdm/README.md](src/mdm/README.md) for the full options.
 
 ## Usage
 
 ```
+mdm install                Restore everything mdm.lock records (skills, agents, knowledge, plugins)
+
 mdm rules link             Set up AGENTS.md as source of truth and symlink harness files
 mdm rules status           Show the state of all harness instruction files
 mdm rules unlink           Remove symlinks created by mdm rules link
@@ -157,14 +159,14 @@ again and records symlink mode, so the lock never needs editing by hand.
 **If a symlink cannot be created**, mdm copies that install instead of failing,
 on the spot and per install. The usual cause is Windows without Developer Mode
 or the symlink privilege. Nothing is recorded: the scope stays in symlink mode,
-so the next `mdm skills install` or `mdm skills update` tries to link again.
+so the next `mdm install` or `mdm skills update` tries to link again.
 The install summary says which harnesses got copies and prints a warning to that
 effect. If copies are what you want on that machine, run with `--copy` once to
 record it; `mdm doctor` also reports a scope whose files are copies while its
 lock does not say so.
 
 **Do not commit the skills mdm manages.** Commit `mdm.lock` and let
-`mdm skills install` regenerate the rest, the way a package lock is committed
+`mdm install` regenerate the rest, the way a package lock is committed
 and the package directory is not:
 
 - **The content is duplicated.** One skill is the canonical directory plus a

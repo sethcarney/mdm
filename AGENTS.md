@@ -405,6 +405,7 @@ reference stays. Scorecard has no suppression syntax; the comment above the
 
 ```
 mdm
+├── install                                 # Restore every section of mdm.lock: skills, agent definitions, knowledge, plugins
 ├── upgrade                                 # Self-update the mdm binary from GitHub releases (aliases: update-cli, self-update)
 ├── uninstall                               # Remove the mdm binary from your system (aliases: remove-cli)
 ├── doctor                                  # Check installed skills and project markdown for health issues
@@ -477,6 +478,7 @@ mdm
 │   ├── audit.go         # `mdm skills audit`: checks skills.sh API for updates and OSV security advisories
 │   ├── init.go          # `mdm skills init`: scaffolds a new SKILL.md
 │   ├── install.go       # `mdm skills install`: restores skills, then agent definitions, from mdm.lock
+│   ├── install_all.go   # `mdm install`: scope resolution, then all four restore steps in order
 │   ├── sync.go          # `mdm skills sync`: syncs from node_modules
 │   ├── harnesses.go     # `mdm harnesses` group: list/add/remove configured harnesses (project + global scope)
 │   ├── agents.go        # `mdm agents` group: registers the AGENT DEFINITION subcommands (not harnesses); AgentOptions
@@ -574,6 +576,54 @@ specifically:
 - A harness with no agent-definition directory recorded is a **skip** with a
   printed reason, not a failure - but a run that installed nothing anywhere
   prints no success line and exits non-zero.
+
+### Restoring a lock: `mdm install` vs the per-section commands
+
+`mdm.lock` has four restorable sections, and five commands read them.
+`mdm install` (`install_all.go`) restores all four, by calling the same `run*`
+functions the per-section commands wrap - not by dispatching through cobra,
+because each subcommand's `Run` ends with its own `os.Exit(1)` on
+`restoreFailed` and the first failing section would take the rest of the run
+down with it. The shared package-level `restoreFailed` is what lets the umbrella
+check once, at the end, after every section has had its turn.
+
+The per-section commands are not a clean partition of the four. `mdm agents
+install`, `mdm knowledge install` and `mdm plugins install` each restore exactly
+their own section, but **`mdm skills install` restores skills *and* agent
+definitions**, which its name does not say. That is a wart, and a deliberate
+one: narrowing it to match its name would make an existing invocation restore
+strictly less than it did, which is a breaking change to a documented command
+and therefore a major bump. mdm shipped v2 recently, so the wart keeps until v3
+is worth cutting for other reasons. When that happens, ship the deprecation
+warning in the preceding minor - do not narrow it quietly, because the failure
+mode is a `postCreateCommand` that keeps exiting 0 while restoring less, and
+nobody reads postCreate output.
+
+Three rules hold there:
+
+- **Scope is resolved once, up front.** A `mdm.lock` in the working directory
+  settles it with no prompt; global scope is the fallback for running outside a
+  project. `--yes` never *reaches* global scope on its own - a CI step that
+  meant to restore a checkout and found no lock would otherwise install into the
+  runner's home directory and report success. That is why `restoreSkillsInScope`
+  and `restoreAgentsInScope` exist alongside the prompting
+  `restoreSkillsFromCurrentLock` / `restoreAgentsFromLock`: the umbrella passes
+  a decided scope, the per-section commands ask.
+- **Plugins restore last.** A plugin skill colliding with a standalone one is
+  refused by `installPluginSkillLink` with a warning naming both; in the reverse
+  order `refuseIfPluginOwned` refuses the *skills* entry instead, leaving a
+  canonical directory - the plugin's own symlink - that `skillRestoredOnDisk`
+  counts as a successful restore. Both orders are safe, only one is honest.
+- **An empty section is skipped, not announced.** Each per-section restore
+  prints its own "nothing found, add one with ..." block, and four of those for
+  a skills-only project is three paragraphs saying nothing. `countSections`
+  gates the steps.
+
+Because `mdm skills install` restores two sections of four, it owes a pointer to
+the command that restores the rest: `hintOtherSections` names the knowledge
+bundles and plugins the lock holds that it did not touch. It must NOT name agent
+definitions - it restores those itself, and listing them would send the user off
+to restore something that run just restored.
 
 `mdm skills cherry-pick` → `cherrypick.go` reuses steps 1-3, then diverges:
 

@@ -4,7 +4,7 @@
 #
 # Runs as root during image build, before the workspace is mounted, so it does
 # nothing but put a verified binary on the PATH. Anything that touches the repo
-# (`mdm skills install`, `mdm rules link`) belongs in a postCreateCommand, which
+# (`mdm install`, `mdm rules link`) belongs in a postCreateCommand, which
 # runs after the workspace exists.
 #
 # The binary comes from the GitHub release matching the `version` option, and is

@@ -65,6 +65,8 @@ plugin package itself.
 - **Extension-directory semantics.** mdm ignores reverse-domain extension
   dirs, as the spec instructs for unimplemented namespaces.
 - An umbrella `mdm install` that restores skills + knowledge + plugins.
+  *(Shipped after v2: knowledge and plugins graduated from the experimental
+  gate this non-goal was written under. See [mdm install](../install.md).)*
 
 ## Design
 
@@ -122,7 +124,8 @@ is ever written to `skills-lock.json`. When the gate is on:
 - name collisions are first-come-first-served with a warning, in both
   directions
 - `mdm skills install` prints a one-line hint when a `plugins-lock.json`
-  exists
+  exists *(now generalized: it names the knowledge bundles and plugins it did
+  not restore and points at [`mdm install`](../install.md))*
 
 ### MCP wiring (`internal/mcpwire`)
 

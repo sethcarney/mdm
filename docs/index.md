@@ -108,10 +108,10 @@ solves exactly that.
 
     ---
 
-    Commit an `mdm.lock` so teammates run `mdm skills install` once and
+    Commit an `mdm.lock` so teammates run `mdm install` once and
     onboard with whatever harness they prefer.
 
-    [:octicons-arrow-right-24: skills install](skills/install.md)
+    [:octicons-arrow-right-24: install](install.md)
 
 -   :material-book-open-outline:{ .lg .middle } __Knowledge bundles__
 

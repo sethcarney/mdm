@@ -67,12 +67,14 @@ goes in a lifecycle command:
 "features": {
   "ghcr.io/sethcarney/mdm/mdm:1": {}
 },
-"postCreateCommand": "mdm skills install"
+"postCreateCommand": "mdm install -y"
 ```
 
-That restores every skill recorded in the repo's `mdm.lock` when the
-container is created - see [`mdm skills install`](skills/install.md). `mdm rules
-link` fits the same slot.
+That restores everything the repo's `mdm.lock` records - skills, agent
+definitions, knowledge bundles and plugins - when the container is created; see
+[`mdm install`](install.md). Use [`mdm skills install`](skills/install.md)
+instead to restore only skills and agent definitions. `mdm rules link` fits the
+same slot.
 
 !!! note "Supported platforms"
 

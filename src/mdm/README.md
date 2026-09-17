@@ -78,9 +78,11 @@ exists:
 "features": {
     "ghcr.io/sethcarney/mdm/mdm:1": {}
 },
-// Restore the skills committed in mdm.lock for whichever harnesses this
-// repo configures - the onboarding path mdm skills install exists for.
-"postCreateCommand": "mdm skills install"
+// Restore everything committed in mdm.lock - skills, agent definitions,
+// knowledge bundles and plugins - for whichever harnesses this repo
+// configures. This is the onboarding path mdm install exists for. Use
+// mdm skills install instead for only skills and agent definitions.
+"postCreateCommand": "mdm install -y"
 ```
 
 `mdm rules link`, which makes `AGENTS.md` the single source of truth and

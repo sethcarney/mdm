@@ -249,13 +249,19 @@ func TestInstallHelp(t *testing.T) {
 		t.Fatalf("mdm skills install --help exited %d", code)
 	}
 	// The Long description wraps across lines, so check for its opening
-	// clause and a separate mention of agent definitions rather than one
-	// exact substring spanning the wrap.
+	// clause and the separate mentions rather than one exact substring
+	// spanning the wrap.
 	if !strings.Contains(stdout, "Restore every skill recorded in "+lockName) {
 		t.Errorf("expected install help to contain description, got: %q", stdout)
 	}
 	if !strings.Contains(stdout, "agent") {
 		t.Errorf("expected install help to mention agent definitions, got: %q", stdout)
+	}
+	// This command restores two of the lock's four sections, so its help has
+	// to name the one that restores all of them. Without the pointer, nothing
+	// tells a user with knowledge bundles or plugins that it left them alone.
+	if !strings.Contains(stdout, "mdm install") {
+		t.Errorf("expected skills install help to point at the umbrella command, got: %q", stdout)
 	}
 
 	// The Short summary (shown in `mdm skills --help`'s subcommand list, not
@@ -267,6 +273,25 @@ func TestInstallHelp(t *testing.T) {
 	}
 	if !strings.Contains(parentStdout, "Restore skills, then agent definitions, from "+lockName) {
 		t.Errorf("expected 'mdm skills' help to summarize install as restoring skills and agent definitions, got: %q", parentStdout)
+	}
+}
+
+// The umbrella command is the one that restores every section, and its help
+// is where a user arriving from `mdm skills install` lands.
+func TestInstallAllHelp(t *testing.T) {
+	stdout, _, code := runMdm(t, "install", "--help")
+	if code != 0 {
+		t.Fatalf("mdm install --help exited %d", code)
+	}
+	for _, want := range []string{"skill", "agent definition", "knowledge bundle", "plugin"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("expected mdm install help to mention %q, got: %q", want, stdout)
+		}
+	}
+	for _, flag := range []string{"--project", "--global", "--skip-mcp"} {
+		if !strings.Contains(stdout, flag) {
+			t.Errorf("expected mdm install help to list %s, got: %q", flag, stdout)
+		}
 	}
 }
 

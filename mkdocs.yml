@@ -97,6 +97,7 @@ nav:
   - Home: index.md
   - Installation: installation.md
   - Command reference: commands.md
+  - install: install.md
   - Guides:
       - Rules - instruction files: rules.md
       - Harnesses: harnesses.md

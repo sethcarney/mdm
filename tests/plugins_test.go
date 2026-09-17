@@ -590,7 +590,9 @@ func TestDoctorReportsPluginIssues(t *testing.T) {
 	}
 }
 
-func TestSkillsInstallHintsAtPluginsLock(t *testing.T) {
+// `mdm skills install` restores the skills section only, so a lock recording
+// plugins must be told where the rest of it gets restored.
+func TestSkillsInstallHintsAtTheUmbrellaForPlugins(t *testing.T) {
 	dir := t.TempDir()
 	env := freshEnv(t)
 	src := writePluginSource(t, dir, "toolkit", "alpha")
@@ -600,8 +602,16 @@ func TestSkillsInstallHintsAtPluginsLock(t *testing.T) {
 	}
 
 	stdout, stderr, _ := runMdmInDir(t, dir, env, "skills", "install", "-y")
-	if !strings.Contains(stdout+stderr, "mdm plugins install") {
-		t.Errorf("skills install should hint at plugins install, got stdout=%q stderr=%q", stdout, stderr)
+	combined := stdout + stderr
+	if !strings.Contains(combined, "mdm install") {
+		t.Errorf("skills install should point at the umbrella command, got stdout=%q stderr=%q", stdout, stderr)
+	}
+	if !strings.Contains(combined, "plugin(s)") {
+		t.Errorf("the pointer should name the plugins it did not restore, got stdout=%q stderr=%q", stdout, stderr)
+	}
+	// A lock holding only plugins is still a lock.
+	if strings.Contains(combined, "No "+lockName+" found") {
+		t.Errorf("skills install denies a populated %s exists, got stdout=%q", lockName, stdout)
 	}
 }
 

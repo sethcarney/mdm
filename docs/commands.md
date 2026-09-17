@@ -16,6 +16,7 @@ any command, follow the "Details" links to the dedicated guide pages.
 
 ```text
 mdm
+├── install                                 # Restore everything mdm.lock records (skills, agents, knowledge, plugins)
 ├── upgrade                                 # Self-update the binary (aliases: update-cli, self-update)
 ├── uninstall                               # Remove the binary (alias: remove-cli)
 ├── bug                                     # Open a prefilled bug-report form (no network I/O)
@@ -31,7 +32,7 @@ mdm
 │   ├── update [skills...]                  # Re-fetch from recorded source+ref (alias: check)
 │   ├── audit [skills...]                   # Check for updates & security advisories
 │   ├── init [name]                         # Scaffold a new SKILL.md
-│   ├── install                             # Restore all skills, then agent definitions, from mdm.lock
+│   ├── install                             # Restore skills, then agent definitions, from mdm.lock
 │   └── sync                                # Sync skills from node_modules
 ├── knowledge                               # Manage OKF knowledge bundles
 │   ├── add <source>                        # Install a bundle (alias: a)
@@ -71,6 +72,28 @@ mdm
 ```
 
 ---
+
+## `mdm install`
+
+Restore everything `mdm.lock` records - skills, agent definitions, knowledge bundles and plugins - in one command. Ideal for CI and onboarding.
+
+```bash
+mdm install
+```
+
+A `mdm.lock` in the working directory settles the scope with no prompt. Sections the lock does not record are skipped silently, and a restore that could not install everything exits non-zero.
+
+| Flag | Description |
+| --- | --- |
+| `--yes`, `-y` | Skip confirmation prompts |
+| `--project` | Restore the project's `mdm.lock` (the default when one is present) |
+| `--global` | Restore the globally recorded skills and agent definitions |
+| `--copy` | Copy files instead of symlinking; switches the scope to copy mode |
+| `--symlink` | Symlink files from `.agents` (the default); switches a scope back from copy mode |
+| `--allow-hidden-chars` | Allow markdown files with hidden Unicode characters |
+| `--skip-mcp` | Do not wire MCP server config for restored plugins |
+
+[:octicons-arrow-right-24: Details](install.md)
 
 ## `mdm skills`
 
@@ -238,7 +261,7 @@ mdm skills init [name]
 
 ### `skills install`
 
-Restore all skills, then any agent definitions, from `mdm.lock` - ideal for CI and onboarding.
+Restore all skills, then any agent definitions, from `mdm.lock`. For knowledge bundles and plugins too, use [`mdm install`](install.md).
 
 ```bash
 mdm skills install

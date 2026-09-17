@@ -8,7 +8,9 @@ Restore skills from `mdm.lock`.
 mdm skills install
 ```
 
-Reads the lock file and re-installs every recorded skill from its original source, then restores any [agent definitions](../agent-artifacts.md) recorded in the same lock. Intended for CI pipelines and onboarding - run it after cloning a repo to get everything back without having to remember each package source.
+Reads the lock file and re-installs every recorded skill from its original source, then restores any [agent definitions](../agent-artifacts.md) recorded in the same lock.
+
+It does **not** restore [knowledge bundles](../knowledge.md) or [plugins](../plugins.md). To restore every section the lock records, use [`mdm install`](../install.md). When the lock holds sections this command leaves alone, it names them and points there.
 
 ## How it works
 
@@ -28,7 +30,7 @@ Each restored skill is scanned for hidden Unicode characters before files are co
 
 Restores happen in whatever mode the scope's lock records. A project installed with `--copy` restores as real files, not symlinks. Pass `--copy` or `--symlink` to switch the scope's mode as part of the restore, the same as on [`mdm skills add`](add.md).
 
-Agent definitions restore after skills, using the same scope and lock resolution - a plain `mdm skills install` (or the `postCreateCommand: mdm skills install` pattern in a dev container) is enough to get both back. A project with no agent definitions produces no extra output for that step. To restore agent definitions only, use [`mdm agents install`](../agent-artifacts.md#mdm-agents-install) directly.
+Agent definitions restore after skills, using the same scope and lock resolution. A project with no agent definitions produces no extra output for that step. To restore agent definitions only, use [`mdm agents install`](../agent-artifacts.md#mdm-agents-install) directly; to restore every section, use [`mdm install`](../install.md).
 
 ## Local sources and team setup
 
@@ -79,6 +81,9 @@ mdm skills install -y
 
 # Restore even if a skill intentionally contains hidden characters
 mdm skills install -y --allow-hidden-chars
+
+# Restore every section, not just skills
+mdm install -y
 ```
 
 ## CI usage
@@ -90,3 +95,5 @@ Add `mdm.lock` to version control, then restore in your CI setup:
 - name: Restore skills
   run: mdm skills install -y
 ```
+
+If the lock also records knowledge bundles or plugins, use [`mdm install -y`](../install.md) instead - it restores all four sections and fails the job if any of them could not be restored.

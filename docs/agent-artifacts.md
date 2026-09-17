@@ -255,8 +255,10 @@ with no agent definitions produces no output, since that is a normal
 outcome, not something to report.
 
 `mdm skills install` calls this automatically after restoring skills, so a
-plain `mdm skills install` (or the `postCreateCommand: mdm skills install`
-pattern from a dev container) restores both.
+plain `mdm skills install` restores both. [`mdm install`](install.md) runs the
+same step, alongside the knowledge and plugin sections that neither of the
+other two touch - which is why `postCreateCommand: mdm install -y` is the dev
+container pattern to reach for.
 
 | Flag | Description |
 | --- | --- |
