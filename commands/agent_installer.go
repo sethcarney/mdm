@@ -171,6 +171,8 @@ func materializes(canonicalFormat agentfile.Format, harnessName string) bool {
 // passed through unwrapped: the summary prints it under a line that already
 // names the definition and every harness it failed for, and a reason carrying
 // neither is one string however many harnesses share it.
+// Markdown-to-Codex conversion emits only the three core fields; source
+// frontmatter is not a Codex configuration schema.
 func encodeForHarness(a *agentfile.AgentFile, harnessName string) ([]byte, error) {
 	// Checked before the materialization test because a TOML source reaches
 	// Codex as a symlink, which encodes nothing and would skip the guard.
@@ -182,6 +184,13 @@ func encodeForHarness(a *agentfile.AgentFile, harnessName string) ([]byte, error
 	// not a re-encoding that re-sorts keys and drops comments.
 	if harness.AgentFormat(harnessName) == agentCanonicalFormat(a) {
 		return nil, nil
+	}
+	if harnessName == "codex" && agentCanonicalFormat(a) == agentfile.FormatMarkdown {
+		return agentfile.Encode(&agentfile.AgentFile{
+			Name:         a.Name,
+			Description:  a.Description,
+			Instructions: a.Instructions,
+		}, agentfile.FormatTOML)
 	}
 	return agentfile.Encode(a, harness.AgentFormat(harnessName))
 }
