@@ -14,3 +14,9 @@ mkdocs-material==9.7.7
 # (path traversal in the b64 extension, fixed in 11.0.0). mkdocs-material
 # 9.5.x capped this at ~=10.2, which no fixed release satisfies.
 pymdown-extensions==12.0.1
+
+# Transitive dependency (via requests), pinned explicitly to stay ahead of the
+# urllib3 advisories in 2.7.0: unbounded chunk-size line buffering in
+# HTTPResponse.stream()/read_chunked(), HTTPS proxy TLS configuration being
+# ignored or overridden, and an infinite loop in chunked Deflate streaming.
+urllib3==2.8.0
