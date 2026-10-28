@@ -20,3 +20,8 @@ pymdown-extensions==12.0.1
 # HTTPResponse.stream()/read_chunked(), HTTPS proxy TLS configuration being
 # ignored or overridden, and an infinite loop in chunked Deflate streaming.
 urllib3==2.8.0
+
+# Transitive dependency (via requests), pinned explicitly to stay ahead of
+# GHSA-6q48-6c7w-9gw2: certifi before 2026.10.18 bundles the distrusted
+# emSign ECC Root CA - G3 root certificate.
+certifi==2026.10.23
