@@ -6,7 +6,7 @@
 # AGENTS.md, and a local release dry-run all behave the same inside the
 # container as they do on a runner. Tools are built with `go install` under the
 # pinned GOTOOLCHAIN rather than pulled as prebuilt binaries: golangci-lint has
-# to be compiled with the project's Go to parse its go1.26 sources.
+# to be compiled with the project's Go to parse its go1.27 sources.
 #
 # Safe to re-run - already-installed tools at the pinned version are skipped.
 
@@ -15,7 +15,7 @@ set -euo pipefail
 # Source of truth for the tool versions. Keep in step with
 # .github/workflows/ci.yml and release.yml; tests/devcontainer_test.go fails
 # the build if they drift.
-GOLANGCI_LINT_VERSION="v2.12.2"
+GOLANGCI_LINT_VERSION="v2.15.0"
 GOVULNCHECK_VERSION="v1.5.0"
 GORELEASER_VERSION="v2.15.4"
 

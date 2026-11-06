@@ -128,7 +128,7 @@ What it pins:
 | Go | derived from `go.mod` | The `go` directive is the only place the version is written |
 | git | Debian `os-provided` | `internal/git` shells out to the git binary, so `mdm skills add` needs it |
 | Claude Code | latest (feature-managed) | Runs against the same toolchain as the rest of the project |
-| golangci-lint | v2.12.2 | Same version and `.golangci.yml` config as the CI lint step |
+| golangci-lint | v2.15.0 | Same version and `.golangci.yml` config as the CI lint step |
 | govulncheck | v1.5.0 | Same version as the CI vulnerability step |
 | goreleaser | v2.15.4 | Matches `.github/workflows/release.yml` for local release dry-runs |
 
@@ -136,8 +136,8 @@ What it pins:
 download` and installs the three tools above. The tools are built with
 `go install` under a pinned `GOTOOLCHAIN` rather than downloaded as prebuilt
 binaries - golangci-lint has to be compiled with the project's Go to parse its
-go1.26 sources, the same reason `.github/workflows/ci.yml` sets
-`GOTOOLCHAIN=go1.26.9` before installing it. The script is idempotent, so
+go1.27 sources, the same reason `.github/workflows/ci.yml` sets
+`GOTOOLCHAIN=go1.27.3` before installing it. The script is idempotent, so
 re-running it on a rebuild skips tools already at the pinned version.
 
 ### Why the Go version isn't in `devcontainer.json`
@@ -691,14 +691,14 @@ go test ./...
 
 # 2. Vulnerability scan
 # GOTOOLCHAIN pins the build of govulncheck to the project's Go (go.mod) so it
-# can parse go1.26 sources even when your base toolchain is older.
-GOTOOLCHAIN=go1.26.9 go install golang.org/x/vuln/cmd/govulncheck@v1.5.0
+# can parse go1.27 sources even when your base toolchain is older.
+GOTOOLCHAIN=go1.27.3 go install golang.org/x/vuln/cmd/govulncheck@v1.5.0
 govulncheck ./...
 
 # 3. Lint (formatting + cyclomatic complexity + vet)
 # golangci-lint replaces the retired Go Report Card service and the previous
 # standalone gofmt + gocyclo checks. Enabled linters live in .golangci.yml.
-GOTOOLCHAIN=go1.26.9 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+GOTOOLCHAIN=go1.27.3 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
 golangci-lint run ./...
 # Auto-fix formatting with: golangci-lint fmt
 ```
