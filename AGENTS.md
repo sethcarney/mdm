@@ -137,7 +137,7 @@ download` and installs the three tools above. The tools are built with
 `go install` under a pinned `GOTOOLCHAIN` rather than downloaded as prebuilt
 binaries - golangci-lint has to be compiled with the project's Go to parse its
 go1.27 sources, the same reason `.github/workflows/ci.yml` sets
-`GOTOOLCHAIN=go1.27.3` before installing it. The script is idempotent, so
+`GOTOOLCHAIN=go1.27.4` before installing it. The script is idempotent, so
 re-running it on a rebuild skips tools already at the pinned version.
 
 ### Why the Go version isn't in `devcontainer.json`
@@ -692,13 +692,13 @@ go test ./...
 # 2. Vulnerability scan
 # GOTOOLCHAIN pins the build of govulncheck to the project's Go (go.mod) so it
 # can parse go1.27 sources even when your base toolchain is older.
-GOTOOLCHAIN=go1.27.3 go install golang.org/x/vuln/cmd/govulncheck@v1.5.0
+GOTOOLCHAIN=go1.27.4 go install golang.org/x/vuln/cmd/govulncheck@v1.5.0
 govulncheck ./...
 
 # 3. Lint (formatting + cyclomatic complexity + vet)
 # golangci-lint replaces the retired Go Report Card service and the previous
 # standalone gofmt + gocyclo checks. Enabled linters live in .golangci.yml.
-GOTOOLCHAIN=go1.27.3 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
+GOTOOLCHAIN=go1.27.4 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
 golangci-lint run ./...
 # Auto-fix formatting with: golangci-lint fmt
 ```
