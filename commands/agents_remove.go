@@ -68,8 +68,20 @@ func localSourceKeeper(entry lock.AgentLockEntry, cwd string) func(path string) 
 	if entry.AgentPath == "" {
 		return func(path string) bool { return isInsideOrEqual(path, localSourceAbs) }
 	}
-	sourceFile := filepath.Join(localSourceAbs, filepath.FromSlash(entry.AgentPath))
-	return func(path string) bool { return sameLinkOnDisk(path, sourceFile) }
+	// A paired definition was discovered as two files, and both are the
+	// user's.
+	var sourceFiles []string
+	for _, p := range lockedAgentSourcePaths(entry) {
+		sourceFiles = append(sourceFiles, filepath.Join(localSourceAbs, filepath.FromSlash(p)))
+	}
+	return func(path string) bool {
+		for _, sourceFile := range sourceFiles {
+			if sameLinkOnDisk(path, sourceFile) {
+				return true
+			}
+		}
+		return false
+	}
 }
 
 // removeAgentHarnessCopies deletes the definition's file under each harness.
@@ -77,10 +89,12 @@ func localSourceKeeper(entry lock.AgentLockEntry, cwd string) func(path string) 
 // turned back into a real file and the path reported in kept. Any other file
 // is deleted only when mdmOwnsAgentFile can show mdm wrote it, and is
 // otherwise reported in foreign and left where it is. failed describes every
-// deletion or un-adoption that did not succeed.
-func removeAgentHarnessCopies(name string, harnesses []string, isSource func(string) bool, canonicalPath string, global bool, cwd string) (res agentRemoval, failed []string) {
+// deletion or un-adoption that did not succeed. Each harness's file is judged
+// against the canonical file the entry says it reads from.
+func removeAgentHarnessCopies(name string, harnesses []string, isSource func(string) bool, entry lock.AgentLockEntry, global bool, cwd string) (res agentRemoval, failed []string) {
 	for _, harnessName := range harnesses {
 		target := agentHarnessPath(name, harnessName, global, cwd)
+		canonicalPath := agentServingCanonical(name, entry, harnessName, global, cwd)
 		if target == "" || !isPathSafe(harness.AgentsInstallDirFor(harnessName, global, cwd), target) {
 			continue
 		}
@@ -223,9 +237,8 @@ func removeAgentFromDisk(name string, harnessFilter []string, entry lock.AgentLo
 	}
 	isSource := localSourceKeeper(entry, cwd)
 	canonicalDir := harness.CanonicalAgentsDir(global, cwd)
-	canonicalPath := agentCanonicalPath(name, lockedAgentFormat(entry), global, cwd)
 
-	res, failed := removeAgentHarnessCopies(name, targets, isSource, canonicalPath, global, cwd)
+	res, failed := removeAgentHarnessCopies(name, targets, isSource, entry, global, cwd)
 	if len(failed) > 0 {
 		return res, fmt.Errorf("could not remove from %s", strings.Join(failed, ", "))
 	}
@@ -249,11 +262,16 @@ func removeAgentFromDisk(name string, harnessFilter []string, entry lock.AgentLo
 		return res, nil
 	}
 
-	if isSource(canonicalPath) {
-		res.kept = append(res.kept, canonicalPath)
-	} else if isPathSafe(canonicalDir, canonicalPath) {
-		if rmErr := removeFileFn(canonicalPath); rmErr != nil && !os.IsNotExist(rmErr) {
-			return res, fmt.Errorf("could not remove the canonical file: %w", rmErr)
+	// Every canonical file the entry stands for goes: a paired definition
+	// has one per format, and leaving the second behind strands a file no
+	// lock entry names.
+	for _, canonicalPath := range agentCanonicalPaths(name, entry, global, cwd) {
+		if isSource(canonicalPath) {
+			res.kept = append(res.kept, canonicalPath)
+		} else if isPathSafe(canonicalDir, canonicalPath) {
+			if rmErr := removeFileFn(canonicalPath); rmErr != nil && !os.IsNotExist(rmErr) {
+				return res, fmt.Errorf("could not remove the canonical file: %w", rmErr)
+			}
 		}
 	}
 
@@ -268,6 +286,16 @@ func removeAgentFromDisk(name string, harnessFilter []string, entry lock.AgentLo
 	}
 	res.fullyRemoved = true
 	return res, nil
+}
+
+// firstMissingPath returns the first of paths with nothing on disk, or "".
+func firstMissingPath(paths []string) string {
+	for _, p := range paths {
+		if !fileExists(p) {
+			return p
+		}
+	}
+	return ""
 }
 
 // writeAgentEntry puts an entry read from the lock back, unchanged apart from
@@ -442,8 +470,7 @@ func removeOneAgent(name string, harnessFilter []string, entry lock.AgentLockEnt
 		// file. When that file is gone, every copy fails the check and looks
 		// foreign, though the real problem is the missing canonical - so say
 		// that, and point at the restore, rather than blaming the user's files.
-		canonicalPath := agentCanonicalPath(name, lockedAgentFormat(entry), global, cwd)
-		if !fileExists(canonicalPath) {
+		if canonicalPath := firstMissingPath(agentCanonicalPaths(name, entry, global, cwd)); canonicalPath != "" {
 			ui.LogWarn(fmt.Sprintf("%s: not removed - its canonical file (%s) is missing, so mdm cannot tell whether the copies in %s are the ones it wrote. Run `mdm agents install` to restore the canonical file, then remove again.",
 				name, shortenPath(canonicalPath, cwd), strings.Join(harnessDisplayNames(res.foreignHarnesses), ", ")))
 		} else {

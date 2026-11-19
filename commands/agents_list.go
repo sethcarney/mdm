@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/sethcarney/mdm/internal/agentfile"
 	"github.com/sethcarney/mdm/internal/harness"
 	"github.com/sethcarney/mdm/internal/lock"
 	"github.com/sethcarney/mdm/internal/source"
@@ -70,10 +71,16 @@ type agentEntryStatus struct {
 // show it wrote, so a hand-written definition of the same name in some other
 // harness is not reported as an install.
 func agentStatusFor(name string, entry lock.AgentLockEntry, global bool, cwd string) agentEntryStatus {
-	canonical := agentCanonicalPath(name, lockedAgentFormat(entry), global, cwd)
-	_, err := os.Stat(canonical)
+	// A paired definition has a canonical file per format, and is whole only
+	// with both.
+	missing := false
+	for _, canonical := range agentCanonicalPaths(name, entry, global, cwd) {
+		if _, err := os.Stat(canonical); err != nil {
+			missing = true
+		}
+	}
 	return agentEntryStatus{
-		CanonicalMissing: err != nil,
+		CanonicalMissing: missing,
 		InstalledIn:      agentInstalledIn(name, entry, global, cwd),
 		MissingFrom:      agentMissingFrom(name, entry, global, cwd),
 	}
@@ -101,15 +108,27 @@ func harnessDisplayNames(names []string) []string {
 // harness lists are canonical names rather than the display names the text
 // output prints: the canonical name is the stable identifier, and a caller
 // can map it to a display name itself. The field names are a public contract:
-// a rename keeps the old key.
+// a rename keeps the old key. Formats lists the formats the source ships the
+// definition in, the primary first: one for an ordinary definition, two for
+// one with a harness-specific variant.
 type agentListItem struct {
 	Name             string   `json:"name"`
 	Scope            string   `json:"scope"`
 	Source           string   `json:"source"`
 	Ref              string   `json:"ref,omitempty"`
+	Formats          []string `json:"formats"`
 	CanonicalMissing bool     `json:"canonicalMissing"`
 	InstalledIn      []string `json:"installedIn"`
 	MissingFrom      []string `json:"missingFrom"`
+}
+
+// agentFormatNames returns formats as the strings the lock and the JSON use.
+func agentFormatNames(formats []agentfile.Format) []string {
+	out := make([]string, 0, len(formats))
+	for _, f := range formats {
+		out = append(out, string(f))
+	}
+	return out
 }
 
 // agentListScopes returns the scopes to list, as the globals each covers.
@@ -142,6 +161,7 @@ func runAgentListJSON(scopes []bool, cwd string) {
 				Scope:            scopeName(global),
 				Source:           entry.Source,
 				Ref:              entry.Ref,
+				Formats:          agentFormatNames(lockedAgentFormats(entry)),
 				CanonicalMissing: st.CanonicalMissing,
 				InstalledIn:      emptyIfNil(st.InstalledIn),
 				MissingFrom:      emptyIfNil(st.MissingFrom),
@@ -191,6 +211,9 @@ func runAgentList(globalFlag, projectFlag, jsonMode bool) {
 
 			fmt.Printf("  %s%s%s%s\n", ansiText, name, ansiReset, status)
 			fmt.Printf("    %s%s%s\n", ansiDim, source.FormatSourceInput(entry.Source, entry.Ref), ansiReset)
+			if formats := lockedAgentFormats(entry); len(formats) > 1 {
+				fmt.Printf("    %svariants: %s%s\n", ansiDim, agentFormatLabels(formats), ansiReset)
+			}
 			if len(st.InstalledIn) > 0 {
 				fmt.Printf("    %sinstalled in: %s%s\n", ansiDim, strings.Join(harnessDisplayNames(st.InstalledIn), ", "), ansiReset)
 			}

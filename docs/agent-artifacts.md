@@ -41,7 +41,8 @@ with no such structure is a normal thing to find in a source tree.
 ## Discovery
 
 `mdm agents add <source>` searches the fetched source for agent-definition
-files in this order, and the **first occurrence of a name wins**:
+files in this order, and the **first occurrence of a name wins** within a
+format:
 
 1. Any directories the source declares itself, via an `agentsDirs` array in
    `.claude-plugin/marketplace.json` at the root of the source. This lets a
@@ -51,6 +52,12 @@ files in this order, and the **first occurrence of a name wins**:
 3. The source directory itself, so `mdm agents add ./my-agents` works on a
    flat directory of definitions. It comes last: a name one of the directories
    above already claimed wins.
+
+A markdown file and a TOML file that declare the same `name` are not
+duplicates. They are two variants of one agent, wherever in the source each
+sits, and are installed as one definition - see [Harness-specific
+variants](#harness-specific-variants). A second file of a name in a format
+that name already has is a duplicate, and the earlier one wins as above.
 
 Only files directly inside one of these directories are scanned (not
 subdirectories), and only files ending in `.md` or `.toml` are considered -
@@ -130,7 +137,8 @@ mdm agents list --json
 ```
 
 Shows each installed definition's source, and which harnesses it is
-currently installed in. A definition whose canonical file is missing, or
+currently installed in. A definition its source ships in both formats gets a
+`variants:` line naming them. A definition whose canonical file is missing, or
 that is not installed in any harness, is flagged.
 
 | Flag | Description |
@@ -153,6 +161,7 @@ names are a public contract: a rename keeps the old key.
     "scope": "project",
     "source": "acme/agents",
     "ref": "main",
+    "formats": ["markdown"],
     "canonicalMissing": false,
     "installedIn": ["claude-code"],
     "missingFrom": []
@@ -166,6 +175,12 @@ grouping wrapper, so both scopes flatten into one array the way
 canonical harness names rather than the display names the text output prints:
 the canonical name is the stable identifier, and a caller can map it to a
 display name itself.
+
+`formats` lists the formats the source ships the definition in, the primary
+first: `["markdown"]` or `["toml"]` for an ordinary definition, and
+`["markdown", "toml"]` for one with a [harness-specific
+variant](#harness-specific-variants). `canonicalMissing` is true when any of
+those formats has lost its canonical file.
 
 ### mdm agents remove [names...]
 
@@ -428,8 +443,9 @@ configuration, are omitted. Even a frontmatter key named
 The source, canonical markdown file, and installs to markdown harnesses keep
 their original metadata.
 
-To supply additional Codex configuration, author a native TOML definition.
-Codex receives that file unchanged. TOML-to-markdown conversion preserves
+To supply additional Codex configuration, author a native TOML definition -
+on its own, or [beside the markdown one](#harness-specific-variants) so that
+every other harness keeps the markdown. Codex receives that file unchanged. TOML-to-markdown conversion preserves
 additional keys as YAML frontmatter, including nested maps such as
 `mcp_servers` and `skills.config`; comments and key order do not survive
 conversion. Converting that markdown back for Codex emits only the three
@@ -445,13 +461,73 @@ the reason, and the definition still installs to every markdown harness you
 targeted. Substituting the description would invent content the author did
 not write.
 
+### Harness-specific variants
+
+A source can ship the same agent twice: a general markdown definition, and a
+native Codex TOML definition carrying the configuration markdown cannot
+express.
+
+```
+agents/reviewer.md      name: reviewer
+agents/reviewer.toml    name = "reviewer"
+```
+
+mdm treats the two as **one agent**. They pair by the `name` each declares,
+not by file name or directory, so `agents/reviewer.md` and
+`codex/reviewer.toml` pair just as well. Each harness is then handed the
+variant it reads, and exactly one file:
+
+| Target | Receives | When the source has only the other format |
+| --- | --- | --- |
+| Codex | the TOML, unchanged, optional attributes included | the markdown, converted to the three core fields |
+| Every markdown harness | the markdown, unchanged | the TOML, converted to markdown |
+
+The pair is one name in the picker, one line in `mdm agents list`, and one
+lock entry. The markdown file is the primary; the TOML is recorded beside it:
+
+```json
+"reviewer": {
+  "source": "acme/agents",
+  "sourceType": "github",
+  "ref": "main",
+  "agentPath": "agents/reviewer.md",
+  "format": "markdown",
+  "variants": { "toml": "agents/reviewer.toml" },
+  "harnesses": ["claude-code", "codex"]
+}
+```
+
+An entry with no `variants` key is an ordinary single-format definition, as
+every entry was before the key existed. A release of mdm that predates the
+key reads a paired entry as plain markdown, converts it for Codex, and keeps
+the key when it rewrites the lock.
+
+Both canonical files, `.agents/agents/reviewer.md` and
+`.agents/agents/reviewer.toml`, are written whichever harnesses you chose, so
+adding Codex later needs nothing the first install did not leave behind.
+`mdm agents remove` deletes both once no harness holds the definition.
+
+**A variant that appears later is adopted from the same source.** If you
+installed `reviewer` when its source had only markdown and the source then
+adds `reviewer.toml`, the next `mdm agents update` - or a re-add from that
+source - records the pair and rewrites Codex from the native file. The
+reverse holds too: when a source drops a variant, the harness that was
+reading it goes back to a conversion and the canonical file nothing reads any
+more is deleted. A same-named definition from a *different* source is still
+refused, variant or not, unless you pass `--force`.
+
+The two variants are not compared. If their descriptions or instructions
+differ, each harness simply gets what its own file says; the name and
+description mdm displays are the markdown file's.
+
 ### The canonical file mirrors the source
 
 mdm's own canonical copy takes its extension from whichever format the
 source was in: a markdown source produces `.agents/agents/<name>.md`; a
 Codex TOML source produces `.agents/agents/<name>.toml`. `mdm agents list`
 and `mdm doctor` resolve the canonical path through the lock, which records
-which one it is, rather than assuming `.md`.
+which one it is, rather than assuming `.md`. A definition with a
+[harness-specific variant](#harness-specific-variants) has both.
 
 ### When an install is a link, and when it is a real file
 

@@ -370,7 +370,20 @@ func copyMaterializedAgent(harnessDir, harnessPath, canonicalPath string, mode I
 // converted real file at <name><harnessExt>. Every refusal is decided in memory
 // before the first write, so a definition mdm cannot take leaves no canonical
 // file stranded where discovery would find it. No agents directory is a skip.
+//
+// A definition whose source ships it in both formats is installed from the
+// variant the harness reads: Codex gets the native TOML with everything in it,
+// every markdown harness the markdown. Only a harness with no variant in its
+// format gets a conversion.
 func installAgentFile(a *agentfile.AgentFile, harnessName string, global bool, cwd string, mode InstallMode) InstallResult {
+	return installAgentVariant(a, harnessName, global, cwd, mode, false)
+}
+
+// installAgentVariant is installAgentFile for a caller that knows the lock:
+// replacingPair says the entry being replaced already holds canonical files in
+// both formats, so the other-format file on disk is this definition's own and
+// not a second definition claiming the name.
+func installAgentVariant(a *agentfile.AgentFile, harnessName string, global bool, cwd string, mode InstallMode, replacingPair bool) InstallResult {
 	if cwd == "" {
 		cwd, _ = os.Getwd()
 	}
@@ -389,9 +402,13 @@ func installAgentFile(a *agentfile.AgentFile, harnessName string, global bool, c
 		return InstallResult{Success: false, Skipped: true, Mode: mode, Error: reason}
 	}
 
+	// The name is the primary's: the pair is one definition under one name,
+	// whichever variant this harness is handed.
 	name := agentDiskName(a.Name)
+	v := agentVariantFor(a, harnessName)
+	format := agentCanonicalFormat(v)
 	canonicalBase := harness.CanonicalAgentsDir(global, cwd)
-	canonicalPath := agentCanonicalPath(name, agentCanonicalFormat(a), global, cwd)
+	canonicalPath := agentCanonicalPath(name, format, global, cwd)
 	harnessPath := agentHarnessPath(name, harnessName, global, cwd)
 
 	if !isPathSafe(canonicalBase, canonicalPath) || !isPathSafe(harnessDir, harnessPath) {
@@ -400,7 +417,15 @@ func installAgentFile(a *agentfile.AgentFile, harnessName string, global bool, c
 
 	// Before any write: a refusal here must not leave a canonical file behind
 	// that no lock entry names and that list, remove and doctor cannot see.
-	encoded, err := prepareAgentWrite(a, harnessName, name, global, cwd)
+	// A pair keeps a canonical file per format by design, so the collision
+	// check - one name, two formats - has nothing to refuse for one.
+	var encoded []byte
+	var err error
+	if a.Alt != nil || replacingPair {
+		encoded, err = encodeForHarness(v, harnessName)
+	} else {
+		encoded, err = prepareAgentWrite(v, harnessName, name, global, cwd)
+	}
 	if err != nil {
 		return InstallResult{Success: false, Path: harnessPath, Mode: mode, Error: err.Error()}
 	}
@@ -410,17 +435,17 @@ func installAgentFile(a *agentfile.AgentFile, harnessName string, global bool, c
 	}
 	// The source file can be the canonical file itself, so reinstalling a
 	// definition mdm already owns is a no-op.
-	if err := copyAgentFileUnlessSame(a.Path, canonicalPath); err != nil {
+	if err := copyAgentFileUnlessSame(v.Path, canonicalPath); err != nil {
 		return InstallResult{Success: false, Path: harnessPath, Mode: mode, Error: err.Error()}
 	}
 
 	if encoded != nil {
 		return writeMaterializedAgent(encoded, harnessDir, harnessPath, canonicalPath, mode)
 	}
-	if materializes(agentCanonicalFormat(a), harnessName) {
+	if materializes(format, harnessName) {
 		return copyMaterializedAgent(harnessDir, harnessPath, canonicalPath, mode)
 	}
-	return linkOrCopyAgentIntoHarness(a.Path, harnessDir, harnessPath, canonicalPath, mode)
+	return linkOrCopyAgentIntoHarness(v.Path, harnessDir, harnessPath, canonicalPath, mode)
 }
 
 // linkOrCopyAgentIntoHarness installs the canonical definition into a harness

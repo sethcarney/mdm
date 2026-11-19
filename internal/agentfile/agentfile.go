@@ -33,6 +33,12 @@ const (
 // AgentFile is one parsed agent definition. Instructions is the markdown body
 // or the TOML developer_instructions. Extra carries every other key so a
 // conversion does not drop what it does not understand.
+//
+// Alt is the same agent in the other format, when the source ships both: a
+// general markdown definition and a native Codex TOML one under one name.
+// Discovery sets it, on the markdown file when there is one, so the pair
+// travels as one definition and each harness is handed the variant it reads.
+// The variant's own Alt is always nil.
 type AgentFile struct {
 	Name         string
 	Description  string
@@ -40,6 +46,27 @@ type AgentFile struct {
 	Path         string
 	Format       Format
 	Extra        map[string]any
+	Alt          *AgentFile
+}
+
+// Variants returns the definition and, when the source ships one, its
+// other-format variant: the primary first.
+func (a *AgentFile) Variants() []*AgentFile {
+	if a.Alt == nil {
+		return []*AgentFile{a}
+	}
+	return []*AgentFile{a, a.Alt}
+}
+
+// VariantFor returns the variant written in format f, or the primary when the
+// source ships none in that format and a conversion is the only way there.
+func (a *AgentFile) VariantFor(f Format) *AgentFile {
+	for _, v := range a.Variants() {
+		if sourceFormat(v) == f {
+			return v
+		}
+	}
+	return a
 }
 
 // ConventionalDirs are scanned after any manifest-declared agentsDirs, and
@@ -317,7 +344,14 @@ var noteSkippedFile = func(path string, err error) {
 // DiscoverAgentFiles scans basePath, optionally joined with subpath, for
 // agent-definition files: manifest-declared directories first, then the
 // conventional ones, then searchPath itself. The first occurrence of a name
-// wins, so a source can say where its agents live.
+// wins within one format, so a source can say where its agents live. A
+// same-named definition in the other format is not a duplicate: it is the
+// harness-specific variant of the same agent, and is attached as Alt wherever
+// in the source it sits. Which variant a harness gets is decided at install
+// time, when the harness is known. The markdown file is the primary whenever
+// there is one, whichever was found first, and takes the slot the name first
+// appeared in, so the result's order does not depend on which format a
+// directory listing happens to yield first.
 func DiscoverAgentFiles(basePath, subpath string) ([]*AgentFile, error) {
 	searchPath := basePath
 	if subpath != "" {
@@ -340,7 +374,7 @@ func DiscoverAgentFiles(basePath, subpath string) ([]*AgentFile, error) {
 		return nil, nil
 	}
 
-	seen := map[string]bool{}
+	seen := map[string]int{} // name -> its index in out
 	var out []*AgentFile
 	// The search path itself comes last: `mdm agents add ./my-agents` names a
 	// directory of definitions, and a name a declared or conventional
@@ -380,12 +414,33 @@ func DiscoverAgentFiles(basePath, subpath string) ([]*AgentFile, error) {
 				noteSkippedFile(filePath, err)
 				continue
 			}
-			if a == nil || seen[a.Name] {
+			if a == nil {
 				continue
 			}
-			seen[a.Name] = true
-			out = append(out, a)
+			i, dup := seen[a.Name]
+			if !dup {
+				seen[a.Name] = len(out)
+				out = append(out, a)
+				continue
+			}
+			out[i] = pairVariant(out[i], a)
 		}
 	}
 	return out, nil
+}
+
+// pairVariant folds a later same-named definition into the one already found.
+// A definition in a format the name already has is a duplicate and is dropped,
+// as before. One in the other format becomes the pair's second variant, with
+// the markdown file as the primary.
+func pairVariant(first, later *AgentFile) *AgentFile {
+	if first.Alt != nil || sourceFormat(first) == sourceFormat(later) {
+		return first
+	}
+	if sourceFormat(later) == FormatMarkdown {
+		later.Alt = first
+		return later
+	}
+	first.Alt = later
+	return first
 }

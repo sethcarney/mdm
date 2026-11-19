@@ -69,13 +69,24 @@ func checkBlobSkillsMarkdownForHiddenChars(skills []*blob.BlobSkill, allow bool)
 // definition. A definition is one markdown file, so this uses ScanMarkdownText
 // instead of ScanMarkdownFiles' walk. The scan matters most here: a definition
 // is third-party markdown installed to become a persona the model adopts.
+//
+// Every variant is scanned, not only the primary. A source that ships a
+// native Codex TOML beside its markdown installs that TOML into Codex, so a
+// scan of the markdown alone would pass a persona nobody looked at.
 func checkAgentFileMarkdownForHiddenChars(a *agentfile.AgentFile, allow bool) bool {
-	raw, err := os.ReadFile(a.Path)
-	if err != nil {
-		fmt.Printf("%sHidden character scan failed for %s: %s%s\n", ansiRed, a.Name, err, ansiReset)
-		return false
+	ok := true
+	for _, v := range a.Variants() {
+		raw, err := os.ReadFile(v.Path)
+		if err != nil {
+			fmt.Printf("%sHidden character scan failed for %s: %s%s\n", ansiRed, a.Name, err, ansiReset)
+			ok = false
+			continue
+		}
+		if !checkSkillMarkdownForHiddenChars(a.Name, markdownscan.ScanMarkdownText(filepath.ToSlash(filepath.Base(v.Path)), string(raw)), allow) {
+			ok = false
+		}
 	}
-	return checkSkillMarkdownForHiddenChars(a.Name, markdownscan.ScanMarkdownText(filepath.ToSlash(filepath.Base(a.Path)), string(raw)), allow)
+	return ok
 }
 
 func checkAgentFilesMarkdownForHiddenChars(agents []*agentfile.AgentFile, allow bool) bool {

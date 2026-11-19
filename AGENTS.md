@@ -489,6 +489,7 @@ mdm
 │   ├── agents_update.go # `mdm agents update`: re-fetch by source+ref, refresh every harness install
 │   ├── agents_held.go   # Which harnesses hold a definition, and which of their files mdm may touch (mdmOwnsAgentFile)
 │   ├── agent_installer.go # Installs one definition into one harness; agentDiskName, the canonical/harness path pair
+│   ├── agents_variants.go # Harness-specific variants: which variant a harness is handed, and which canonical file its copy came from
 │   ├── rules.go         # `mdm rules` group: link/status/unlink harness instruction files
 │   ├── selfupdate.go    # `mdm upgrade`: downloads and replaces the mdm binary from GitHub releases
 │   ├── uninstall.go     # `mdm uninstall`: removes the mdm binary from the system
@@ -573,6 +574,16 @@ specifically:
   file name and the lock key. If those two ever disagree, `mdm agents remove`
   drops the lock entry, finds nothing to delete, and leaves the definition live
   in the harness with no record of it.
+- A markdown and a TOML file declaring one name are **one definition with
+  two variants**, not a duplicate. `agentfile.DiscoverAgentFiles` pairs them
+  (`AgentFile.Alt`, markdown as the primary), `installAgentFile` hands each
+  harness the variant in its own format, and the lock entry records the
+  second file under `variants`. Anything that compares a harness file to "the
+  canonical file" must ask `agentServingCanonical` which one that harness
+  reads: judged against the markdown, Codex's copy of a pair looks like a file
+  the user wrote, and remove refuses it. The helpers are in
+  `commands/agents_variants.go`; the user-facing rules are in
+  [docs/agent-artifacts.md](docs/agent-artifacts.md#harness-specific-variants).
 - A harness with no agent-definition directory recorded is a **skip** with a
   printed reason, not a failure - but a run that installed nothing anywhere
   prints no success line and exits non-zero.

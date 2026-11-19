@@ -511,8 +511,9 @@ func checkAgentInstalls(cwd string) (issues []doctorIssue, checked int) {
 func diagnoseAgentInstall(name string, entry lock.AgentLockEntry, cwd string) []doctorIssue {
 	var issues []doctorIssue
 
-	canonical := agentCanonicalPath(name, lockedAgentFormat(entry), false, cwd)
-	if _, err := os.Stat(canonical); err != nil {
+	// One issue however many of a paired definition's canonical files are
+	// gone: the remedy is the same single command.
+	if firstMissingPath(agentCanonicalPaths(name, entry, false, cwd)) != "" {
 		issues = append(issues, doctorIssue{
 			Level:   "error",
 			Message: fmt.Sprintf("agent %q: canonical file missing - run `mdm agents install` to restore", name),

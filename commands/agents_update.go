@@ -80,26 +80,36 @@ func collectAgentCandidates(global bool, filter []string, cwd string) []updateCa
 	return candidates
 }
 
-// readCanonicalAgent returns the canonical file's current bytes, or nil when
-// there is none to restore.
-func readCanonicalAgent(name string, a *agentfile.AgentFile, global bool, cwd string) []byte {
-	data, err := os.ReadFile(agentCanonicalPath(name, agentCanonicalFormat(a), global, cwd))
-	if err != nil {
-		return nil
+// snapshotCanonicalAgent returns the current bytes of every canonical file an
+// update of a is about to write, keyed by path. A nil value is a file that
+// does not exist yet - the canonical file of a variant the source has only now
+// added.
+func snapshotCanonicalAgent(name string, a *agentfile.AgentFile, global bool, cwd string) map[string][]byte {
+	snap := map[string][]byte{}
+	for _, v := range a.Variants() {
+		path := agentCanonicalPath(name, agentCanonicalFormat(v), global, cwd)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			data = nil
+		}
+		snap[path] = data
 	}
-	return data
+	return snap
 }
 
-// restoreCanonicalAgent puts previous back at the canonical path. A restore
-// that fails is reported: the file then holds the new bytes, and the warning
-// is the one place that says so.
-func restoreCanonicalAgent(name string, a *agentfile.AgentFile, previous []byte, global bool, cwd string) {
-	if previous == nil {
-		return
-	}
-	path := agentCanonicalPath(name, agentCanonicalFormat(a), global, cwd)
-	if err := replaceFileWith(path, previous); err != nil {
-		ui.LogWarn(fmt.Sprintf("%s: could not restore the previous canonical file at %s: %v", name, path, err))
+// restoreCanonicalAgent puts the snapshot back: previous bytes where there
+// were some, and nothing where there was no file. A restore that fails is
+// reported: the file then holds the new bytes, and the warning is the one
+// place that says so.
+func restoreCanonicalAgent(name string, snap map[string][]byte) {
+	for path, previous := range snap {
+		if previous == nil {
+			_ = removeFileFn(path)
+			continue
+		}
+		if err := replaceFileWith(path, previous); err != nil {
+			ui.LogWarn(fmt.Sprintf("%s: could not restore the previous canonical file at %s: %v", name, path, err))
+		}
 	}
 }
 
@@ -122,9 +132,9 @@ func warnAgentNamesNotInSource(requested []string, selected []*agentfile.AgentFi
 
 // reinstallAgentIntoHarnesses reinstalls one definition into every harness
 // given, and reports whether any install succeeded plus the names that failed.
-func reinstallAgentIntoHarnesses(a *agentfile.AgentFile, harnesses []string, global bool, cwd string, mode InstallMode) (installedAny bool, failedHarnesses []string) {
+func reinstallAgentIntoHarnesses(a *agentfile.AgentFile, harnesses []string, global bool, cwd string, mode InstallMode, replacingPair bool) (installedAny bool, failedHarnesses []string) {
 	for _, harnessName := range harnesses {
-		if result := installAgentFile(a, harnessName, global, cwd, mode); result.Success {
+		if result := installAgentVariant(a, harnessName, global, cwd, mode, replacingPair); result.Success {
 			installedAny = true
 		} else {
 			failedHarnesses = append(failedHarnesses, harnessName)
@@ -157,10 +167,12 @@ func recordAgentEntry(name string, entry lock.AgentLockEntry, global bool, cwd s
 // ones an update may overwrite and the ones it must not. A harness file is
 // refreshed only when mdmOwnsAgentFile can show mdm wrote it from the
 // canonical file as it stands before the update; a hand-edited copy is the
-// user's, and the update leaves it and says so.
-func refreshableHarnesses(name string, held []string, canonicalPath string, global bool, cwd string) (targets, foreign []string) {
+// user's, and the update leaves it and says so. The canonical file is the one
+// the entry says that harness reads from, which for a paired definition
+// differs between Codex and everything else.
+func refreshableHarnesses(name string, held []string, entry lock.AgentLockEntry, global bool, cwd string) (targets, foreign []string) {
 	for _, harnessName := range held {
-		if mdmOwnsAgentFile(agentHarnessPath(name, harnessName, global, cwd), harnessName, canonicalPath) {
+		if mdmOwnsAgentFile(agentHarnessPath(name, harnessName, global, cwd), harnessName, agentServingCanonical(name, entry, harnessName, global, cwd)) {
 			targets = append(targets, harnessName)
 		} else {
 			foreign = append(foreign, harnessName)
@@ -178,8 +190,7 @@ func updateOneAgent(a *agentfile.AgentFile, name string, entry lock.AgentLockEnt
 		ui.LogWarn(fmt.Sprintf("%s: not installed in any harness, skipping", a.Name))
 		return false
 	}
-	canonicalPath := agentCanonicalPath(name, agentCanonicalFormat(a), global, cwd)
-	targets, foreign := refreshableHarnesses(name, held, canonicalPath, global, cwd)
+	targets, foreign := refreshableHarnesses(name, held, entry, global, cwd)
 	for _, harnessName := range foreign {
 		ui.LogInfo(fmt.Sprintf("%s: left %s alone: the file there is not the one mdm wrote", a.Name, harnessDisplayName(harnessName)))
 	}
@@ -192,17 +203,24 @@ func updateOneAgent(a *agentfile.AgentFile, name string, entry lock.AgentLockEnt
 	// write. If no harness then takes the new version, the previous bytes go
 	// back, so the canonical file never runs ahead of the lock and of every
 	// harness copy.
-	previous := readCanonicalAgent(name, a, global, cwd)
-	installedAny, failedHarnesses := reinstallAgentIntoHarnesses(a, targets, global, cwd, mode)
+	previous := snapshotCanonicalAgent(name, a, global, cwd)
+	installedAny, failedHarnesses := reinstallAgentIntoHarnesses(a, targets, global, cwd, mode, len(lockedAgentFormats(entry)) > 1)
 
 	// The lock must describe the disk. When no harness took the new version,
 	// every harness copy still holds the version the entry already names, so
 	// the entry stays and the canonical file is restored to match it.
 	if !installedAny {
 		ui.LogWarn(fmt.Sprintf("%s: update failed for every installed harness (%s) - lock entry left unchanged", a.Name, strings.Join(failedHarnesses, ", ")))
-		restoreCanonicalAgent(name, a, previous, global, cwd)
+		restoreCanonicalAgent(name, previous)
 		return false
 	}
+	if err := writeAgentCanonicals(a, name, global, cwd); err != nil {
+		ui.LogWarn(fmt.Sprintf("%s: could not write every canonical file: %v", a.Name, err))
+	}
+	// A harness this update did not rewrite - one that failed, or whose file
+	// is the user's - can still be reading a canonical file the source has
+	// since dropped, so that file stays for it.
+	pruneDroppedCanonicals(name, entry, a, unionHarnesses(failedHarnesses, foreign), global, cwd)
 	if len(failedHarnesses) == 0 {
 		ui.LogSuccess(a.Name)
 	} else {
@@ -212,6 +230,7 @@ func updateOneAgent(a *agentfile.AgentFile, name string, entry lock.AgentLockEnt
 	fresh := baseEntry
 	fresh.AgentPath = agentFileRepoPath(a.Path, rootDir)
 	fresh.Format = string(agentCanonicalFormat(a))
+	fresh.Variants = agentVariantPaths(a, rootDir)
 	// An entry with a list keeps it: a harness whose file went missing is
 	// still where the lock says the definition belongs. One without a list
 	// gets the harnesses this update found holding it, so the inference is

@@ -39,13 +39,22 @@ type LocalSkillLockEntry struct {
 // no others: a same-named file in a harness the user never asked for is the
 // user's. It is omitempty because entries written before it existed have no
 // list, and the commands fall back to inferring one from the disk for those.
+//
+// Variants records a source that ships the same agent in a second format: a
+// native Codex TOML file beside the general markdown one. It maps that
+// format to the variant's path in the source, the way AgentPath does for the
+// primary. AgentPath and Format keep describing the primary - the markdown
+// file whenever there is one - so an entry with no variant is exactly what it
+// was, and a binary that predates the field still reads a paired entry as an
+// ordinary markdown definition.
 type AgentLockEntry struct {
-	Source     string   `json:"source"`
-	SourceType string   `json:"sourceType"`
-	Ref        string   `json:"ref,omitempty"`
-	AgentPath  string   `json:"agentPath"`
-	Format     string   `json:"format,omitempty"`
-	Harnesses  []string `json:"harnesses,omitempty"`
+	Source     string            `json:"source"`
+	SourceType string            `json:"sourceType"`
+	Ref        string            `json:"ref,omitempty"`
+	AgentPath  string            `json:"agentPath"`
+	Format     string            `json:"format,omitempty"`
+	Variants   map[string]string `json:"variants,omitempty"`
+	Harnesses  []string          `json:"harnesses,omitempty"`
 }
 
 // LocalSkillLockFile is a view of the skills section of the project lock.

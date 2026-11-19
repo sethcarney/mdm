@@ -375,6 +375,18 @@ type agentInstallOutcome struct {
 	materialized *materializedInstalls
 }
 
+// noteInstalled counts one definition that reached installedTo, and adds
+// each harness to the run's list the first time it receives something.
+func (o *agentInstallOutcome) noteInstalled(installedTo []string, received map[string]bool) {
+	o.installed++
+	for _, harnessName := range installedTo {
+		if !received[harnessName] {
+			received[harnessName] = true
+			o.harnesses = append(o.harnesses, harnessName)
+		}
+	}
+}
+
 // warnAgentNamePattern warns once, naming every target harness whose
 // documented naming rule this definition's frontmatter name does not
 // satisfy. mdm does not rewrite the name - the source owns it, which is what
@@ -410,12 +422,23 @@ func warnAgentNamePattern(rawName string, harnesses []string) {
 // A canonical file already on disk is not this run's to delete. It belongs to
 // an earlier install the lock still names, or it is the source itself, which is
 // what discovery hands back for `mdm agents add .`.
+//
+// A paired definition has a canonical file per format, and each is judged on
+// its own: adding a native variant to a definition already installed must roll
+// back the new file and leave the old one.
 func canonicalRollback(a *agentfile.AgentFile, name string, global bool, cwd string) func() {
-	path := agentCanonicalPath(name, agentCanonicalFormat(a), global, cwd)
-	if _, err := os.Stat(path); err == nil {
-		return func() {}
+	var created []string
+	for _, v := range a.Variants() {
+		path := agentCanonicalPath(name, agentCanonicalFormat(v), global, cwd)
+		if _, err := os.Stat(path); err != nil {
+			created = append(created, path)
+		}
 	}
-	return func() { _ = removeFileFn(path) }
+	return func() {
+		for _, path := range created {
+			_ = removeFileFn(path)
+		}
+	}
 }
 
 // agentInstallRun is what one add run knows beyond the harness list it was
@@ -455,12 +478,18 @@ func sameAgentSource(a, b lock.AgentLockEntry, cwd string) bool {
 // from a different source, or from a different file of the same source, is
 // a collision. An entry written before AgentPath was recorded for its source
 // cannot be compared by file and is compared by source alone.
+//
+// incoming.Variants names the incoming definition's other-format file, when
+// its source ships one. A recorded file that is now one half of that pair is
+// the same definition gaining a variant - a markdown definition whose source
+// added a native Codex TOML, or the reverse - and not a second file competing
+// for the name.
 func agentSourceConflict(prior, incoming lock.AgentLockEntry, incomingPath, name, rootDir, cwd string) string {
 	if !sameAgentSource(prior, incoming, cwd) {
 		return fmt.Sprintf("%s is already installed from %s (%s); installing %s from %s would replace it - remove it with `mdm agents remove %s` first, or pass --force to replace it",
 			name, prior.Source, prior.AgentPath, incomingPath, incoming.Source, name)
 	}
-	if prior.AgentPath != "" && incomingPath != "" && prior.AgentPath != incomingPath {
+	if prior.AgentPath != "" && incomingPath != "" && prior.AgentPath != incomingPath && !isVariantPath(incoming, prior.AgentPath) {
 		// A definition that simply moved within the same source is a relocation,
 		// not a second definition of the same name: the old path is gone, so
 		// there is nothing ambiguous to refuse. Only refuse when the prior file
@@ -475,6 +504,17 @@ func agentSourceConflict(prior, incoming lock.AgentLockEntry, incomingPath, name
 	return ""
 }
 
+// isVariantPath reports whether path is the source file of one of entry's
+// variants.
+func isVariantPath(entry lock.AgentLockEntry, path string) bool {
+	for _, p := range entry.Variants {
+		if p == path {
+			return true
+		}
+	}
+	return false
+}
+
 // foreignAgentTargets splits a definition's target harnesses into those safe to
 // write and those already holding a file mdm did not create. A target is safe
 // when the lock already records the definition there (priorHarnesses - mdm's
@@ -486,12 +526,14 @@ func agentSourceConflict(prior, incoming lock.AgentLockEntry, incomingPath, name
 // doing so replaced a committed .claude/agents/<name>.md with a symlink into the
 // gitignored canonical directory, losing it on the next clone. canonicalPath is
 // read as it stands before this run rewrites it, so a definition mdm already
-// owns still matches while a foreign file does not.
+// owns still matches while a foreign file does not. Both the source file and
+// the canonical file are the ones of the variant that harness is handed.
 func foreignAgentTargets(a *agentfile.AgentFile, name string, targets, priorHarnesses []string, global bool, cwd string) (safe, blocked []string) {
 	prior := stringSet(priorHarnesses)
-	canonicalPath := agentCanonicalPath(name, agentCanonicalFormat(a), global, cwd)
 	for _, h := range targets {
 		target := agentHarnessPath(name, h, global, cwd)
+		v := agentVariantFor(a, h)
+		canonicalPath := agentCanonicalPath(name, agentCanonicalFormat(v), global, cwd)
 		switch {
 		case prior[h], target == "":
 			// Recorded by the lock, or no directory to write into (a skip
@@ -499,7 +541,7 @@ func foreignAgentTargets(a *agentfile.AgentFile, name string, targets, priorHarn
 			safe = append(safe, h)
 		case !fileExists(target):
 			safe = append(safe, h)
-		case sameFileOnDisk(a.Path, target):
+		case sameFileOnDisk(v.Path, target):
 			safe = append(safe, h) // adopting the source file in place
 		case mdmOwnsAgentFile(target, h, canonicalPath):
 			safe = append(safe, h) // mdm's own file from an earlier run
@@ -523,14 +565,19 @@ func fileExists(path string) bool {
 // treating its path as a conflicting source - is wrong. Only the same-file /
 // canonical case was caught before, so a materialized copy at its own path read
 // as a fresh source and stopped `add .` with a spurious conflict.
+//
+// The entry can hold a canonical file per format, and the discovered file is
+// mdm's own when it is any of them, or a harness copy made from the one that
+// harness reads.
 func discoveredFileIsMdmOwn(a *agentfile.AgentFile, name string, entry lock.AgentLockEntry, global bool, cwd string) bool {
-	canonicalPath := agentCanonicalPath(name, agentCanonicalFormat(a), global, cwd)
-	if sameFileOnDisk(a.Path, canonicalPath) {
-		return true
+	for _, canonicalPath := range agentCanonicalPaths(name, entry, global, cwd) {
+		if sameFileOnDisk(a.Path, canonicalPath) {
+			return true
+		}
 	}
 	for _, h := range agentInstalledIn(name, entry, global, cwd) {
 		target := agentHarnessPath(name, h, global, cwd)
-		if target != "" && sameFileOnDisk(a.Path, target) && mdmOwnsAgentFile(target, h, canonicalPath) {
+		if target != "" && sameFileOnDisk(a.Path, target) && mdmOwnsAgentFile(target, h, agentServingCanonical(name, entry, h, global, cwd)) {
 			return true
 		}
 	}
@@ -592,9 +639,12 @@ func installAgents(agents []*agentfile.AgentFile, harnesses []string, global boo
 		// list existed records none, and reading the field raw would answer
 		// "nowhere" for exactly the installs this has to protect.
 		var priorHarnesses []string
-		if prior, ok := recorded[name]; ok {
+		incoming := baseEntry
+		incoming.Variants = agentVariantPaths(a, rootDir)
+		prior, hasPrior := recorded[name]
+		if hasPrior {
 			priorHarnesses = agentHeldHarnesses(name, prior, global, cwd)
-			if conflict := agentSourceConflict(prior, baseEntry, agentPath, name, rootDir, cwd); conflict != "" {
+			if conflict := agentSourceConflict(prior, incoming, agentPath, name, rootDir, cwd); conflict != "" {
 				if !run.force {
 					ui.LogError(fmt.Sprintf("%s: %s", a.Name, conflict))
 					outcome.refused++
@@ -606,6 +656,11 @@ func installAgents(agents []*agentfile.AgentFile, harnesses []string, global boo
 				// harness served another.
 				targets = unionHarnesses(targets, priorHarnesses)
 			}
+			// The source gained or dropped a variant since this definition
+			// was installed. Every harness whose canonical file that changes
+			// is rewritten now, whichever harnesses this run named: the lock
+			// entry is about to point it at a different file.
+			targets = unionHarnesses(targets, reservedHarnesses(prior, a, priorHarnesses))
 		}
 		// Never silently overwrite a harness file mdm did not write. --force is
 		// the opt-in to replace it, matching agentSourceConflict above; without
@@ -627,19 +682,17 @@ func installAgents(agents []*agentfile.AgentFile, harnesses []string, global boo
 			continue
 		}
 
-		installedTo := installOneAgent(a, name, targets, global, cwd, mode, &outcome)
+		replacingPair := hasPrior && len(lockedAgentFormats(prior)) > 1
+		installedTo := installOneAgent(a, name, targets, global, cwd, mode, replacingPair, &outcome)
 		if len(installedTo) == 0 {
 			continue
 		}
-		outcome.installed++
-		for _, harnessName := range installedTo {
-			if !received[harnessName] {
-				received[harnessName] = true
-				outcome.harnesses = append(outcome.harnesses, harnessName)
-			}
+		if hasPrior {
+			pruneDroppedCanonicals(name, prior, a, withoutHarnesses(priorHarnesses, stringSet(installedTo)), global, cwd)
 		}
+		outcome.noteInstalled(installedTo, received)
 
-		entry := baseEntry
+		entry := incoming
 		entry.AgentPath = agentPath
 		entry.Format = string(agentCanonicalFormat(a))
 		// The list is what remove, update and install act on. A harness an
@@ -655,7 +708,7 @@ func installAgents(agents []*agentfile.AgentFile, harnesses []string, global boo
 // per-definition lines, and returns the harnesses that received it, in the
 // order given. A definition no harness accepted has its canonical write
 // rolled back and returns nothing.
-func installOneAgent(a *agentfile.AgentFile, name string, harnesses []string, global bool, cwd string, mode InstallMode, outcome *agentInstallOutcome) []string {
+func installOneAgent(a *agentfile.AgentFile, name string, harnesses []string, global bool, cwd string, mode InstallMode, replacingPair bool, outcome *agentInstallOutcome) []string {
 	fmt.Printf("%sInstalling %s%s%s...\n", ansiDim, ansiText, a.Name, ansiReset)
 	warnAgentNamePattern(a.Name, harnesses)
 	rollback := canonicalRollback(a, name, global, cwd)
@@ -664,7 +717,7 @@ func installOneAgent(a *agentfile.AgentFile, name string, harnesses []string, gl
 	var skipReasons []string
 	var installedTo []string
 	for _, harnessName := range harnesses {
-		result := installAgentFile(a, harnessName, global, cwd, mode)
+		result := installAgentVariant(a, harnessName, global, cwd, mode, replacingPair)
 		outcome.fallbacks.note(harnessName, result)
 		outcome.materialized.note(harnessName, result)
 		failures.note(harnessName, result)
@@ -684,6 +737,11 @@ func installOneAgent(a *agentfile.AgentFile, name string, harnesses []string, gl
 		rollback()
 		reportAgentFailure(a.Name, &failures)
 		return nil
+	}
+	// The variant no targeted harness reads still gets its canonical file, so
+	// the entry's files do not depend on which harnesses were chosen.
+	if err := writeAgentCanonicals(a, name, global, cwd); err != nil {
+		ui.LogWarn(fmt.Sprintf("%s: could not write every canonical file: %v", a.Name, err))
 	}
 	if failures.any() {
 		reportAgentFailure(a.Name, &failures)

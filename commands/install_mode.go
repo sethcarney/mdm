@@ -144,9 +144,12 @@ func scopeAgentInstallPaths(global bool, cwd string) []conversionPath {
 	seen := map[string]bool{}
 	var paths []conversionPath
 	for _, name := range names {
-		format := lockedAgentFormat(entries[name])
-		canonicalName := name + agentCanonicalExt(format)
 		for _, harnessName := range harnesses {
+			// Per harness, not per definition: a paired definition's Codex
+			// copy comes from the TOML canonical file and every other
+			// harness's from the markdown one.
+			format := lockedFormatFor(entries[name], harnessName)
+			canonicalName := name + agentCanonicalExt(format)
 			target := agentHarnessPath(name, harnessName, global, cwd)
 			if target == "" || seen[target] {
 				continue

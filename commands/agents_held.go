@@ -94,11 +94,10 @@ func mdmOwnsAgentFile(harnessPath, harnessName, canonicalPath string) bool {
 // cannot say where mdm installed the definition, and a same-named file in a
 // harness mdm never wrote to is the user's rather than an install.
 func agentOwnedHarnesses(name string, entry lock.AgentLockEntry, global bool, cwd string) []string {
-	canonicalPath := agentCanonicalPath(name, lockedAgentFormat(entry), global, cwd)
 	var found []string
 	for harnessName := range harness.AllHarnesses {
 		target := agentHarnessPath(name, harnessName, global, cwd)
-		if target != "" && mdmOwnsAgentFile(target, harnessName, canonicalPath) {
+		if target != "" && mdmOwnsAgentFile(target, harnessName, agentServingCanonical(name, entry, harnessName, global, cwd)) {
 			found = append(found, harnessName)
 		}
 	}

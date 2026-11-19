@@ -354,7 +354,7 @@ Distinct from `mdm harnesses` above, which manages the AI tools themselves.
 | --- | --- | --- |
 | `--global`, `-g` | `add` / `list` / `remove` / `update` | Operate on the global scope (`install` restores both scopes) |
 | `--project`, `-p` | `add` / `list` / `remove` / `update` | Force project scope |
-| `--json` | `list` | Output as a JSON array (name, scope, source, ref, canonicalMissing, installedIn, missingFrom) |
+| `--json` | `list` | Output as a JSON array (name, scope, source, ref, formats, canonicalMissing, installedIn, missingFrom) |
 | `--harness` | `add` / `remove` | Harnesses to target (repeatable, use `*` for all) |
 | `--agent`, `-a` | `add` / `remove` | Agent definition names to target (repeatable, use `*` for all) |
 | `--copy` / `--symlink` | `add` / `install` | Switch the scope's install mode (see [Install mode](agent-artifacts.md#install-mode)) |
