@@ -7,7 +7,7 @@
 #
 #     make docs-lock
 #
-mkdocs-material==9.8.0
+mkdocs-material==9.8.1
 
 # Transitive dependency of mkdocs-material, pinned explicitly because the
 # version that resolves by default has to stay ahead of GHSA-9xwg-3r6f-jcx2
